@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.firebase
+.firebaserc
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+
+# Utility Scripts & Debug Files
+scripts/
+debug_script_idea.ts
+debug_approval.ts
+debug_users.ts
+debug_users_v2.ts
+backup-firestore.js
+fix_build.js
+fix_clinic_link_issue.ts
+delete_duplicate_clinic.ts
+FIRESTORE_INDEXES.md

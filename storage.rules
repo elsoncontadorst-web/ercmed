@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // ========================================
+    // HELPER FUNCTIONS
+    // ========================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isMasterAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email == 'elsoncontador.st@gmail.com';
+    }
+    
+    // ========================================
+    // ACCOUNTING DOCUMENTS
+    // ========================================
+    
+    match /accountingDocuments/{managerId}/{type}/{fileName} {
+      // Users can read documents from their clinic
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid == managerId || 
+                      firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.managerId == managerId);
+      
+      // Only Master can upload/delete
+      allow write, delete: if isMasterAdmin();
+    }
+    
+    // ========================================
+    // PROFILE IMAGES (Future use)
+    // ========================================
+    
+    match /profileImages/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && 
+                       (request.auth.uid == userId || isMasterAdmin());
+    }
+    
+    // ========================================
+    // DENY ALL OTHER ACCESS
+    // ========================================
+    
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

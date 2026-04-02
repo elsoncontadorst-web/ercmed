@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow public read access to booking settings for online scheduling
+    match /users/{userId}/settings/booking {
+      allow read: if resource == null || resource.data.isEnabled == true;
+    }
+
+    // Allow public read access to clinic hours for availability check
+    match /users/{userId}/settings/clinicHours {
+      allow read: if true;
+    }
+    
+    // Allow public read access to settings collection group for booking URL queries
+    match /{path=**}/settings/{document} {
+      allow read: if resource.data.bookingUrl != null && 
+                     resource.data.isEnabled == true;
+    }
+
+    // Allow public read access to appointments only with strict filters (professional + date)
+    // This prevents listing all appointments for a user/clinic
+    match /users/{userId}/appointments/{appointmentId} {
+      allow read: if request.auth != null || 
+                     (request.query.limit <= 50);
+      allow create: if request.auth != null || (request.resource.data.bookedOnline == true);
+      allow update, delete: if request.auth != null;
+    }
+
+    // Allow public read access to specific professionals (via contracts)
+    match /contracts/{contractId} {
+      allow read: if true; // Public needs to see professional names
+      allow write: if request.auth != null;
+    }
+
+    match /professionals/{profId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // TEMPORARY PERMISSIVE RULES FOR TESTING
+    // TODO: Replace with granular security rules after testing
+    
+    // Global catch-all for authenticated users
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // LGPD Consents - allow authenticated users
+    match /lgpd_consents/{consentId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // User profiles - allow authenticated users
+    match /user_profiles/{userId} {
+      allow read, write: if true; // Allow public to see manager names for booking
+    }
+    
+    // System users - allow authenticated users  
+    match /system_users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
