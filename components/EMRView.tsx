@@ -1143,7 +1143,7 @@ const EMRView: React.FC = () => {
                                     <button
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id as any)}
-                                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex items-center gap-2 transition-colors ${activeTab === tab.id
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 flex items-center gap-2 transition-colors ${activeTab === tab.id
                                             ? 'bg-teal-50 text-teal-700'
                                             : 'text-slate-600 hover:bg-slate-50'
                                             }`}
