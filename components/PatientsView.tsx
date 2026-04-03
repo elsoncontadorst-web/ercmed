@@ -9,6 +9,7 @@ import { Clinic } from '../types/clinic';
 import { useUser } from '../contexts/UserContext';
 import { AccountTier, TIER_CONFIG } from '../types/accountTiers';
 import { Lock } from 'lucide-react';
+import { formatCPF, formatPhone } from '../utils/formatters';
 
 const PatientsView: React.FC = () => {
     const [patients, setPatients] = useState<Patient[]>([]);
@@ -500,7 +501,7 @@ const PatientsView: React.FC = () => {
                                     <input
                                         type="text"
                                         value={formData.cpf}
-                                        onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                                        onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })}
                                         className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-brand-500"
                                         required={!showGuardianFields}
                                     />
@@ -511,7 +512,7 @@ const PatientsView: React.FC = () => {
                                     <input
                                         type="tel"
                                         value={formData.phone}
-                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })}
                                         className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-brand-500"
                                         required
                                     />
@@ -563,7 +564,7 @@ const PatientsView: React.FC = () => {
                                             <input
                                                 type="text"
                                                 value={formData.guardianCpf}
-                                                onChange={(e) => setFormData({ ...formData, guardianCpf: e.target.value })}
+                                                onChange={(e) => setFormData({ ...formData, guardianCpf: formatCPF(e.target.value) })}
                                                 className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-brand-500"
                                                 required={showGuardianFields}
                                             />
@@ -591,7 +592,7 @@ const PatientsView: React.FC = () => {
                                             <input
                                                 type="tel"
                                                 value={formData.guardianPhone}
-                                                onChange={(e) => setFormData({ ...formData, guardianPhone: e.target.value })}
+                                                onChange={(e) => setFormData({ ...formData, guardianPhone: formatPhone(e.target.value) })}
                                                 className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-brand-500"
                                                 required={showGuardianFields}
                                             />
