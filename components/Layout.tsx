@@ -276,11 +276,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             isOpen={isSaudeOpen}
             setIsOpen={setIsSaudeOpen}
             currentView={currentView}
-            views={[AppView.PATIENTS, AppView.EMR, AppView.MEDICATIONS, AppView.RECEIPTS]}
+            views={[AppView.PATIENTS, AppView.EMR, AppView.RECEIPTS]}
           >
             <NavButton view={AppView.PATIENTS} icon={Users} label="Pacientes" moduleName="patients" />
             <NavButton view={AppView.EMR} icon={FileText} label="Prontuário (Clínica)" moduleName="emr" />
-            <NavButton view={AppView.MEDICATIONS} icon={Pill} label="Medicamentos" moduleName="medications" />
             <NavButton view={AppView.RECEIPTS} icon={Receipt} label="Recibos Médicos" moduleName="receipts" />
           </ModuleGroup>
 
@@ -458,7 +457,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                 isOpen={isSaudeOpen}
                 setIsOpen={setIsSaudeOpen}
                 currentView={currentView}
-                views={[AppView.HEALTH_DASHBOARD, AppView.PATIENTS, AppView.APPOINTMENTS, AppView.MEDICATIONS, AppView.EMR, AppView.RECEIPTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS, AppView.TEAM_INVITATIONS]}
+                views={[AppView.HEALTH_DASHBOARD, AppView.PATIENTS, AppView.APPOINTMENTS, AppView.EMR, AppView.RECEIPTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS, AppView.TEAM_INVITATIONS]}
               >
                 <NavButton view={AppView.HEALTH_DASHBOARD} icon={Activity} label="Dashboard de Saúde" />
                 <NavButton view={AppView.PATIENTS} icon={Users} label="Pacientes" />
@@ -467,7 +466,6 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                 <NavButton view={AppView.RECEIPTS} icon={Receipt} label="Recibos" />
                 <NavButton view={AppView.CLINIC_HOURS} icon={Clock} label="Horários" />
                 <NavButton view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" />
-                <NavButton view={AppView.MEDICATIONS} icon={Pill} label="Medicamentos" />
                 <NavButton view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" />
               </ModuleGroup>
 

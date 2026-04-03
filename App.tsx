@@ -34,7 +34,6 @@ const HealthDashboard = React.lazy(() => import('./components/HealthDashboard'))
 const RepasseDashboard = React.lazy(() => import('./components/RepasseDashboard'));
 const ContractsView = React.lazy(() => import('./components/ContractsView').then(module => ({ default: module.default })));
 const AppointmentsView = React.lazy(() => import('./components/AppointmentsView'));
-const MedicationsView = React.lazy(() => import('./components/MedicationsView'));
 const EMRView = React.lazy(() => import('./components/EMRView'));
 const InventoryView = React.lazy(() => import('./components/InventoryView'));
 const PatientsView = React.lazy(() => import('./components/PatientsView'));
@@ -196,8 +195,6 @@ function App() {
               return <PatientsView />;
             case AppView.APPOINTMENTS:
               return <AppointmentsView />;
-            case AppView.MEDICATIONS:
-              return <MedicationsView />;
             case AppView.EMR:
               return <EMRView />;
             case AppView.INVENTORY:
