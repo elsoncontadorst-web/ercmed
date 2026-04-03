@@ -76,17 +76,18 @@ export const getAllowedClinicsForUser = async (userId: string): Promise<string[]
         const userData = userSnap.exists() ? userSnap.data() as SystemUser : null;
         const profileData = profileSnap.exists() ? profileSnap.data() : null;
         const role = userData?.role || profileData?.role;
+        const isClinicManager = profileData?.isClinicManager || false;
+        const managerId = await getManagerIdForUser(userId);
 
-        // If Admin/Manager, they effectively own their "Manager Context" (their own ID usually acts as the 'default' clinic ID in legacy, 
-        // but now they can manage multiple clinics).
-        // For strict segregation, we should fetch ALL clinics owned by this manager.
-        if (role === 'admin' || role === 'manager') {
-            const clinicsRef = collection(db, 'users', userId, 'clinics');
+        // If Admin/Manager, or if they are their own manager context, they own the clinics
+        if (role === 'admin' || role === 'manager' || isClinicManager || managerId === userId) {
+            const targetId = managerId || userId;
+            const clinicsRef = collection(db, 'users', targetId, 'clinics');
             const q = query(clinicsRef, where('active', '==', true));
             const snapshot = await getDocs(q);
             const clinicIds = snapshot.docs.map(doc => doc.id);
             // Also include their own ID if they are using the default tenant context
-            return [...clinicIds, userId];
+            return [...clinicIds, targetId];
         }
 
         // If Professional/Staff, check explicit clinicIds, then fallback to single clinicId

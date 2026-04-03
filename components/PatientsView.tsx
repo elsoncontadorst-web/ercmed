@@ -205,7 +205,7 @@ const PatientsView: React.FC = () => {
             phone: '',
             email: '',
             address: '',
-            clinicId: '',
+            clinicId: clinics.length === 1 ? clinics[0].id : (clinics.length > 0 ? clinics[0].id : ''),
             isMinor: false,
             guardianName: '',
             guardianCpf: '',
@@ -213,6 +213,7 @@ const PatientsView: React.FC = () => {
             guardianPhone: '',
             guardianEmail: '',
             medicalNotes: '',
+
             bloodType: '',
             allergies: '',
             chronicConditions: ''
