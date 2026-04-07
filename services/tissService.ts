@@ -40,7 +40,7 @@ export const getHealthInsurances = async (professionalId: string): Promise<Healt
         const insuranceRef = collection(db, 'health_insurances');
         const q = query(insuranceRef, where('professionalId', '==', professionalId), where('active', '==', true));
         const snapshot = await getDocs(q);
-        const insurances = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HealthInsurance));
+        const insurances = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as HealthInsurance));
         // Sort client-side to avoid composite index requirement
         return insurances.sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
@@ -97,7 +97,7 @@ export const getTissTables = async (professionalId: string, insuranceId?: string
             q = query(tablesRef, where('professionalId', '==', professionalId), where('active', '==', true));
         }
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TissTable));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as TissTable));
     } catch (error) {
         console.error('Erro ao buscar tabelas:', error);
         return [];
@@ -160,7 +160,7 @@ export const getTissGuides = async (professionalId: string, filters?: {
         }
 
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TissGuide));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as TissGuide));
     } catch (error) {
         console.error('Erro ao buscar guias:', error);
         return [];
@@ -212,7 +212,7 @@ export const getTissBatches = async (professionalId: string, insuranceId?: strin
             q = query(batchesRef, where('professionalId', '==', professionalId), orderBy('createdAt', 'desc'));
         }
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TissBatch));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as TissBatch));
     } catch (error) {
         console.error('Erro ao buscar lotes:', error);
         return [];
@@ -268,7 +268,7 @@ export const getTissGlosas = async (professionalId: string, filters?: {
         }
 
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TissGlosa));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as TissGlosa));
     } catch (error) {
         console.error('Erro ao buscar glosas:', error);
         return [];

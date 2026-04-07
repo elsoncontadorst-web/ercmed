@@ -21,9 +21,6 @@ export enum UserRole {
 
 export enum AppView {
   DASHBOARD = 'dashboard',
-  COMPARISON = 'comparison',
-  AI_CONSULTANT = 'ai_consultant',
-  UNEMPLOYMENT = 'unemployment',
   ABOUT = 'about',
 
   // Health Management Views
@@ -56,26 +53,23 @@ export enum AppView {
   // User Management
   USERS_MANAGEMENT = 'users_management',
   PERMISSIONS_MANAGEMENT = 'permissions_management',
-  DOMESTIC_CALC = 'domestic_calc',
-  LOAN_REVISION = 'loan_revision',
   TEAM_INVITATIONS = 'team_invitations',
 
-  // Legacy views (keeping for gradual migration)
-  SIMULATOR = 'simulator',
+  // Miscellaneous and Legacy (Strictly required for operation)
+  AI_CONSULTANT = 'ai_consultant',
   FINANCIAL_CONTROL = 'financial_control',
   ABOUT_APP = 'about_app',
   CASH_FLOW = 'cash_flow',
-  SEVERANCE_CALC = 'severance_calc',
   HOW_TO_USE = 'how_to_use',
   USER_PROFILE = 'user_profile',
   SALES_MANAGEMENT = 'sales_management',
   MANAGER_LOGIN = 'manager_login',
   MANAGER_DASHBOARD = 'manager_dashboard',
-  IRPF_CALC = 'irpf_calc',
   FEEDBACK = 'feedback',
   DEBUG = 'debug',
   PLANS = 'plans',
-  ACCOUNTANT_MODULE = 'accountant_module'
+  ACCOUNTANT_MODULE = 'accountant_module',
+  ONBOARDING = 'onboarding'
 }
 
 // User Profile

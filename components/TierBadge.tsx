@@ -9,12 +9,12 @@ interface TierBadgeProps {
 }
 
 export const TierBadge: React.FC<TierBadgeProps> = ({
-    tier = AccountTier.BRONZE,
+    tier = AccountTier.TRIAL,
     size = 'md',
     showIcon = true
 }) => {
     // Handle string tier (from database) mapping to enum
-    const currentTier = (tier as AccountTier) || AccountTier.BRONZE;
+    const currentTier = (tier as AccountTier) || AccountTier.TRIAL;
 
     const sizeClasses = {
         sm: 'text-xs px-2 py-0.5',
@@ -22,7 +22,7 @@ export const TierBadge: React.FC<TierBadgeProps> = ({
         lg: 'text-base px-4 py-1.5'
     };
 
-    const colorClass = TIER_COLORS[currentTier] || TIER_COLORS[AccountTier.BRONZE];
+    const colorClass = TIER_COLORS[currentTier] || TIER_COLORS[AccountTier.TRIAL];
     const name = TIER_NAMES[currentTier] || 'Plano Básico';
     const description = TIER_DESCRIPTIONS[currentTier] || '';
 

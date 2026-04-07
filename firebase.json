@@ -17,8 +17,8 @@
         "*.local"
       ],
       "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint",
-        "npm --prefix \"$RESOURCE_DIR\" run build"
+        "npm --prefix functions run lint",
+        "npm --prefix functions run build"
       ],
       "source": "functions"
     },
@@ -34,8 +34,8 @@
         "*.local"
       ],
       "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint",
-        "npm --prefix \"$RESOURCE_DIR\" run build"
+        "npm --prefix easymed run lint",
+        "npm --prefix easymed run build"
       ]
     }
   ],

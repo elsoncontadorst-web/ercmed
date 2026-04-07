@@ -229,12 +229,62 @@ export interface Anamnesis {
   professionalName: string;
   specialty: string;
   date: string;
+  
+  // Identification & Complaint
   mainComplaint: string;
-  historyOfPresentIllness: string;
+  
+  // Structured HDA (History of Present Illness)
+  hdaStructured?: {
+    onset: 'Súbito' | 'Gradual' | '';
+    duration: string;
+    location: string;
+    quality: string;
+    intensity: number;
+    radiation: string;
+    aggravatingFactors: string;
+    alleviatingFactors: string;
+    associatedSymptoms: string;
+    context: string;
+    pastEpisodes: string;
+    priorMedications: string;
+  };
+  historyOfPresentIllness: string; // Narrative text
+  
+  // Medical History
   pastMedicalHistory: string;
   familyHistory: string;
   socialHistory: string;
-  reviewOfSystems: string;
+  
+  // Structured ROS (Review of Systems)
+  rosStructured?: {
+    general: string[];
+    cardiovascular: string[];
+    respiratory: string[];
+    gastrointestinal: string[];
+    musculoskeletal: string[];
+    neurological: string[];
+    genitourinary: string[];
+    others: string;
+  };
+  reviewOfSystems: string; // Narrative text
+  
+  // Sinais Vitais
+  vitals?: {
+    bpSistolic: string;
+    bpDiastolic: string;
+    heartRate: string;
+    respRate: string;
+    temperature: string;
+    saturation: string;
+    weight: string;
+    height: string;
+    imc: string;
+  };
+  
+  // Clinical Reasoning
+  clinicalEvaluation: string; // Hipóteses Diagnósticas
+  carePlan: string; // Conduta e Plano de Cuidado
+  
   createdAt: any;
   updatedAt: any;
 }

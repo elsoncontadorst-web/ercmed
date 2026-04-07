@@ -3,7 +3,13 @@ import { Check, Info, Crown, Star, Shield, Zap, Building2, HelpCircle } from 'lu
 import { useUser } from '../contexts/UserContext';
 import { AccountTier, TIER_DESCRIPTIONS } from '../types/accountTiers';
 
-const PlansView: React.FC = () => {
+import { AppView } from '../types';
+
+interface PlansViewProps {
+    setView?: (view: AppView) => void;
+}
+
+const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
     const { user } = useUser();
     const [copiedTier, setCopiedTier] = useState<string | null>(null);
 
@@ -17,12 +23,18 @@ const PlansView: React.FC = () => {
         setTimeout(() => setCopiedTier(null), 2000);
     };
 
+    const handleAction = (planId: string) => {
+        if (setView) {
+            setView(AppView.DASHBOARD);
+        }
+    };
+
     const plans = [
         {
-            id: AccountTier.BRONZE, // Start Free
+            id: AccountTier.TRIAL, // Start Free
             name: 'Start Free',
             price: '0,00',
-            description: 'Para experimentação e validação inicial.',
+            description: 'Experiência completa por 15 dias.',
             icon: Star,
             color: 'text-emerald-600',
             bgColor: 'bg-emerald-50',
@@ -36,41 +48,39 @@ const PlansView: React.FC = () => {
                 'Agendamento Online',
                 'Prontuário Eletrônico',
                 'Anamnese Mista Avançada',
-                'Simulador de Impostos (IRPF)',
-                'Simulador PJ vs CLT'
+                'Sem necessidade de cartão'
             ],
-            footerText: 'Após 15 dias, funcionalidades ajustadas ao limite do plano.'
+            footerText: 'Após 15 dias, escolha seu plano para continuar.'
         },
         {
             id: AccountTier.SILVER, // Professional
             name: 'Professional',
-            price: '239,00',
+            price: '119,00',
             description: 'Para organização e controle profissional.',
             icon: Shield,
             color: 'text-blue-600',
             bgColor: 'bg-blue-50',
             borderColor: 'border-blue-200',
             buttonColor: 'bg-blue-600 hover:bg-blue-700',
-            popular: false,
+            popular: true,
             features: [
                 'Até 10 profissionais',
                 'Tudo do Start Free +:',
                 'Relatórios Financeiros',
-                'Gestão de Agenda Avançada',
-                'Análises financeiras/tributárias'
+                'Gestão de Agenda Avançada'
             ]
         },
         {
             id: AccountTier.GOLD, // Advanced
             name: 'Advanced',
-            price: '349,00',
+            price: '190,00',
             description: 'Para crescimento estruturado e escala.',
             icon: Crown,
             color: 'text-indigo-600',
             bgColor: 'bg-indigo-50',
             borderColor: 'border-indigo-200',
             buttonColor: 'bg-indigo-600 hover:bg-indigo-700',
-            popular: true,
+            popular: false,
             features: [
                 'Até 20 profissionais',
                 'Tudo do Professional +:',
@@ -82,7 +92,7 @@ const PlansView: React.FC = () => {
         {
             id: AccountTier.ENTERPRISE, // Enterprise AI
             name: 'Enterprise AI',
-            price: '590,00',
+            price: '390,00',
             description: 'Máxima performance e inteligência.',
             icon: Zap,
             color: 'text-purple-600',
@@ -135,7 +145,10 @@ const PlansView: React.FC = () => {
                         Escolha o plano ideal para o seu momento. Comece gratuitamente e evolua suas ferramentas conforme sua clínica expande.
                     </p>
 
-                    <button className="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 hover:shadow-xl hover:-translate-y-1">
+                    <button 
+                        onClick={() => handleAction(AccountTier.TRIAL)}
+                        className="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 hover:shadow-xl hover:-translate-y-1"
+                    >
                         Começar Gratuitamente
                     </button>
                     <p className="mt-4 text-sm text-slate-500 flex items-center justify-center gap-2">
@@ -198,7 +211,10 @@ const PlansView: React.FC = () => {
                                             {plan.footerText}
                                         </p>
                                     )}
-                                    <button className={`w-full py-3 rounded-xl font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-95 ${plan.buttonColor}`}>
+                                    <button 
+                                        onClick={() => handleAction(plan.id)}
+                                        className={`w-full py-3 rounded-xl font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-95 ${plan.buttonColor}`}
+                                    >
                                         {plan.id === AccountTier.UNLIMITED ? 'Solicitar Proposta' : 'Começar Agora'}
                                     </button>
 

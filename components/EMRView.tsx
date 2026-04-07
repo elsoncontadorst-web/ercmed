@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, User, Plus, Search, FileSignature, Paperclip, Activity, Save, Clock, Printer, Trash2, X, Users, Stethoscope, GitMerge, Lock, ArrowLeft, Building2 } from 'lucide-react';
-import { getAllPatients, addClinicalNote, getClinicalNotes, addPatientEvolution, getPatientEvolutions, addTeamMember, getTeamMembers, removeTeamMember, addAnamnesis, getAnamneses, addMixedAnamnesis, getMixedAnamneses, createTeamInvitation, getInvitationsByPatient, cancelInvitation, addPrescription, getPrescriptions, addExamRequest, getExamRequests, deleteAnamnesis } from '../services/healthService';
+import { FileText, User, Plus, Search, FileSignature, Paperclip, Activity, Save, Clock, Printer, Trash2, X, Users, Stethoscope, GitMerge, Lock, ArrowLeft, Building2, Heart, Wind, Droplets, Brain, Bone, Thermometer, Scale, Wand2, History, Edit3 } from 'lucide-react';
+import { getAllPatients, addClinicalNote, getClinicalNotes, addPatientEvolution, getPatientEvolutions, addTeamMember, getTeamMembers, removeTeamMember, addAnamnesis, getAnamneses, addMixedAnamnesis, getMixedAnamneses, createTeamInvitation, getInvitationsByPatient, cancelInvitation, addPrescription, getPrescriptions, addExamRequest, getExamRequests, deleteAnamnesis, updateAnamnesis } from '../services/healthService';
 import { getClinics } from '../services/clinicService';
 import { Clinic } from '../types/clinic';
 import { getAllProfessionals } from '../services/repasseService';
@@ -52,15 +52,56 @@ const EMRView: React.FC = () => {
         role: ''
     });
 
-    const [newAnamnesis, setNewAnamnesis] = useState({
+    const initialAnamnesisState = {
         mainComplaint: '',
+        hdaStructured: {
+            onset: '' as any,
+            duration: '',
+            location: '',
+            quality: '',
+            intensity: 5,
+            radiation: '',
+            aggravatingFactors: '',
+            alleviatingFactors: '',
+            associatedSymptoms: '',
+            context: '',
+            pastEpisodes: '',
+            priorMedications: ''
+        },
         historyOfPresentIllness: '',
         pastMedicalHistory: '',
         familyHistory: '',
         socialHistory: '',
-        reviewOfSystems: ''
-    });
+        rosStructured: {
+            general: [],
+            cardiovascular: [],
+            respiratory: [],
+            gastrointestinal: [],
+            musculoskeletal: [],
+            neurological: [],
+            genitourinary: [],
+            others: ''
+        },
+        reviewOfSystems: '',
+        vitals: {
+            bpSistolic: '',
+            bpDiastolic: '',
+            heartRate: '',
+            respRate: '',
+            temperature: '',
+            saturation: '',
+            weight: '',
+            height: '',
+            imc: ''
+        },
+        clinicalEvaluation: '',
+        carePlan: ''
+    };
+
+    const [newAnamnesis, setNewAnamnesis] = useState(initialAnamnesisState);
     const [showAnamnesisForm, setShowAnamnesisForm] = useState(false);
+    const [isEditingAnamnesis, setIsEditingAnamnesis] = useState(false);
+    const [editingAnamnesisId, setEditingAnamnesisId] = useState<string | null>(null);
 
     // Evolution state
     const [evolutions, setEvolutions] = useState<PatientEvolution[]>([]);
@@ -618,6 +659,111 @@ const EMRView: React.FC = () => {
         }
     };
 
+    // ==================== ADVANCED ANAMNESIS LOGIC ====================
+
+    // Automatic IMC Calculation
+    useEffect(() => {
+        if (!newAnamnesis.vitals) return;
+        const weight = parseFloat(newAnamnesis.vitals.weight || '0');
+        const height = parseFloat(newAnamnesis.vitals.height || '0');
+        if (weight > 0 && height > 0) {
+            // Assume height in meters if > 3, else height in cm
+            const h = height > 3 ? height / 100 : height;
+            const imc = (weight / (h * h)).toFixed(1);
+            if (newAnamnesis.vitals.imc !== imc) {
+                setNewAnamnesis(prev => ({
+                    ...prev,
+                    vitals: { ...prev.vitals, imc }
+                }));
+            }
+        }
+    }, [newAnamnesis.vitals?.weight, newAnamnesis.vitals?.height]);
+
+    // Pull Vitals from Last Evolution
+    const pullLatestVitals = () => {
+        if (evolutions.length === 0) {
+            alert('Nenhuma evolução anterior encontrada para este paciente.');
+            return;
+        }
+        
+        const lastEvo = evolutions[0]; 
+        const metrics = lastEvo.metrics || [];
+        
+        const updatedVitals = { ...(newAnamnesis.vitals || initialAnamnesisState.vitals) };
+        
+        metrics.forEach(m => {
+            const name = (m.name || '').toLowerCase();
+            if (name.includes('sist') || name === 'pa s') updatedVitals.bpSistolic = String(m.value);
+            if (name.includes('diast') || name === 'pa d') updatedVitals.bpDiastolic = String(m.value);
+            if (name.includes('freq') || name === 'fc') updatedVitals.heartRate = String(m.value);
+            if (name.includes('resp') || name === 'fr') updatedVitals.respRate = String(m.value);
+            if (name.includes('temp')) updatedVitals.temperature = String(m.value);
+            if (name.includes('sat')) updatedVitals.saturation = String(m.value);
+            if (name === 'peso') updatedVitals.weight = String(m.value);
+            if (name === 'altura') updatedVitals.height = String(m.value);
+        });
+
+        setNewAnamnesis(prev => ({ ...prev, vitals: updatedVitals }));
+        alert('Sinais vitais carregados da última evolução.');
+    };
+
+    // Narrative Clinical Text Generator
+    const generateHDAText = () => {
+        const s = newAnamnesis.hdaStructured;
+        if (!s) return;
+        if (!s.onset && !s.duration && !s.location) return;
+
+        let text = `Paciente relata quadro de ${newAnamnesis.mainComplaint || 'sintomas'} com início ${s.onset?.toLowerCase() || 'não especificado'} há ${s.duration || 'algum tempo'}. `;
+        if (s.location) text += `Acometendo região de ${s.location}. `;
+        if (s.quality) text += `Sintoma do tipo ${s.quality}. `;
+        if (s.intensity) text += `Relata intensidade ${s.intensity}/10 na escala visual analógica. `;
+        if (s.radiation) text += `Com irradiação para ${s.radiation}. `;
+        if (s.aggravatingFactors) text += `Fatores de piora: ${s.aggravatingFactors}. `;
+        if (s.alleviatingFactors) text += `Fatores de melhora: ${s.alleviatingFactors}. `;
+        if (s.associatedSymptoms) text += `Sintomas associados: ${s.associatedSymptoms}. `;
+        if (s.context) text += `Contexto de surgimento: ${s.context}. `;
+        if (s.pastEpisodes) text += `Histórico de episódios semelhantes: ${s.pastEpisodes}. `;
+        if (s.priorMedications) text += `Uso de medicamentos para este quadro: ${s.priorMedications}. `;
+
+        setNewAnamnesis(prev => ({ ...prev, historyOfPresentIllness: text }));
+    };
+
+    const generateROSText = () => {
+        const r = newAnamnesis.rosStructured;
+        if (!r) return;
+        let parts = [];
+        if (r.general.length > 0) parts.push(`Geral: ${r.general.join(', ')}`);
+        if (r.cardiovascular.length > 0) parts.push(`Cardiovascular: ${r.cardiovascular.join(', ')}`);
+        if (r.respiratory.length > 0) parts.push(`Respiratório: ${r.respiratory.join(', ')}`);
+        if (r.gastrointestinal.length > 0) parts.push(`Gastrointestinal: ${r.gastrointestinal.join(', ')}`);
+        if (r.musculoskeletal.length > 0) parts.push(`Musculoesquelético: ${r.musculoskeletal.join(', ')}`);
+        if (r.neurological.length > 0) parts.push(`Neurológico: ${r.neurological.join(', ')}`);
+        if (r.genitourinary && r.genitourinary.length > 0) parts.push(`Genitourinário: ${r.genitourinary.join(', ')}`);
+        if (r.others) parts.push(`Outras observações: ${r.others}`);
+
+        setNewAnamnesis(prev => ({ ...prev, reviewOfSystems: parts.join('; ') || 'Sem alterações significativas nos sistemas revisados.' }));
+    };
+
+    const handleEditAnamnesis = (anam: Anamnesis) => {
+        setNewAnamnesis({
+            mainComplaint: anam.mainComplaint || '',
+            hdaStructured: anam.hdaStructured || initialAnamnesisState.hdaStructured,
+            historyOfPresentIllness: anam.historyOfPresentIllness || '',
+            pastMedicalHistory: anam.pastMedicalHistory || '',
+            familyHistory: anam.familyHistory || '',
+            socialHistory: anam.socialHistory || '',
+            rosStructured: anam.rosStructured || initialAnamnesisState.rosStructured,
+            reviewOfSystems: anam.reviewOfSystems || '',
+            vitals: anam.vitals || initialAnamnesisState.vitals,
+            clinicalEvaluation: anam.clinicalEvaluation || '',
+            carePlan: anam.carePlan || ''
+        });
+        setEditingAnamnesisId(anam.id);
+        setIsEditingAnamnesis(true);
+        setShowAnamnesisForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     // Anamnesis Handlers
     const handleDeleteAnamnesis = async (anamnesisId: string) => {
         if (!confirm('Tem certeza que deseja excluir esta anamnese? Esta ação é irreversível.')) return;
@@ -664,27 +810,29 @@ const EMRView: React.FC = () => {
                 return;
             }
 
-            await addAnamnesis({
+            const anamnesisData = {
                 patientId: selectedPatientId,
                 professionalId: user.uid,
                 professionalName,
                 specialty,
                 date: new Date().toISOString(),
                 ...newAnamnesis
-            });
+            };
+
+            if (isEditingAnamnesis && editingAnamnesisId) {
+                await updateAnamnesis(editingAnamnesisId, anamnesisData);
+                alert('Anamnese atualizada com sucesso!');
+            } else {
+                await addAnamnesis(anamnesisData);
+                alert('Anamnese salva com sucesso!');
+            }
 
             const updatedAnamneses = await getAnamneses(selectedPatientId);
             setAnamneses(updatedAnamneses);
-            setNewAnamnesis({
-                mainComplaint: '',
-                historyOfPresentIllness: '',
-                pastMedicalHistory: '',
-                familyHistory: '',
-                socialHistory: '',
-                reviewOfSystems: ''
-            });
+            setNewAnamnesis(initialAnamnesisState);
+            setIsEditingAnamnesis(false);
+            setEditingAnamnesisId(null);
             setShowAnamnesisForm(false);
-            alert('Anamnese salva com sucesso!');
         } catch (error) {
             console.error(error);
             alert('Erro ao salvar anamnese.');
@@ -731,9 +879,6 @@ const EMRView: React.FC = () => {
             });
 
             const updatedMixed = await getMixedAnamneses(selectedPatientId);
-            setMixedAnamneses(updatedMixed);
-            setGeneratedSummary('');
-            alert('Anamnese Mista salva com sucesso!');
         } catch (error) {
             console.error(error);
             alert('Erro ao salvar Anamnese Mista.');
@@ -742,7 +887,7 @@ const EMRView: React.FC = () => {
         }
     };
 
-    const handleGenerateDocument = () => {
+    const handleGenerateDocument = async () => {
         const user = auth.currentUser;
         const patient = selectedPatient;
         if (!user || !patient) return;
@@ -752,10 +897,13 @@ const EMRView: React.FC = () => {
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
 
+        // Logo
+        let yPosHeader = await addLogoToDoc(doc, professionalSettings?.logoUrl);
+
         // Header
         doc.setFontSize(22);
         doc.setFont('helvetica', 'bold');
-        doc.text(documentType === 'ATESTADO' ? 'ATESTADO MÉDICO' : 'DECLARAÇÃO DE COMPARECIMENTO', pageWidth / 2, 30, { align: 'center' });
+        doc.text(documentType === 'ATESTADO' ? 'ATESTADO MÉDICO' : 'DECLARAÇÃO DE COMPARECIMENTO', pageWidth / 2, yPosHeader + 5, { align: 'center' });
 
         // Content
         doc.setFontSize(12);
@@ -774,37 +922,58 @@ const EMRView: React.FC = () => {
         }
 
         const splitText = doc.splitTextToSize(text, pageWidth - 40);
-        doc.text(splitText, 20, 60);
+        doc.text(splitText, 20, yPosHeader + 35);
 
         // Footer
-        const yPos = doc.internal.pageSize.getHeight() - 60;
-        doc.text(`Local e Data: ${new Date().toLocaleDateString('pt-BR')}`, 20, yPos - 20);
+        const yPosFooter = doc.internal.pageSize.getHeight() - 60;
+        doc.text(`Local e Data: ${new Date().toLocaleDateString('pt-BR')}`, 20, yPosFooter - 20);
 
-        doc.line(pageWidth / 2 - 40, yPos, pageWidth / 2 + 40, yPos);
+        doc.line(pageWidth / 2 - 40, yPosFooter, pageWidth / 2 + 40, yPosFooter);
         doc.setFontSize(10);
-        doc.text(professionalName, pageWidth / 2, yPos + 5, { align: 'center' });
-        doc.text(`CRM/Registro: ${crm || '________________'}`, pageWidth / 2, yPos + 10, { align: 'center' });
+        doc.text(professionalName, pageWidth / 2, yPosFooter + 5, { align: 'center' });
+        doc.text(`CRM/Registro: ${crm || '________________'}`, pageWidth / 2, yPosFooter + 10, { align: 'center' });
 
         doc.save(`${documentType.toLowerCase()}-${patient.name}.pdf`);
         setShowDocumentModal(false);
     };
 
+    const addLogoToDoc = async (doc: jsPDF, logoUrl?: string) => {
+        if (!logoUrl) return 30;
+        try {
+            const img = new Image();
+            img.src = logoUrl;
+            img.crossOrigin = "Anonymous";
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                setTimeout(reject, 2000); // 2s timeout
+            });
+            const ratio = img.width / img.height;
+            const width = 30;
+            const height = width / ratio;
+            doc.addImage(img, 'PNG', 20, 10, width, height);
+            return 15 + height;
+        } catch (e) {
+            console.warn('Could not load logo for PDF', e);
+            return 30;
+        }
+    };
+
     // PDF Generators
-    const generateAnamnesisPDF = (anamnesis: Anamnesis) => {
+    const generateAnamnesisPDF = async (anamnesis: Anamnesis) => {
         const user = auth.currentUser;
         if (!user) return;
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
 
+        // Logo
+        let yPos = await addLogoToDoc(doc, professionalSettings?.logoUrl);
+
         // Header
         doc.setFontSize(22);
         doc.setFont('helvetica', 'bold');
-        doc.text('ANAMNESE', pageWidth / 2, 20, { align: 'center' });
-
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        let yPos = 35;
+        doc.text('ANAMNESE', pageWidth / 2, yPos - 10, { align: 'center' });
 
         doc.text(`Paciente: ${selectedPatient?.name || 'N/A'}`, 20, yPos);
         yPos += 7;
@@ -850,20 +1019,22 @@ const EMRView: React.FC = () => {
         doc.save(`anamnese-${selectedPatient?.name}-${new Date(anamnesis.date).toLocaleDateString()}.pdf`);
     };
 
-    const generatePrescriptionPDF = (prescription: Prescription) => {
+    const generatePrescriptionPDF = async (prescription: Prescription) => {
         const user = auth.currentUser;
         if (!user) return;
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
 
+        // Logo
+        let yPos = await addLogoToDoc(doc, professionalSettings?.logoUrl);
+
         doc.setFontSize(18);
         doc.setFont('helvetica', 'bold');
-        doc.text('RECEITA MÉDICA', pageWidth / 2, 20, { align: 'center' });
+        doc.text('RECEITA MÉDICA', pageWidth / 2, yPos - 10, { align: 'center' });
 
         doc.setFontSize(11);
         doc.setFont('helvetica', 'normal');
-        let yPos = 35;
         doc.text(`Profissional: ${prescription.professionalName}`, 20, yPos);
         yPos += 7;
         doc.text(`Data: ${new Date(prescription.date).toLocaleDateString('pt-BR')}`, 20, yPos);
@@ -907,20 +1078,22 @@ const EMRView: React.FC = () => {
         doc.save(`receita-${prescription.patientName}-${prescription.date}.pdf`);
     };
 
-    const generateExamRequestPDF = (request: ExamRequest) => {
+    const generateExamRequestPDF = async (request: ExamRequest) => {
         const user = auth.currentUser;
         if (!user) return;
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
 
+        // Logo
+        let yPos = await addLogoToDoc(doc, professionalSettings?.logoUrl);
+
         doc.setFontSize(18);
         doc.setFont('helvetica', 'bold');
-        doc.text('SOLICITAÇÃO DE EXAMES', pageWidth / 2, 20, { align: 'center' });
+        doc.text('SOLICITAÇÃO DE EXAMES', pageWidth / 2, yPos - 10, { align: 'center' });
 
         doc.setFontSize(11);
         doc.setFont('helvetica', 'normal');
-        let yPos = 35;
         doc.text(`Profissional: ${request.professionalName}`, 20, yPos);
         yPos += 7;
         doc.text(`Data: ${new Date(request.date).toLocaleDateString('pt-BR')}`, 20, yPos);
@@ -956,7 +1129,7 @@ const EMRView: React.FC = () => {
         doc.save(`exames-${request.patientName}-${request.date}.pdf`);
     };
 
-    const generateMixedAnamnesisPDF = (mixed: MixedAnamnesis) => {
+    const generateMixedAnamnesisPDF = async (mixed: MixedAnamnesis) => {
         const user = auth.currentUser;
         if (!user) return;
 
@@ -964,14 +1137,16 @@ const EMRView: React.FC = () => {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
 
+        // Logo
+        let yPos = await addLogoToDoc(doc, professionalSettings?.logoUrl);
+
         // Header
         doc.setFontSize(18);
         doc.setFont('helvetica', 'bold');
-        doc.text('SÍNTESE CLÍNICA INTERDISCIPLINAR', pageWidth / 2, 20, { align: 'center' });
+        doc.text('SÍNTESE CLÍNICA INTERDISCIPLINAR', pageWidth / 2, yPos - 10, { align: 'center' });
 
         doc.setFontSize(11);
         doc.setFont('helvetica', 'normal');
-        let yPos = 35;
 
         // Patient Info
         doc.text(`Paciente: ${selectedPatient?.name || 'N/A'}`, 20, yPos);
@@ -1486,94 +1661,448 @@ const EMRView: React.FC = () => {
                             )}
 
                             {activeTab === 'ANAMNESIS' && (
-                                <div className="space-y-6">
+                                <div className="space-y-6 max-w-5xl mx-auto">
+                                    {/* Header */}
                                     <div className="flex justify-between items-center">
                                         <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
                                             <Stethoscope className="w-5 h-5 text-teal-600" />
-                                            Anamnese Individual
+                                            {isEditingAnamnesis ? 'Atualizar Anamnese' : 'Anamnese Clínica'}
                                         </h3>
                                         <button
-                                            onClick={() => setShowAnamnesisForm(!showAnamnesisForm)}
-                                            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2"
+                                            onClick={() => {
+                                                if (showAnamnesisForm) {
+                                                    setShowAnamnesisForm(false);
+                                                    setIsEditingAnamnesis(false);
+                                                    setEditingAnamnesisId(null);
+                                                    setNewAnamnesis(initialAnamnesisState);
+                                                } else {
+                                                    setShowAnamnesisForm(true);
+                                                }
+                                            }}
+                                            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2 transition-all"
                                         >
                                             {showAnamnesisForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                                             {showAnamnesisForm ? 'Cancelar' : 'Nova Anamnese'}
                                         </button>
                                     </div>
 
+                                    {/* ===== FORM ===== */}
                                     {showAnamnesisForm && (
-                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-slate-700 mb-1">Queixa Principal (QP)</label>
+                                        <div className="space-y-6">
+                                            {/* Badge EditMode */}
+                                            {isEditingAnamnesis && (
+                                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-2 text-amber-800 text-sm font-medium">
+                                                    <Edit3 className="w-4 h-4" />
+                                                    Modo de Edição — Atualizando anamnese existente
+                                                </div>
+                                            )}
+
+                                            {/* ── Section 1: QP ── */}
+                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-base">
+                                                    <FileText className="w-4 h-4 text-teal-600" />
+                                                    Queixa Principal (QP)
+                                                </h4>
                                                 <textarea
                                                     value={newAnamnesis.mainComplaint}
-                                                    onChange={(e) => setNewAnamnesis({ ...newAnamnesis, mainComplaint: e.target.value })}
-                                                    className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500"
+                                                    onChange={(e) => setNewAnamnesis(prev => ({ ...prev, mainComplaint: e.target.value }))}
+                                                    placeholder="Descreva a queixa principal do paciente em suas próprias palavras..."
+                                                    className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
                                                     rows={2}
                                                 />
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-slate-700 mb-1">História da Doença Atual (HDA)</label>
-                                                <textarea
-                                                    value={newAnamnesis.historyOfPresentIllness}
-                                                    onChange={(e) => setNewAnamnesis({ ...newAnamnesis, historyOfPresentIllness: e.target.value })}
-                                                    className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500"
-                                                    rows={3}
-                                                />
+
+                                            {/* ── Section 2: HDA Estruturada ── */}
+                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h4 className="font-bold text-slate-800 flex items-center gap-2 text-base">
+                                                        <Activity className="w-4 h-4 text-teal-600" />
+                                                        História da Doença Atual (HDA) — Semiologia
+                                                    </h4>
+                                                    <button
+                                                        onClick={generateHDAText}
+                                                        className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 text-xs font-medium flex items-center gap-1.5 transition-all"
+                                                        title="Gerar narrativa clínica a partir dos campos estruturados"
+                                                    >
+                                                        <Wand2 className="w-3.5 h-3.5" />
+                                                        Gerar Narrativa
+                                                    </button>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Início</label>
+                                                        <select
+                                                            value={newAnamnesis.hdaStructured.onset}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, onset: e.target.value } }))}
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        >
+                                                            <option value="">Selecione...</option>
+                                                            <option value="Súbito">Súbito</option>
+                                                            <option value="Gradual">Gradual</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Duração / Tempo</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.duration}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, duration: e.target.value } }))}
+                                                            placeholder="Ex: 3 dias, 2 semanas..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Localização</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.location}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, location: e.target.value } }))}
+                                                            placeholder="Ex: Região epigástrica..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Qualidade / Tipo</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.quality}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, quality: e.target.value } }))}
+                                                            placeholder="Ex: Queimação, pontada..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Intensidade (EVA: {newAnamnesis.hdaStructured.intensity}/10)</label>
+                                                        <input
+                                                            type="range"
+                                                            min={0}
+                                                            max={10}
+                                                            value={newAnamnesis.hdaStructured.intensity}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, intensity: parseInt(e.target.value) } }))}
+                                                            className="w-full accent-teal-600"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Irradiação</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.radiation}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, radiation: e.target.value } }))}
+                                                            placeholder="Ex: Membro superior esquerdo..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Fatores de Piora</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.aggravatingFactors}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, aggravatingFactors: e.target.value } }))}
+                                                            placeholder="Ex: Alimentação, esforço..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Fatores de Melhora</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.alleviatingFactors}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, alleviatingFactors: e.target.value } }))}
+                                                            placeholder="Ex: Repouso, analgésico..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Sintomas Associados</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.associatedSymptoms}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, associatedSymptoms: e.target.value } }))}
+                                                            placeholder="Ex: Náuseas, vômitos..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Contexto de Surgimento</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.context}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, context: e.target.value } }))}
+                                                            placeholder="Ex: Após estresse emocional..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Episódios Anteriores</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.pastEpisodes}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, pastEpisodes: e.target.value } }))}
+                                                            placeholder="Ex: Sim, há 6 meses..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Medicações Prévias p/ Quadro</label>
+                                                        <input
+                                                            value={newAnamnesis.hdaStructured.priorMedications}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, hdaStructured: { ...prev.hdaStructured, priorMedications: e.target.value } }))}
+                                                            placeholder="Ex: Omeprazol 20mg..."
+                                                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-slate-600 mb-1">Narrativa HDA (texto livre ou gerado)</label>
+                                                    <textarea
+                                                        value={newAnamnesis.historyOfPresentIllness}
+                                                        onChange={(e) => setNewAnamnesis(prev => ({ ...prev, historyOfPresentIllness: e.target.value }))}
+                                                        placeholder="Texto narrativo da HDA..."
+                                                        className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                        rows={4}
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium text-slate-700 mb-1">História Patológica Pregressa (HPP)</label>
-                                                    <textarea
-                                                        value={newAnamnesis.pastMedicalHistory}
-                                                        onChange={(e) => setNewAnamnesis({ ...newAnamnesis, pastMedicalHistory: e.target.value })}
-                                                        className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500"
-                                                        rows={3}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-slate-700 mb-1">História Familiar</label>
-                                                    <textarea
-                                                        value={newAnamnesis.familyHistory}
-                                                        onChange={(e) => setNewAnamnesis({ ...newAnamnesis, familyHistory: e.target.value })}
-                                                        className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500"
-                                                        rows={3}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-slate-700 mb-1">História Social</label>
-                                                    <textarea
-                                                        value={newAnamnesis.socialHistory}
-                                                        onChange={(e) => setNewAnamnesis({ ...newAnamnesis, socialHistory: e.target.value })}
-                                                        className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500"
-                                                        rows={3}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-slate-700 mb-1">Revisão de Sistemas</label>
-                                                    <textarea
-                                                        value={newAnamnesis.reviewOfSystems}
-                                                        onChange={(e) => setNewAnamnesis({ ...newAnamnesis, reviewOfSystems: e.target.value })}
-                                                        className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500"
-                                                        rows={3}
-                                                    />
+
+                                            {/* ── Section 3: Históricos (HPP, Familiar, Social) ── */}
+                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-base">
+                                                    <FileText className="w-4 h-4 text-teal-600" />
+                                                    Antecedentes
+                                                </h4>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">História Patológica Pregressa (HPP)</label>
+                                                        <textarea
+                                                            value={newAnamnesis.pastMedicalHistory}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, pastMedicalHistory: e.target.value }))}
+                                                            placeholder="Doenças prévias, cirurgias, internações..."
+                                                            className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">História Familiar</label>
+                                                        <textarea
+                                                            value={newAnamnesis.familyHistory}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, familyHistory: e.target.value }))}
+                                                            placeholder="DM, HAS, cardiopatias, neoplasias..."
+                                                            className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">História Social</label>
+                                                        <textarea
+                                                            value={newAnamnesis.socialHistory}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, socialHistory: e.target.value }))}
+                                                            placeholder="Tabagismo, etilismo, atividade física..."
+                                                            className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                            rows={3}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="flex justify-end pt-4">
+
+                                            {/* ── Section 4: Revisão de Sistemas (ROS) ── */}
+                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h4 className="font-bold text-slate-800 flex items-center gap-2 text-base">
+                                                        <Activity className="w-4 h-4 text-teal-600" />
+                                                        Revisão de Sistemas (ROS)
+                                                    </h4>
+                                                    <button
+                                                        onClick={generateROSText}
+                                                        className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 text-xs font-medium flex items-center gap-1.5 transition-all"
+                                                    >
+                                                        <Wand2 className="w-3.5 h-3.5" />
+                                                        Gerar Texto ROS
+                                                    </button>
+                                                </div>
+                                                {(() => {
+                                                    const rosOptions: Record<string, { label: string; icon: any; items: string[] }> = {
+                                                        general: { label: 'Geral', icon: Thermometer, items: ['Febre', 'Fadiga', 'Perda de peso', 'Sudorese noturna', 'Mal-estar'] },
+                                                        cardiovascular: { label: 'Cardiovascular', icon: Heart, items: ['Dor torácica', 'Palpitações', 'Dispneia', 'Edema MMII', 'Síncope'] },
+                                                        respiratory: { label: 'Respiratório', icon: Wind, items: ['Tosse', 'Expectoração', 'Hemoptise', 'Sibilância', 'Dispneia'] },
+                                                        gastrointestinal: { label: 'Gastrointestinal', icon: Droplets, items: ['Náuseas', 'Vômitos', 'Diarreia', 'Constipação', 'Disfagia', 'Dor abdominal'] },
+                                                        musculoskeletal: { label: 'Musculoesquelético', icon: Bone, items: ['Artralgia', 'Mialgia', 'Lombalgia', 'Rigidez matinal', 'Edema articular'] },
+                                                        neurological: { label: 'Neurológico', icon: Brain, items: ['Cefaleia', 'Tontura', 'Parestesia', 'Convulsão', 'Tremor', 'Alteração visual'] },
+                                                        genitourinary: { label: 'Genitourinário', icon: Droplets, items: ['Disúria', 'Polaciúria', 'Hematúria', 'Urgência miccional', 'Incontinência'] },
+                                                    };
+
+                                                    const toggleROS = (system: string, item: string) => {
+                                                        setNewAnamnesis(prev => {
+                                                            const currentItems = (prev.rosStructured as any)[system] || [];
+                                                            const updated = currentItems.includes(item)
+                                                                ? currentItems.filter((i: string) => i !== item)
+                                                                : [...currentItems, item];
+                                                            return { ...prev, rosStructured: { ...prev.rosStructured, [system]: updated } };
+                                                        });
+                                                    };
+
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            {Object.entries(rosOptions).map(([key, { label, icon: Icon, items }]) => (
+                                                                <div key={key} className="border border-slate-100 rounded-lg p-3">
+                                                                    <p className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                                                                        <Icon className="w-3.5 h-3.5 text-teal-500" />
+                                                                        {label}
+                                                                    </p>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {items.map(item => {
+                                                                            const isChecked = ((newAnamnesis.rosStructured as any)[key] || []).includes(item);
+                                                                            return (
+                                                                                <button
+                                                                                    key={item}
+                                                                                    onClick={() => toggleROS(key, item)}
+                                                                                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all border ${isChecked
+                                                                                        ? 'bg-teal-100 text-teal-800 border-teal-300'
+                                                                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                                                                        }`}
+                                                                                >
+                                                                                    {item}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-slate-600 mb-1">Outras Observações ROS</label>
+                                                                <input
+                                                                    value={newAnamnesis.rosStructured.others}
+                                                                    onChange={(e) => setNewAnamnesis(prev => ({ ...prev, rosStructured: { ...prev.rosStructured, others: e.target.value } }))}
+                                                                    placeholder="Outras queixas não listadas..."
+                                                                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-slate-600 mb-1">Texto Livre ROS</label>
+                                                                <textarea
+                                                                    value={newAnamnesis.reviewOfSystems}
+                                                                    onChange={(e) => setNewAnamnesis(prev => ({ ...prev, reviewOfSystems: e.target.value }))}
+                                                                    placeholder="Resumo narrativo da revisão de sistemas..."
+                                                                    className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                                    rows={3}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+
+                                            {/* ── Section 5: Sinais Vitais ── */}
+                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h4 className="font-bold text-slate-800 flex items-center gap-2 text-base">
+                                                        <Heart className="w-4 h-4 text-red-500" />
+                                                        Sinais Vitais
+                                                    </h4>
+                                                    <button
+                                                        onClick={pullLatestVitals}
+                                                        className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 text-xs font-medium flex items-center gap-1.5 transition-all"
+                                                    >
+                                                        <History className="w-3.5 h-3.5" />
+                                                        Importar Última Evolução
+                                                    </button>
+                                                </div>
+                                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">PA Sistólica (mmHg)</label>
+                                                        <input value={newAnamnesis.vitals.bpSistolic} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, bpSistolic: e.target.value } }))} placeholder="120" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">PA Diastólica (mmHg)</label>
+                                                        <input value={newAnamnesis.vitals.bpDiastolic} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, bpDiastolic: e.target.value } }))} placeholder="80" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">FC (bpm)</label>
+                                                        <input value={newAnamnesis.vitals.heartRate} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, heartRate: e.target.value } }))} placeholder="72" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">FR (irpm)</label>
+                                                        <input value={newAnamnesis.vitals.respRate} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, respRate: e.target.value } }))} placeholder="18" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Temp. (°C)</label>
+                                                        <input value={newAnamnesis.vitals.temperature} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, temperature: e.target.value } }))} placeholder="36.5" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">SpO₂ (%)</label>
+                                                        <input value={newAnamnesis.vitals.saturation} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, saturation: e.target.value } }))} placeholder="98" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Peso (kg)</label>
+                                                        <input value={newAnamnesis.vitals.weight} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, weight: e.target.value } }))} placeholder="70" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Altura (cm)</label>
+                                                        <input value={newAnamnesis.vitals.height} onChange={(e) => setNewAnamnesis(prev => ({ ...prev, vitals: { ...prev.vitals, height: e.target.value } }))} placeholder="170" className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 text-center" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">IMC (auto)</label>
+                                                        <div className={`w-full p-2.5 border rounded-lg text-sm text-center font-bold ${
+                                                            parseFloat(newAnamnesis.vitals.imc) >= 30 ? 'bg-red-50 border-red-300 text-red-700' :
+                                                            parseFloat(newAnamnesis.vitals.imc) >= 25 ? 'bg-amber-50 border-amber-300 text-amber-700' :
+                                                            newAnamnesis.vitals.imc ? 'bg-green-50 border-green-300 text-green-700' :
+                                                            'bg-slate-50 border-gray-300 text-slate-400'
+                                                        }`}>
+                                                            {newAnamnesis.vitals.imc || '—'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* ── Section 6: Hipóteses e Conduta ── */}
+                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-base">
+                                                    <Stethoscope className="w-4 h-4 text-teal-600" />
+                                                    Avaliação Clínica e Conduta
+                                                </h4>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Hipóteses Diagnósticas</label>
+                                                        <textarea
+                                                            value={newAnamnesis.clinicalEvaluation}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, clinicalEvaluation: e.target.value }))}
+                                                            placeholder="HD1: ...; HD2: ...; Diagnósticos diferenciais..."
+                                                            className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                            rows={4}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 mb-1">Conduta / Plano de Cuidado</label>
+                                                        <textarea
+                                                            value={newAnamnesis.carePlan}
+                                                            onChange={(e) => setNewAnamnesis(prev => ({ ...prev, carePlan: e.target.value }))}
+                                                            placeholder="Prescrição, exames solicitados, orientações, encaminhamentos..."
+                                                            className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                                                            rows={4}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* ── Save Button ── */}
+                                            <div className="flex justify-end gap-3 pt-2">
+                                                <button
+                                                    onClick={() => {
+                                                        setShowAnamnesisForm(false);
+                                                        setIsEditingAnamnesis(false);
+                                                        setEditingAnamnesisId(null);
+                                                        setNewAnamnesis(initialAnamnesisState);
+                                                    }}
+                                                    className="px-6 py-2.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 font-medium text-sm transition-all"
+                                                >
+                                                    Cancelar
+                                                </button>
                                                 <button
                                                     onClick={handleSaveAnamnesis}
                                                     disabled={loading}
-                                                    className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 font-medium flex items-center gap-2"
+                                                    className="bg-teal-600 text-white px-6 py-2.5 rounded-lg hover:bg-teal-700 font-medium flex items-center gap-2 text-sm transition-all disabled:opacity-50"
                                                 >
-                                                    <Save className="w-4 h-4" /> Salvar Anamnese
+                                                    <Save className="w-4 h-4" />
+                                                    {isEditingAnamnesis ? 'Atualizar Anamnese' : 'Salvar Anamnese'}
                                                 </button>
                                             </div>
                                         </div>
                                     )}
 
+                                    {/* ===== HISTORY LIST ===== */}
                                     <div className="space-y-4">
                                         {anamneses.length === 0 ? (
-                                            <p className="text-slate-500 text-center py-4">Nenhuma anamnese registrada.</p>
+                                            <p className="text-slate-500 text-center py-8">Nenhuma anamnese registrada para este paciente.</p>
                                         ) : (
                                             anamneses.map(anam => (
                                                 <div key={anam.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -1583,22 +2112,17 @@ const EMRView: React.FC = () => {
                                                                 {anam.professionalName}, {anam.specialty}
                                                             </p>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-sm text-slate-500">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-sm text-slate-500 mr-2">
                                                                 {new Date(anam.date).toLocaleDateString('pt-BR')}
                                                             </span>
-                                                            <button
-                                                                onClick={() => generateAnamnesisPDF(anam)}
-                                                                className="text-teal-600 hover:text-teal-800 p-2 rounded-lg hover:bg-slate-100"
-                                                                title="Imprimir Anamnese"
-                                                            >
+                                                            <button onClick={() => handleEditAnamnesis(anam)} className="text-blue-600 hover:text-blue-800 p-2 rounded-lg hover:bg-blue-50 transition-all" title="Editar Anamnese">
+                                                                <Edit3 className="w-4 h-4" />
+                                                            </button>
+                                                            <button onClick={() => generateAnamnesisPDF(anam)} className="text-teal-600 hover:text-teal-800 p-2 rounded-lg hover:bg-slate-100 transition-all" title="Imprimir Anamnese">
                                                                 <Printer className="w-4 h-4" />
                                                             </button>
-                                                            <button
-                                                                onClick={() => handleDeleteAnamnesis(anam.id)}
-                                                                className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
-                                                                title="Excluir Anamnese"
-                                                            >
+                                                            <button onClick={() => handleDeleteAnamnesis(anam.id)} className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-all" title="Excluir Anamnese">
                                                                 <Trash2 className="w-4 h-4" />
                                                             </button>
                                                         </div>
@@ -1606,21 +2130,53 @@ const EMRView: React.FC = () => {
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                                                         <div>
                                                             <p className="font-bold text-slate-700 mb-1">Queixa Principal</p>
-                                                            <p className="text-slate-600 mb-3">{anam.mainComplaint}</p>
+                                                            <p className="text-slate-600 mb-3">{anam.mainComplaint || '—'}</p>
                                                             <p className="font-bold text-slate-700 mb-1">HDA</p>
-                                                            <p className="text-slate-600 mb-3">{anam.historyOfPresentIllness}</p>
+                                                            <p className="text-slate-600 mb-3">{anam.historyOfPresentIllness || '—'}</p>
                                                             <p className="font-bold text-slate-700 mb-1">HPP</p>
-                                                            <p className="text-slate-600">{anam.pastMedicalHistory}</p>
+                                                            <p className="text-slate-600">{anam.pastMedicalHistory || '—'}</p>
                                                         </div>
                                                         <div>
                                                             <p className="font-bold text-slate-700 mb-1">Histórico Familiar</p>
-                                                            <p className="text-slate-600 mb-3">{anam.familyHistory}</p>
+                                                            <p className="text-slate-600 mb-3">{anam.familyHistory || '—'}</p>
                                                             <p className="font-bold text-slate-700 mb-1">Histórico Social</p>
-                                                            <p className="text-slate-600 mb-3">{anam.socialHistory}</p>
+                                                            <p className="text-slate-600 mb-3">{anam.socialHistory || '—'}</p>
                                                             <p className="font-bold text-slate-700 mb-1">Revisão de Sistemas</p>
-                                                            <p className="text-slate-600">{anam.reviewOfSystems}</p>
+                                                            <p className="text-slate-600">{anam.reviewOfSystems || '—'}</p>
                                                         </div>
                                                     </div>
+                                                    {/* Vitals & Clinical Eval display */}
+                                                    {anam.vitals && (anam.vitals.bpSistolic || anam.vitals.heartRate || anam.vitals.weight) && (
+                                                        <div className="mt-4 pt-4 border-t border-slate-100">
+                                                            <p className="font-bold text-slate-700 mb-2 text-sm">Sinais Vitais</p>
+                                                            <div className="flex flex-wrap gap-3 text-xs">
+                                                                {anam.vitals.bpSistolic && <span className="px-2.5 py-1 bg-red-50 text-red-700 rounded-full">PA: {anam.vitals.bpSistolic}/{anam.vitals.bpDiastolic} mmHg</span>}
+                                                                {anam.vitals.heartRate && <span className="px-2.5 py-1 bg-pink-50 text-pink-700 rounded-full">FC: {anam.vitals.heartRate} bpm</span>}
+                                                                {anam.vitals.respRate && <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">FR: {anam.vitals.respRate} irpm</span>}
+                                                                {anam.vitals.temperature && <span className="px-2.5 py-1 bg-orange-50 text-orange-700 rounded-full">T: {anam.vitals.temperature}°C</span>}
+                                                                {anam.vitals.saturation && <span className="px-2.5 py-1 bg-cyan-50 text-cyan-700 rounded-full">SpO₂: {anam.vitals.saturation}%</span>}
+                                                                {anam.vitals.weight && <span className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full">Peso: {anam.vitals.weight}kg</span>}
+                                                                {anam.vitals.height && <span className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full">Alt: {anam.vitals.height}cm</span>}
+                                                                {anam.vitals.imc && <span className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full font-bold">IMC: {anam.vitals.imc}</span>}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {(anam.clinicalEvaluation || anam.carePlan) && (
+                                                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                                            {anam.clinicalEvaluation && (
+                                                                <div>
+                                                                    <p className="font-bold text-slate-700 mb-1">Hipóteses Diagnósticas</p>
+                                                                    <p className="text-slate-600">{anam.clinicalEvaluation}</p>
+                                                                </div>
+                                                            )}
+                                                            {anam.carePlan && (
+                                                                <div>
+                                                                    <p className="font-bold text-slate-700 mb-1">Conduta / Plano</p>
+                                                                    <p className="text-slate-600">{anam.carePlan}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))
                                         )}
@@ -1830,9 +2386,12 @@ const EMRView: React.FC = () => {
                                                                     ) : (
                                                                         <button
                                                                             onClick={() => handleCancelInvitation(inv.id)}
-                                                                            className="text-yellow-700 hover:text-yellow-900 text-xs font-bold"
+                                                                            disabled={loading}
+                                                                            className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 hover:text-red-700 transition-all border border-red-200 shadow-sm disabled:opacity-50"
+                                                                            title="Excluir este convite pendente"
                                                                         >
-                                                                            Cancelar
+                                                                            <X className="w-3.5 h-3.5" />
+                                                                            Cancelar Convite
                                                                         </button>
                                                                     )}
                                                                 </div>

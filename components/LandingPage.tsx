@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LogIn, MessageCircle, Heart, Activity, Calendar, Pill, DollarSign, FileSignature, TrendingUp, Users, CheckCircle, Sparkles, Shield, Clock, Download, Rocket } from 'lucide-react';
 import InstallModal from './InstallModal';
+import SystemLogo from './SystemLogo';
 
 interface LandingPageProps {
     onLoginClick: () => void;
@@ -170,13 +171,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
             <nav className="w-full bg-white/80 backdrop-blur-md border-b border-teal-100 fixed top-0 z-50 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-teal-400 to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg">
-                            <Heart className="w-7 h-7 text-white" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-slate-800 font-bold text-xl leading-tight">ERCMed</span>
-                            <span className="text-teal-600 text-xs tracking-wider font-medium">GESTÃO DE SAÚDE</span>
-                        </div>
+                        <SystemLogo className="h-16" variant="dark" />
                     </div>
                     <div className="flex items-center gap-4">
                         <button
@@ -498,12 +493,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-white">
                         <div className="flex items-center gap-4">
-                            <div className="bg-white/20 p-3 rounded-full">
-                                <Heart className="w-6 h-6" />
-                            </div>
+                            <SystemLogo className="h-20" variant="white" />
                             <div className="text-left">
-                                <p className="font-bold text-xl">ERCMed</p>
-                                <p className="text-sm opacity-90">Gestão de Saúde e Repasse Clínico</p>
+                                <p className="font-bold text-2xl">ERCMed</p>
+                                <p className="text-sm opacity-90 font-medium">Gestão de Saúde e Repasse Clínico</p>
                             </div>
                         </div>
 

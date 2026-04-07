@@ -3,11 +3,9 @@ import { User } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { UserRole, UserProfile } from '../types';
 import { getUserRole, getUserProfile } from '../services/userRoleService';
-import { AccountTier, TIER_CONFIG } from '../types/accountTiers';
+import { AccountTier, TIER_CONFIG, migrateTierName } from '../types/accountTiers';
 
 interface ModulePermissions {
-    IRPF: boolean;
-    SIMULATOR: boolean;
     ADVANCED_EMR: boolean;
 }
 
@@ -22,6 +20,7 @@ interface UserContextType {
     modulePermissions: ModulePermissions;
     refreshUserData: () => Promise<void>;
     trialDaysRemaining?: number;
+    isTrialExpired: boolean;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -32,9 +31,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | undefined>(undefined);
+    const [isTrialExpired, setIsTrialExpired] = useState<boolean>(false);
     const [modulePermissions, setModulePermissions] = useState<ModulePermissions>({
-        IRPF: true,
-        SIMULATOR: true,
         ADVANCED_EMR: true
     });
 
@@ -42,8 +40,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const calculateModulePermissions = (profile: UserProfile | null, effectiveTier: AccountTier | undefined): ModulePermissions => {
         // Default: all modules enabled (for admin or users without tier)
         const defaultPermissions: ModulePermissions = {
-            IRPF: true,
-            SIMULATOR: true,
             ADVANCED_EMR: true
         };
 
@@ -60,19 +56,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Start with tier-based permissions
         const permissions: ModulePermissions = {
-            IRPF: tierLimits.hasIRPFAccess,
-            SIMULATOR: tierLimits.hasSimulatorAccess,
             ADVANCED_EMR: tierLimits.hasAdvancedEMR
         };
 
         // Apply custom overrides if they exist
         if (profile.customModuleAccess) {
-            if (profile.customModuleAccess.IRPF !== undefined) {
-                permissions.IRPF = profile.customModuleAccess.IRPF;
-            }
-            if (profile.customModuleAccess.SIMULATOR !== undefined) {
-                permissions.SIMULATOR = profile.customModuleAccess.SIMULATOR;
-            }
             if (profile.customModuleAccess.ADVANCED_EMR !== undefined) {
                 permissions.ADVANCED_EMR = profile.customModuleAccess.ADVANCED_EMR;
             }
@@ -82,25 +70,25 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const processUserTier = (profile: UserProfile | null, currentUser: User | null) => {
-        if (!profile || !currentUser) return { tier: undefined, daysRemaining: undefined };
+        if (!profile || !currentUser) return { tier: undefined, daysRemaining: undefined, isExpired: false };
 
-        let tier = profile.accountTier as AccountTier;
+        let tier = profile.accountTier ? migrateTierName(profile.accountTier) : AccountTier.TRIAL;
         let daysRemaining: number | undefined = undefined;
+        let isExpired = false;
 
-        // Check for 15-day Trial Boost
+        // Only TRIAL tier has a 15-day expiration. Paid plans never expire.
         if (tier === AccountTier.TRIAL) {
-            // Use creationTime from Firebase Auth (more reliable for "user age") or profile.createdAt
-            const createdAtStr = currentUser.metadata.creationTime || profile.createdAt;
+            const createdAtStr = profile.createdAt || currentUser.metadata.creationTime;
             if (createdAtStr) {
                 const createdDate = new Date(createdAtStr);
                 const now = new Date();
-                const diffTime = Math.abs(now.getTime() - createdDate.getTime());
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const diffTime = now.getTime() - createdDate.getTime();
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-                // 15 Days full access
-                if (diffDays <= 15) {
-                    tier = AccountTier.UNLIMITED;
-                    daysRemaining = 15 - diffDays;
+                daysRemaining = Math.max(0, 15 - diffDays);
+                
+                if (diffDays >= 15) {
+                    isExpired = true;
                 }
             }
         }
@@ -108,9 +96,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Master Admin Override
         if (currentUser.email === 'elsoncontador.st@gmail.com') {
             tier = AccountTier.UNLIMITED;
+            isExpired = false;
+            daysRemaining = 999;
         }
 
-        return { tier, daysRemaining };
+        return { tier, daysRemaining, isExpired };
     };
 
     const refreshUserData = async () => {
@@ -128,13 +118,10 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setUserRole(role);
                 setUserProfile(profile);
 
-                const { tier, daysRemaining } = processUserTier(profile, currentUser);
-
-                // We create a "virtual" profile access context, but keep original profile tier data?
-                // Actually, consumers usually check `useUser().userTier`. We should override that return value.
-                // But for `modulePermissions`, we need to use the computed tier.
+                const { tier, daysRemaining, isExpired } = processUserTier(profile, currentUser);
 
                 setTrialDaysRemaining(daysRemaining);
+                setIsTrialExpired(isExpired);
                 setModulePermissions(calculateModulePermissions(profile, tier));
             } catch (error) {
                 console.error('Error refreshing user data:', error);
@@ -164,8 +151,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     setUserRole(role);
                     setUserProfile(profile);
 
-                    const { tier, daysRemaining } = processUserTier(profile, currentUser);
+                    const { tier, daysRemaining, isExpired } = processUserTier(profile, currentUser);
                     setTrialDaysRemaining(daysRemaining);
+                    setIsTrialExpired(isExpired);
                     setModulePermissions(calculateModulePermissions(profile, tier));
                 } catch (error) {
                     console.error('Error loading user data:', error);
@@ -175,8 +163,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setUserProfile(null);
                 setTrialDaysRemaining(undefined);
                 setModulePermissions({
-                    IRPF: true,
-                    SIMULATOR: true,
                     ADVANCED_EMR: true
                 });
             }
@@ -203,8 +189,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             loading,
             modulePermissions,
             refreshUserData,
-            trialDaysRemaining // New exposed prop
-        } as any}>
+            trialDaysRemaining,
+            isTrialExpired
+        }}>
             {children}
         </UserContext.Provider>
     );

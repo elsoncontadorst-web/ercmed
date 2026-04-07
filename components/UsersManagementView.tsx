@@ -24,7 +24,6 @@ import { useUser } from '../contexts/UserContext';
 // Define TIER_COLORS
 const TIER_COLORS: Record<string, string> = {
     [AccountTier.TRIAL]: 'bg-gray-100 text-gray-700',
-    [AccountTier.BRONZE]: 'bg-orange-100 text-orange-700',
     [AccountTier.SILVER]: 'bg-slate-200 text-slate-700',
     [AccountTier.GOLD]: 'bg-yellow-100 text-yellow-700',
     [AccountTier.UNLIMITED]: 'bg-purple-100 text-purple-700',
@@ -34,7 +33,13 @@ const TIER_COLORS: Record<string, string> = {
 type ModuleAccess = CustomModuleAccess;
 
 
-const UsersManagementView: React.FC = () => {
+import { AppView } from '../types';
+
+interface UsersManagementViewProps {
+    setView: (view: AppView) => void;
+}
+
+const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) => {
     // 1. Estados e Contextos
     const { isAdmin, user, userProfile } = useUser();
     const isMasterAdmin = user?.email === 'elsoncontador.st@gmail.com';
@@ -91,9 +96,12 @@ const UsersManagementView: React.FC = () => {
                 const globalUsers = await getAllUserProfiles();
                 setUsers(globalUsers);
             } else {
+                // If not master admin, filter by managerId
+                const managerFilter = isMasterAdmin ? undefined : user?.uid;
+                
                 const [allUsersData, pendingUsersData] = await Promise.all([
-                    getAllUsers(),
-                    getPendingUsers()
+                    getAllUsers(managerFilter),
+                    getPendingUsers(managerFilter)
                 ]);
                 setUsers(allUsersData);
                 setPendingUsers(pendingUsersData);
@@ -130,6 +138,23 @@ const UsersManagementView: React.FC = () => {
             if (!currentUser) {
                 alert('Usuário não autenticado');
                 return;
+            }
+
+            // Professional Limit Check
+            const tier = userProfile?.accountTier as AccountTier;
+            if (tier === AccountTier.TRIAL) {
+                const limit = 3; // Hardcoded for trial as per request
+                const professionalCount = users.filter(u => 
+                    u.role === 'professional' || u.role === 'manager' || u.role === 'admin'
+                ).length;
+
+                if (professionalCount >= limit) {
+                   if (confirm(`Você atingiu o limite de profissionais do plano de teste (${limit} profissionais). Deseja ver os planos para fazer upgrade?`)) {
+                       setView(AppView.PLANS);
+                   }
+                   setLoading(false);
+                   return;
+                }
             }
 
             const result = await createUserByAdmin(currentUser.uid, newUser);

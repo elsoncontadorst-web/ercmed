@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Crown, Users, Calculator, FileText, Stethoscope, Check, X, Sparkles, Infinity } from 'lucide-react';
+import { Crown, Users, Calculator, FileText, Stethoscope, Check, X, Sparkles, Infinity, Shield, Zap } from 'lucide-react';
 import { AccountTier, TIER_NAMES, TIER_DESCRIPTIONS, getProfessionalLimitText } from '../types/accountTiers';
 import { auth } from '../services/firebase';
 import { getUserTierInfo } from '../services/accountTierService';
@@ -30,79 +30,73 @@ const AccountPlansView: React.FC = () => {
 
     const tiers = [
         {
-            tier: AccountTier.BRONZE,
-            name: TIER_NAMES[AccountTier.BRONZE],
-            description: TIER_DESCRIPTIONS[AccountTier.BRONZE],
-            price: 'R$ 99',
-            period: '/mês',
-            icon: Crown,
-            color: 'from-orange-400 to-orange-600',
-            borderColor: 'border-orange-500',
+            tier: AccountTier.TRIAL,
+            name: 'Start Free',
+            description: 'Experiência completa por 15 dias.',
+            price: 'R$ 0,00',
+            period: '/15 dias',
+            icon: Sparkles,
+            color: 'from-emerald-400 to-emerald-600',
+            borderColor: 'border-emerald-500',
             features: [
-                { text: 'Até 5 profissionais', included: true },
-                { text: 'Gestão de Saúde completa', included: true },
-                { text: 'Prontuário Eletrônico básico', included: true },
+                { text: 'Acesso completo por 15 dias', included: true },
+                { text: 'Até 3 profissionais', included: true },
+                { text: 'Até 10 pacientes', included: true },
                 { text: 'Agendamento Online', included: true },
-                { text: 'Módulo IRPF', included: false },
-                { text: 'Simulador Empresa', included: false },
-                { text: 'Anamnese Mista (EMR)', included: false }
+                { text: 'Prontuário Eletrônico', included: true },
+                { text: 'Anamnese Mista Avançada', included: true },
+                { text: 'Sem necessidade de cartão', included: true }
             ]
         },
         {
             tier: AccountTier.SILVER,
-            name: TIER_NAMES[AccountTier.SILVER],
-            description: TIER_DESCRIPTIONS[AccountTier.SILVER],
-            price: 'R$ 199',
+            name: 'Professional',
+            description: 'Para organização e controle profissional.',
+            price: 'R$ 119,00',
             period: '/mês',
-            icon: Sparkles,
-            color: 'from-slate-400 to-slate-600',
-            borderColor: 'border-slate-500',
+            icon: Shield,
+            color: 'from-blue-400 to-blue-600',
+            borderColor: 'border-blue-500',
             popular: true,
             features: [
                 { text: 'Até 10 profissionais', included: true },
-                { text: 'Gestão de Saúde completa', included: true },
-                { text: 'Prontuário Eletrônico básico', included: true },
-                { text: 'Agendamento Online', included: true },
-                { text: 'Módulo IRPF', included: true },
-                { text: 'Simulador Empresa', included: false },
-                { text: 'Anamnese Mista (EMR)', included: false }
+                { text: 'Tudo do Start Free +:', included: true },
+                { text: 'Relatórios Financeiros', included: true },
+                { text: 'Gestão de Agenda Avançada', included: true }
             ]
         },
         {
             tier: AccountTier.GOLD,
-            name: TIER_NAMES[AccountTier.GOLD],
-            description: TIER_DESCRIPTIONS[AccountTier.GOLD],
-            price: 'R$ 349',
+            name: 'Advanced',
+            description: 'Para crescimento estruturado e escala.',
+            price: 'R$ 190,00',
             period: '/mês',
             icon: Crown,
-            color: 'from-yellow-400 to-yellow-600',
-            borderColor: 'border-yellow-500',
+            color: 'from-indigo-400 to-indigo-600',
+            borderColor: 'border-indigo-500',
             features: [
                 { text: 'Até 20 profissionais', included: true },
-                { text: 'Gestão de Saúde completa', included: true },
-                { text: 'Prontuário Eletrônico avançado', included: true },
-                { text: 'Agendamento Online', included: true },
-                { text: 'Módulo IRPF', included: true },
-                { text: 'Simulador Empresa', included: true },
-                { text: 'Anamnese Mista (EMR)', included: true }
+                { text: 'Tudo do Professional +:', included: true },
+                { text: 'Gestão Financeira Completa', included: true },
+                { text: 'Indicadores estratégicos', included: true },
+                { text: 'Simulações avançadas', included: true }
             ]
         },
         {
-            tier: AccountTier.UNLIMITED,
-            name: 'Unlimited',
-            description: 'Acesso total e irrestrito a todos os recursos.',
-            price: 'R$ 999',
+            tier: AccountTier.ENTERPRISE,
+            name: 'Enterprise AI',
+            description: 'Máxima performance e inteligência.',
+            price: 'R$ 390,00',
             period: '/mês',
-            icon: Infinity,
-            color: 'from-purple-500 to-indigo-600',
+            icon: Zap,
+            color: 'from-purple-400 to-purple-600',
             borderColor: 'border-purple-500',
             features: [
-                { text: 'Profissionais Ilimitados', included: true },
-                { text: 'Tudo do plano Diamante', included: true },
-                { text: 'Exclusão de Pacientes', included: true },
-                { text: 'Exclusão de Anamneses', included: true },
-                { text: 'Sem limites de uso', included: true },
-                { text: 'Suporte Dedicado 24/7', included: true }
+                { text: 'Até 20 profissionais', included: true },
+                { text: 'Tudo do Advanced +:', included: true },
+                { text: 'Consultor Clínico com IA', included: true },
+                { text: 'Suporte Prioritário', included: true },
+                { text: 'Apoio à decisão estratégica', included: true }
             ]
         }
     ];
@@ -236,20 +230,19 @@ const AccountPlansView: React.FC = () => {
                         <thead className="bg-slate-50">
                             <tr>
                                 <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Recurso</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Start</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Evolution</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Premium</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-purple-600">Unlimited</th>
+                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Start Free</th>
+                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Professional</th>
+                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Advanced</th>
+                                <th className="px-6 py-4 text-center text-sm font-semibold text-purple-600">Enterprise AI</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
                             <tr>
                                 <td className="px-6 py-4 text-sm text-slate-700 font-medium">Limite de Profissionais</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">5</td>
+                                <td className="px-6 py-4 text-center text-sm text-slate-600">3</td>
                                 <td className="px-6 py-4 text-center text-sm text-slate-600">10</td>
                                 <td className="px-6 py-4 text-center text-sm text-slate-600">20</td>
                                 <td className="px-6 py-4 text-center text-sm text-slate-600 font-bold text-brand-600">Ilimitado</td>
-                                <td className="px-6 py-4 text-center text-sm font-bold text-purple-600"><Infinity className="w-5 h-5 mx-auto" /></td>
                             </tr>
                             <tr className="bg-slate-50">
                                 <td className="px-6 py-4 text-sm text-slate-700 font-medium">Gestão de Pacientes</td>

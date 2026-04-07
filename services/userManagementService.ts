@@ -20,18 +20,35 @@ import { Contract } from '../types/finance';
 
 // ==================== USER MANAGEMENT ====================
 
-export const getAllUsers = async (): Promise<SystemUser[]> => {
+export const getAllUsers = async (managerId?: string): Promise<SystemUser[]> => {
     try {
         const usersRef = collection(db, 'system_users');
-        const snapshot = await getDocs(usersRef);
-        let users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemUser));
+        let q;
+        
+        if (managerId) {
+            // Filter by managerId for clinical managers
+            q = query(usersRef, where('managerId', '==', managerId));
+        } else {
+            // Master Admin sees all
+            q = query(usersRef);
+        }
 
-        // Fallback: if system_users is empty, try user_profiles
+        const snapshot = await getDocs(q);
+        let users = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as SystemUser));
+
+        // Fallback: if system_users is empty (legacy), try user_profiles
         if (users.length === 0) {
             const profilesRef = collection(db, 'user_profiles');
-            const profilesSnapshot = await getDocs(profilesRef);
-            users = profilesSnapshot.docs.map(doc => {
-                const data = doc.data();
+            let qProfiles;
+            if (managerId) {
+                qProfiles = query(profilesRef, where('managerId', '==', managerId));
+            } else {
+                qProfiles = query(profilesRef);
+            }
+            
+            const snapshotProfiles = await getDocs(qProfiles);
+            users = snapshotProfiles.docs.map(doc => {
+                const data = doc.data() as any;
                 return {
                     id: doc.id,
                     email: data.email || '',
@@ -54,8 +71,8 @@ export const getAllUsers = async (): Promise<SystemUser[]> => {
         return users.sort((a, b) => {
             if (a.status === 'pending' && b.status !== 'pending') return -1;
             if (a.status !== 'pending' && b.status === 'pending') return 1;
-            const aTime = a.createdAt?.toMillis?.() || new Date(a.createdAt).getTime() || 0;
-            const bTime = b.createdAt?.toMillis?.() || new Date(b.createdAt).getTime() || 0;
+            const aTime = a.createdAt?.toMillis?.() || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const bTime = b.createdAt?.toMillis?.() || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
             return bTime - aTime;
         });
     } catch (error) {
@@ -92,12 +109,17 @@ export const getAllUserProfiles = async (): Promise<SystemUser[]> => {
     }
 };
 
-export const getPendingUsers = async (): Promise<SystemUser[]> => {
+export const getPendingUsers = async (managerId?: string): Promise<SystemUser[]> => {
     try {
         const usersRef = collection(db, 'system_users');
-        const q = query(usersRef, where('status', '==', 'pending'));
+        let q;
+        if (managerId) {
+            q = query(usersRef, where('status', '==', 'pending'), where('managerId', '==', managerId));
+        } else {
+            q = query(usersRef, where('status', '==', 'pending'));
+        }
         const snapshot = await getDocs(q);
-        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemUser));
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as SystemUser));
         return users.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } catch (error) {
         console.error('Erro ao buscar usuários pendentes:', error);
@@ -191,15 +213,55 @@ export const createUserByAdmin = async (
             managerId: userData.managerId || (adminId !== 'elsoncontador.st@gmail.com' ? adminId : null)
         });
 
+        const actualManagerId = userData.managerId || (adminId !== 'elsoncontador.st@gmail.com' ? adminId : null);
+
         // Also create/update user_profiles for tier management consistency
         const userProfileRef = doc(db, 'user_profiles', userId);
         await setDoc(userProfileRef, {
             email: userData.email,
             accountTier: userData.accountTier || null,
             isClinicManager: userData.isClinicManager || false,
-            managerId: userData.managerId || (adminId !== 'elsoncontador.st@gmail.com' ? adminId : null),
+            managerId: actualManagerId,
             updatedAt: serverTimestamp()
         }, { merge: true });
+
+        // CREATE AUTOMATIC CONTRACT FOR PROFESSIONALS
+        // This ensures the user appears in the "Contratos" and "Operação Clínica" views
+        if (actualManagerId && userData.role === 'professional') {
+            try {
+                const startDate = new Date().toISOString().split('T')[0];
+                const endDate = new Date();
+                endDate.setFullYear(endDate.getFullYear() + 1);
+                const endDateStr = endDate.toISOString().split('T')[0];
+
+                const contractData: Omit<Contract, 'id' | 'createdAt' | 'updatedAt'> = {
+                    providerName: userData.name,
+                    personType: 'PF', // Default for created professionals
+                    serviceType: userData.specialty || 'Profissional de Saúde',
+                    email: userData.email,
+                    phone: userData.phone || '',
+                    userId: userId,
+                    managerId: actualManagerId,
+                    status: 'active',
+                    startDate: startDate,
+                    endDate: endDateStr,
+                    paymentModel: 'commission',
+                    value: 0,
+                    commissionPercentage: 70, // Default 70% commission
+                    taxRate: 0,
+                    roomRentalAmount: 0,
+                    description: `Contrato criado automaticamente via Gestão de Usuários em ${new Date().toLocaleDateString('pt-BR')}`,
+                    councilNumber: userData.crm || '',
+                    userType: 'professional'
+                };
+
+                await addContract(contractData);
+                console.log('[AUTO-CONTRACT] Contract created for user:', userId);
+            } catch (contractError) {
+                console.error('[AUTO-CONTRACT] Error creating automatic contract:', contractError);
+                // We don't fail the whole user creation if contract fails, but logging is vital
+            }
+        }
 
         return { success: true, userId };
     } catch (error: any) {

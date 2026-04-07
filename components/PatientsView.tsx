@@ -11,7 +11,13 @@ import { AccountTier, TIER_CONFIG } from '../types/accountTiers';
 import { Lock } from 'lucide-react';
 import { formatCPF, formatPhone } from '../utils/formatters';
 
-const PatientsView: React.FC = () => {
+import { AppView } from '../types';
+
+interface PatientsViewProps {
+    setView: (view: AppView) => void;
+}
+
+const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
     const [patients, setPatients] = useState<Patient[]>([]);
     const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
     const [clinics, setClinics] = useState<Clinic[]>([]);
@@ -24,8 +30,9 @@ const PatientsView: React.FC = () => {
 
     // Trial Limit Check
     const canAddMorePatients = () => {
-        if (userProfile?.accountTier === AccountTier.TRIAL) {
-            const limit = TIER_CONFIG[AccountTier.TRIAL].maxPatients || 3;
+        const tier = userProfile?.accountTier as AccountTier;
+        if (tier === AccountTier.TRIAL) {
+            const limit = TIER_CONFIG[AccountTier.TRIAL].maxPatients || 10;
             return patients.length < limit;
         }
         return true;
@@ -272,7 +279,9 @@ const PatientsView: React.FC = () => {
                     <button
                         onClick={() => {
                             if (!canAddMorePatients()) {
-                                alert('Você atingiu o limite de pacientes do plano de teste (3 pacientes). Faça upgrade para adicionar mais.');
+                                if (confirm('Você atingiu o limite de pacientes do plano de teste (10 pacientes). Deseja ver os planos para fazer upgrade?')) {
+                                    setView(AppView.PLANS);
+                                }
                                 return;
                             }
                             resetForm();

@@ -30,6 +30,13 @@ service cloud.firestore {
       );
     }
 
+    // Is the requester a verified member of the patient's multidisciplinar team?
+    // Requires predictable ID: patientId_professionalId
+    function isTeamMember(patientId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/patient_teams/$(patientId + "_" + request.auth.uid));
+    }
+
     // =============================================
     // MASTER ADMIN (Full access for system owner)
     // =============================================
@@ -59,17 +66,29 @@ service cloud.firestore {
     // =============================================
     match /patients/{patientId} {
       allow read, write: if isAuthenticated() && (
-        // Owner of the clinic
+        // Owner of the clinic (Manager)
+        request.auth.uid == data.managerId ||
+        // Professional who created the record
+        request.auth.uid == data.professionalId ||
+        // Legacy/fallback manager check
         request.auth.uid == resource.data.managerId ||
+        request.auth.uid == resource.data.professionalId ||
         // Members of the same clinic
-        get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == resource.data.managerId
+        get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == resource.data.managerId ||
+        // Verified Team Members (multidisciplinary)
+        isTeamMember(patientId)
       );
       allow create: if isAuthenticated();
     }
 
     // Mixed anamnesis (subcollection under patients)
     match /patients/{patientId}/mixed_anamnesis/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAuthenticated() && (
+        isTeamMember(patientId) || 
+        request.auth.uid == get(/databases/$(database)/documents/patients/$(patientId)).data.professionalId ||
+        get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == 
+        get(/databases/$(database)/documents/patients/$(patientId)).data.managerId
+      );
     }
 
     // =============================================
@@ -107,67 +126,100 @@ service cloud.firestore {
     }
 
     // =============================================
-    // APPOINTMENTS (Semi-public for online booking)
+    // USER DATA (Core user document and subcollections)
     // =============================================
-    match /users/{userId}/appointments/{appointmentId} {
-      // Authenticated users (clinic staff) can read all
-      allow read: if isAuthenticated();
-      // Public can create only for online bookings
-      allow create: if request.auth != null ||
-                       request.resource.data.bookedOnline == true;
-      // Only authenticated can modify/delete
-      allow update, delete: if isAuthenticated();
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) || isMasterAdmin();
+      
+      // Subcollections under users/{userId}
+      match /appointments/{appointmentId} {
+        allow read: if isAuthenticated();
+        allow create: if request.auth != null || request.resource.data.bookedOnline == true;
+        allow update, delete: if isAuthenticated();
+      }
+      
+      match /settings/booking {
+        allow read: if true;
+        allow write: if isOwner(userId);
+      }
+      
+      match /settings/clinicHours {
+        allow read: if true;
+        allow write: if isOwner(userId);
+      }
+      
+      match /settings/{document} {
+        allow read: if isOwner(userId) || isClinicMember(userId);
+        allow write: if isOwner(userId);
+      }
+      
+      match /company_data/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /simulations/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /calculators/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /financial_control/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /sales_management/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /medications/{medicationId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+      
+      match /measurements/{measurementId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+      
+      match /clinics/{clinicId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+      
+      match /invoiceRequests/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+      
+      match /accountingDocuments/{docId} {
+        allow read: if isAuthenticated() && isClinicMember(userId);
+        allow write: if isMasterAdmin();
+      }
+      
+      match /receipts/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
     }
 
     // =============================================
-    // SCHEDULING / CLINIC SETTINGS (Online booking)
+    // HEALTH INSURANCE & TISS DATA
     // =============================================
-    match /users/{userId}/settings/booking {
-      allow read: if true; // Public - needed for online scheduling
-      allow write: if isOwner(userId);
+    match /health_insurances/{docId} {
+      allow read, write: if isAuthenticated();
     }
-
-    match /users/{userId}/settings/clinicHours {
-      allow read: if true; // Public - needed to show availability
-      allow write: if isOwner(userId);
+    
+    match /tiss_tables/{docId} {
+      allow read, write: if isAuthenticated();
     }
-
-    match /users/{userId}/settings/{document} {
-      allow read: if isOwner(userId) || isClinicMember(userId);
-      allow write: if isOwner(userId);
+    
+    match /tiss_guides/{docId} {
+      allow read, write: if isAuthenticated();
     }
-
-    // =============================================
-    // MEDICATIONS (per clinic user)
-    // =============================================
-    match /users/{userId}/medications/{medicationId} {
-      allow read, write: if isAuthenticated() && isClinicMember(userId);
+    
+    match /tiss_batches/{docId} {
+      allow read, write: if isAuthenticated();
     }
-
-    // =============================================
-    // MEASUREMENTS
-    // =============================================
-    match /users/{userId}/measurements/{measurementId} {
-      allow read, write: if isAuthenticated() && isClinicMember(userId);
-    }
-
-    // =============================================
-    // CLINICS (subcollection)
-    // =============================================
-    match /users/{userId}/clinics/{clinicId} {
-      allow read, write: if isAuthenticated() && isClinicMember(userId);
-    }
-
-    // =============================================
-    // INVOICE REQUESTS / ACCOUNTING DOCUMENTS
-    // =============================================
-    match /users/{userId}/invoiceRequests/{docId} {
-      allow read, write: if isAuthenticated() && isClinicMember(userId);
-    }
-
-    match /users/{userId}/accountingDocuments/{docId} {
-      allow read: if isAuthenticated() && isClinicMember(userId);
-      allow write: if isMasterAdmin();
+    
+    match /tiss_glosas/{docId} {
+      allow read, write: if isAuthenticated();
     }
 
     // =============================================
@@ -211,6 +263,5 @@ service cloud.firestore {
     // =============================================
     // CATCH-ALL: Deny everything else by default
     // =============================================
-    // (This is implicit in Firestore, but explicit is better for clarity)
   }
 }

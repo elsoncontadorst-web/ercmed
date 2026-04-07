@@ -155,20 +155,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({ setView }) => {
 
     const selectedAppointments = selectedDate ? getAppointmentsForDate(selectedDate.getDate()) : [];
 
-    // Get pending appointments (today and future)
+    // Get upcoming appointments (ONLY today)
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const pendingAppointments = appointments
+    const todayStr = today.toISOString().split('T')[0];
+    
+    const upcomingToday = appointments
         .filter(apt => {
-            const aptDate = new Date(apt.date);
-            return aptDate >= today && apt.status === 'scheduled';
+            return apt.date === todayStr && apt.status === 'scheduled';
         })
-        .sort((a, b) => {
-            const dateCompare = a.date.localeCompare(b.date);
-            if (dateCompare !== 0) return dateCompare;
-            return a.time.localeCompare(b.time);
-        })
-        .slice(0, 5);
+        .sort((a, b) => a.time.localeCompare(b.time));
 
     const formatMoney = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -348,19 +343,19 @@ const DashboardView: React.FC<DashboardViewProps> = ({ setView }) => {
                         <div className="p-4 border-b border-gray-200 bg-teal-50">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 <Clock className="w-5 h-5 text-teal-600" />
-                                Consultas Pendentes
+                                Próximas Consultas
                             </h3>
-                            <p className="text-sm text-slate-500">Próximas {pendingAppointments.length} consultas</p>
+                            <p className="text-sm text-slate-500">Hoje, {upcomingToday.length} agendadas</p>
                         </div>
                         <div className="p-4 max-h-[500px] overflow-y-auto">
-                            {pendingAppointments.length === 0 ? (
+                            {upcomingToday.length === 0 ? (
                                 <div className="text-center py-8 text-slate-400">
                                     <Calendar className="w-12 h-12 mx-auto mb-2 text-slate-200" />
-                                    <p>Nenhuma consulta pendente</p>
+                                    <p>Nenhuma consulta para hoje</p>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {pendingAppointments.map((apt) => (
+                                    {upcomingToday.map((apt) => (
                                         <div key={apt.id} className="border border-gray-100 rounded-lg p-3 hover:bg-teal-50 transition-colors cursor-pointer">
                                             <div className="flex justify-between items-start mb-2">
                                                 <div className="flex items-center gap-2">

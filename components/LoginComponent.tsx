@@ -4,6 +4,7 @@ import { saveUserProfile } from '../services/userRoleService';
 import { AccountTier } from '../types/accountTiers';
 import { UserRole } from '../types';
 import { AlertCircle, CheckCircle, LogIn, UserPlus, Loader2, TrendingUp, Lock, Mail, KeyRound, ArrowLeft, Activity, Rocket } from 'lucide-react';
+import SystemLogo from './SystemLogo';
 
 interface LoginComponentProps {
   onBack?: () => void;
@@ -45,6 +46,7 @@ const LoginComponent: React.FC<LoginComponentProps> = ({ onBack, initialSignUp =
             email: email,
             role: UserRole.HEALTH_PROFESSIONAL,
             accountTier: AccountTier.TRIAL,
+            isClinicManager: true,
             displayName: 'Usuário Teste', // Default name
             createdAt: new Date(),
             updatedAt: new Date()
@@ -118,11 +120,8 @@ const LoginComponent: React.FC<LoginComponentProps> = ({ onBack, initialSignUp =
         {/* Lado Esquerdo - Branding e Recursos */}
         <div className="hidden md:flex flex-col justify-between p-10 bg-gradient-to-br from-teal-600 to-blue-700 text-white">
           <div>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                <Activity className="w-8 h-8 text-white" />
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight">ERCMed</h1>
+            <div className="flex flex-col items-center mb-8">
+              <SystemLogo variant="white" className="h-28" />
             </div>
             <p className="text-blue-100 text-lg leading-relaxed mb-8">
               A plataforma completa para gestão de saúde e repasse clínico.

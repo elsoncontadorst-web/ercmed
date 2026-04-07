@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Calculator, Users, TrendingUp, LogOut, Menu, X, ChevronDown, ChevronRight, BookOpen, Info, DollarSign, MessageSquare, Calendar, FileText, Sun, Moon, Cloud, CloudOff, ShoppingCart, Heart, Activity, Pill, Receipt, Settings, FileSignature, Home, Building2, Clock, Link as LinkIcon, Edit, User as UserIcon, Save, Lock, Shield, Check, Crown, UserPlus } from 'lucide-react';
+import SystemLogo from './SystemLogo';
 import { AppView, UserRole } from '../types';
 import { signOut, auth } from '../services/firebase';
 import { useSettings } from '../contexts/SettingsContext';
@@ -7,6 +8,8 @@ import { useUser } from '../contexts/UserContext';
 import { saveUserProfile } from '../services/userRoleService';
 import { AccountTier, TIER_CONFIG, tierAllowsModule, TIER_NAMES } from '../types/accountTiers';
 import { TierBadge } from './TierBadge';
+import { getClinics } from '../services/clinicService';
+import { getTeamInvitations } from '../services/healthService';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,8 +19,9 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
   const { theme, toggleTheme, cloudSaveEnabled, toggleCloudSave } = useSettings();
-  const { userRole, isAdmin, userProfile, refreshUserData, modulePermissions } = useUser();
+  const { userRole, isAdmin, userProfile, userTier, refreshUserData, modulePermissions, isTrialExpired, trialDaysRemaining } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [checkedOnboarding, setCheckedOnboarding] = useState(false);
   const [isCalculatorsOpen, setIsCalculatorsOpen] = useState(false); // Closed by default
   const [professionalSettings, setProfessionalSettings] = useState<{ name: string, profession: string, logoUrl?: string } | null>(null);
 
@@ -42,6 +46,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
   const [isTributarioOpen, setIsTributarioOpen] = useState(false);
   const [isContratosOpen, setIsContratosOpen] = useState(false);
   const [isFinanceiroOpen, setIsFinanceiroOpen] = useState(false);
+  const [isApoioOpen, setIsApoioOpen] = useState(false);
+  const [invitationCount, setInvitationCount] = useState(0);
 
   // Define allowed views based on user role
   const HEALTH_PROFESSIONAL_VIEWS = [
@@ -64,7 +70,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
     if (isAdmin) return true;
 
     // Health professionals only have access to health management views
-    return HEALTH_PROFESSIONAL_VIEWS.includes(view);
+    return HEALTH_PROFESSIONAL_VIEWS.includes(view) || view === AppView.ONBOARDING;
   };
 
   React.useEffect(() => {
@@ -88,6 +94,47 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
     };
     loadSettings();
   }, [userProfile]); // Reload when userProfile changes
+
+  // Check for onboarding (Trial with 0 clinics)
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      const user = auth.currentUser;
+      if (user && userProfile?.accountTier === AccountTier.TRIAL && userProfile?.isClinicManager === true && !checkedOnboarding && currentView !== AppView.ONBOARDING) {
+        try {
+          const clinics = await getClinics(user.uid);
+          if (clinics.length === 0) {
+            setView(AppView.ONBOARDING);
+          }
+          setCheckedOnboarding(true);
+        } catch (error) {
+          console.error("Error checking onboarding status", error);
+          setCheckedOnboarding(true); // Don't block if service fails
+        }
+      }
+    };
+    checkOnboarding();
+  }, [userProfile, checkedOnboarding, currentView]);
+
+  // Check for team invitations
+  useEffect(() => {
+    const checkInvitations = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        try {
+          const invitations = await getTeamInvitations(user.uid, user.email || undefined);
+          const pending = invitations.filter(inv => inv.status === 'pending').length;
+          setInvitationCount(pending);
+        } catch (error) {
+          console.error("Error checking invitations", error);
+        }
+      }
+    };
+    
+    checkInvitations();
+    // Refresh every 5 minutes
+    const interval = setInterval(checkInvitations, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [userProfile]);
 
   // Initialize profile form when modal opens
   useEffect(() => {
@@ -134,9 +181,9 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
     }
   };
 
-  const NavButton = ({ view, icon: Icon, label, locked = false, moduleName }: { view: AppView; icon: any; label: string; locked?: boolean; moduleName?: string }) => {
+  const NavButton = ({ view, icon: Icon, label, locked = false, moduleName, badgeCount }: { view: AppView; icon: any; label: string; locked?: boolean; moduleName?: string, badgeCount?: number }) => {
     // Check if module is allowed for current tier
-    const isModuleAllowed = moduleName ? tierAllowsModule(userProfile?.accountTier as AccountTier, moduleName) : true;
+    const isModuleAllowed = moduleName ? tierAllowsModule(userTier, moduleName) : true;
     const isLocked = locked || !isModuleAllowed;
 
     return (
@@ -159,6 +206,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         <div className="flex items-center space-x-3">
           <Icon className="w-5 h-5" />
           <span className="font-medium">{label}</span>
+          {!isLocked && badgeCount !== undefined && badgeCount > 0 && (
+            <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
+              {badgeCount}
+            </span>
+          )}
         </div>
         {isLocked && <Lock className="w-4 h-4 text-slate-500" />}
       </button>
@@ -213,20 +265,20 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar Desktop */}
       <aside className="hidden md:flex flex-col w-72 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto border-r border-slate-800 z-50">
-        <div className="p-6 flex flex-col items-center border-b border-slate-800">
-          <div className="w-16 h-16 bg-brand-600 rounded-2xl flex items-center justify-center mb-4 shadow-xl shadow-brand-900/20 overflow-hidden">
-            {professionalSettings?.logoUrl ? (
-              <img src={professionalSettings.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-            ) : (
-              <Heart className="w-8 h-8 text-white" />
-            )}
-          </div>
-          <h1 className="text-lg font-bold text-center leading-tight">
-            {userProfile?.nomeFantasia || userProfile?.razaoSocial || professionalSettings?.name || 'ERCMed'}
-            <span className="block text-xs text-brand-400 font-normal mt-1">
-              {userProfile?.cnpj ? 'CNPJ Cadastrado' : (professionalSettings?.profession || 'Gestão de Saúde')}
-            </span>
-          </h1>
+        <div className="p-8 flex flex-col items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm">
+          <SystemLogo variant="white" className="h-14" />
+          
+          {professionalSettings?.logoUrl && (
+            <div className="mt-4 w-12 h-12 rounded-xl overflow-hidden border border-slate-700 shadow-2xl ring-2 ring-teal-500/20">
+              <img src={professionalSettings.logoUrl} alt="Clínica" className="w-full h-full object-cover" />
+            </div>
+          )}
+        </div>
+        <div className="text-center mt-2">
+          <span className="block text-[10px] text-brand-400 font-medium uppercase tracking-wider">
+            {userProfile?.nomeFantasia || userProfile?.razaoSocial || professionalSettings?.name || 'Sistema de Gestão'}
+          </span>
+        </div>
 
           {/* User Profile Section */}
           <div className="mt-6 w-full bg-slate-800/50 rounded-xl p-3 border border-slate-700/50 relative group">
@@ -251,7 +303,6 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               </div>
             </div>
           </div>
-        </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2">
           {/* 1. DASHBOARD */}
@@ -276,11 +327,12 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             isOpen={isSaudeOpen}
             setIsOpen={setIsSaudeOpen}
             currentView={currentView}
-            views={[AppView.PATIENTS, AppView.EMR, AppView.RECEIPTS]}
+            views={[AppView.PATIENTS, AppView.EMR, AppView.RECEIPTS, AppView.TEAM_INVITATIONS]}
           >
             <NavButton view={AppView.PATIENTS} icon={Users} label="Pacientes" moduleName="patients" />
             <NavButton view={AppView.EMR} icon={FileText} label="Prontuário (Clínica)" moduleName="emr" />
             <NavButton view={AppView.RECEIPTS} icon={Receipt} label="Recibos Médicos" moduleName="receipts" />
+            <NavButton view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
           </ModuleGroup>
 
           {/* 3. AGENDA */}
@@ -311,22 +363,17 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               AppView.REPASSE_DASHBOARD,
               AppView.BILLING_MANAGEMENT,
               AppView.REPASSE_CALCULATION,
-              AppView.TISS_BILLING,
-              AppView.SIMULATOR,
-              AppView.IRPF_CALC
+              AppView.TISS_BILLING
             ]}
           >
             <NavButton view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" moduleName="financial" />
             <NavButton view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" moduleName="financial" />
             <NavButton view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" moduleName="financial" />
             <div className="h-px bg-slate-800 my-1"></div>
-            <NavButton view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard de Repasse" moduleName="repasse" />
+            <NavButton view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" moduleName="repasse" />
             <NavButton view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" moduleName="repasse" />
             <NavButton view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" moduleName="repasse" />
             <NavButton view={AppView.TISS_BILLING} icon={Building2} label="Faturamento TISS" moduleName="tiss" />
-            <div className="h-px bg-slate-800 my-1"></div>
-            <NavButton view={AppView.SIMULATOR} icon={Calculator} label="Simulador Empresa" locked={!modulePermissions.SIMULATOR} moduleName="financial" />
-            <NavButton view={AppView.IRPF_CALC} icon={FileText} label="Simulador IRPF" locked={!modulePermissions.IRPF} moduleName="financial" />
           </ModuleGroup>
 
           {/* 5. ADMINISTRAÇÃO */}
@@ -342,7 +389,6 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             {(isAdmin || userProfile?.isClinicManager) && (
               <NavButton view={AppView.CLINIC_TEAMS} icon={Shield} label="Equipes da Clínica" />
             )}
-            <NavButton view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" />
             <NavButton view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" moduleName="contracts" />
             {isAdmin && (
               <NavButton view={AppView.USERS_MANAGEMENT} icon={Users} label="Gerenciar Usuários" />
@@ -360,8 +406,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
           <ModuleGroup
             title="Apoio & Suporte"
             icon={Info}
-            isOpen={false}
-            setIsOpen={() => {}}
+            isOpen={isApoioOpen}
+            setIsOpen={setIsApoioOpen}
             currentView={currentView}
             views={[AppView.AI_CONSULTANT, AppView.USER_PROFILE, AppView.HOW_TO_USE, AppView.ABOUT_APP, AppView.FEEDBACK]}
           >
@@ -466,7 +512,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                 <NavButton view={AppView.RECEIPTS} icon={Receipt} label="Recibos" />
                 <NavButton view={AppView.CLINIC_HOURS} icon={Clock} label="Horários" />
                 <NavButton view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" />
-                <NavButton view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" />
+                <NavButton view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
               </ModuleGroup>
 
               {/* Gestão de Repasse Clínico - Admin Only */}
@@ -504,35 +550,12 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                   views={[
                     AppView.FINANCIAL_CONTROL,
                     AppView.SALES_MANAGEMENT,
-                    AppView.CASH_FLOW,
-                    AppView.SIMULATOR,
-                    AppView.IRPF_CALC
+                    AppView.CASH_FLOW
                   ]}
                 >
                   <NavButton view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" />
                   <NavButton view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" />
                   <NavButton view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" />
-                  <div className="h-px bg-slate-800 my-1"></div>
-                  <NavButton
-                    view={AppView.SIMULATOR}
-                    icon={Calculator}
-                    label="Simulador Empresa"
-                    locked={!modulePermissions.SIMULATOR}
-                  />
-                  <NavButton
-                    view={AppView.IRPF_CALC}
-                    icon={FileText}
-                    label="Simulador IRPF"
-                    locked={!modulePermissions.IRPF}
-                  />
-                  <NavButton
-                    view={AppView.DOMESTIC_CALC}
-                    icon={UserIcon}
-                    label="Simulador Doméstico"
-                    locked={!modulePermissions.SIMULATOR}
-                  />
-                  <div className="h-px bg-slate-800 my-1"></div>
-                  <NavButton view={AppView.LOAN_REVISION} icon={TrendingUp} label="Revisão de Empréstimo" />
                 </ModuleGroup>
               )}
 
@@ -564,7 +587,62 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col md:relative pt-32 md:pt-0 overflow-y-auto md:overflow-hidden ml-0 md:ml-72">
-        {children}
+        {/* Trial Warning Banner */}
+        {!isTrialExpired && trialDaysRemaining !== undefined && trialDaysRemaining <= 3 && trialDaysRemaining > 0 && (
+          <div className="bg-amber-100 border-b border-amber-200 px-6 py-2 flex items-center justify-between animate-fade-in z-40">
+            <div className="flex items-center gap-2 text-amber-800 text-sm font-medium">
+              <Clock className="w-4 h-4" />
+              Seu período de teste termina em {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia' : 'dias'}.
+            </div>
+            <button
+              onClick={() => setView(AppView.PLANS)}
+              className="text-xs bg-amber-600 text-white px-3 py-1 rounded-full font-bold hover:bg-amber-700 transition-colors"
+            >
+              Fazer Upgrade
+            </button>
+          </div>
+        )}
+
+        {isTrialExpired ? (
+          <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 relative">
+            <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 text-center border-t-8 border-brand-600 animate-fade-in">
+              <div className="w-20 h-20 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Lock className="w-10 h-10 text-brand-600" />
+              </div>
+              <h2 className="text-3xl font-bold text-slate-900 mb-4">Teste Expirado</h2>
+              <p className="text-slate-600 mb-8 leading-relaxed">
+                Seu período de teste de 15 dias chegou ao fim. Para continuar transformando a gestão da sua clínica com o ERCMed, escolha um dos nossos planos.
+              </p>
+              
+              <div className="space-y-4">
+                <button
+                  onClick={() => setView(AppView.PLANS)}
+                  className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold text-lg hover:bg-brand-700 transition-all shadow-lg shadow-brand-900/20 flex items-center justify-center gap-2"
+                >
+                  <Crown className="w-5 h-5" />
+                  Ver Planos de Assinatura
+                </button>
+                <button
+                  onClick={handleWhatsAppClick}
+                  className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                >
+                  <MessageSquare className="w-5 h-5 text-brand-600" />
+                  Falar com Consultor
+                </button>
+              </div>
+              <div className="mt-8 pt-6 border-t border-slate-100">
+                <button
+                   onClick={handleLogout}
+                   className="text-slate-400 hover:text-red-500 text-sm flex items-center justify-center gap-2 mx-auto"
+                >
+                  <LogOut className="w-4 h-4" /> Sair da conta
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          children
+        )}
       </main>
 
       {/* Edit Profile Modal */}
@@ -653,7 +731,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               </h3>
 
               <p className="text-slate-600 mb-6">
-                O módulo <span className="font-semibold text-brand-700">{blockedFeature}</span> não está disponível no seu plano atual ({TIER_NAMES[userProfile?.accountTier || AccountTier.BRONZE]}).
+                O módulo <span className="font-semibold text-brand-700">{blockedFeature}</span> não está disponível no seu plano atual ({TIER_NAMES[userProfile?.accountTier || AccountTier.TRIAL]}).
               </p>
 
               <div className="bg-slate-50 rounded-xl p-4 mb-8 border border-slate-100">

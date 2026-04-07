@@ -8,7 +8,8 @@ import {
     serverTimestamp,
     addDoc,
     orderBy,
-    where
+    where,
+    deleteDoc
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { CnpjData, SalesOrder } from "../types";
@@ -351,6 +352,17 @@ export const getAllUsersData = async (): Promise<UserActivity[]> => {
     } catch (error) {
         console.error("Erro ao buscar dados de todos os usuários:", error);
         return [];
+    }
+};
+
+export const deleteUserActivity = async (uid: string): Promise<boolean> => {
+    try {
+        const userRef = doc(db, "users", uid);
+        await deleteDoc(userRef);
+        return true;
+    } catch (error) {
+        console.error("Erro ao deletar tracking do usuário:", error);
+        return false;
     }
 };
 

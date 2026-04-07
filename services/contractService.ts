@@ -43,7 +43,7 @@ export const getContracts = async (managerId?: string): Promise<Contract[]> => {
         }
 
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Contract));
     } catch (error) {
         console.error('Erro ao buscar contratos:', error);
         return [];
@@ -58,7 +58,7 @@ export const getContractsByOwner = async (userId: string): Promise<Contract[]> =
         // repasseService mapper uses contract.userId.
         const q = query(contractsRef, where('userId', '==', userId));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Contract));
     } catch (error) {
         console.error('Erro ao buscar contratos por proprietário:', error);
         return [];

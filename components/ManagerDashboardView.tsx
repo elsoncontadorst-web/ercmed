@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { getAllUsersData, UserActivity, getAllFeedback, Feedback } from '../services/userDataService';
-import { Users, Smartphone, Monitor, Clock, Calendar, ArrowLeft, Search, AlertCircle, MessageSquare, Bug, Lightbulb, CheckCircle, XCircle } from 'lucide-react';
+import { getAllUsersData, UserActivity, getAllFeedback, Feedback, deleteUserActivity } from '../services/userDataService';
+import { Users, Smartphone, Monitor, Clock, Calendar, ArrowLeft, Search, AlertCircle, MessageSquare, Bug, Lightbulb, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import { AppView } from '../types';
 
 interface ManagerDashboardViewProps {
@@ -30,6 +30,17 @@ const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ onBack }) =
 
         fetchData();
     }, []);
+
+    const handleDeleteUser = async (uid: string, email: string) => {
+        if (window.confirm(`Tem certeza que deseja apagar o registro histórico de ${email}? Isso limpará a tabela, mas não afeta a Firebase Auth.`)) {
+            const success = await deleteUserActivity(uid);
+            if (success) {
+                setUsers(prev => prev.filter(u => u.uid !== uid));
+            } else {
+                alert("Erro ao apagar. Atualize a página.");
+            }
+        }
+    };
 
     const filteredUsers = users.filter(user =>
         user.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -216,6 +227,7 @@ const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ onBack }) =
                                         <th className="py-3 px-6 text-sm font-semibold text-slate-600">Último Acesso</th>
                                         <th className="py-3 px-6 text-sm font-semibold text-slate-600">Tempo de Uso</th>
                                         <th className="py-3 px-6 text-sm font-semibold text-slate-600">Módulos Mais Usados</th>
+                                        <th className="py-3 px-6 text-sm font-semibold text-slate-600">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -254,11 +266,20 @@ const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ onBack }) =
                                                     </div>
                                                 ) : '-'}
                                             </td>
+                                            <td className="py-3 px-6 text-sm text-slate-600">
+                                                <button 
+                                                    onClick={() => handleDeleteUser(user.uid, user.email)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                    title="Limpar Registro"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))}
                                     {filteredUsers.length === 0 && (
                                         <tr>
-                                            <td colSpan={5} className="py-8 text-center text-slate-500">
+                                            <td colSpan={6} className="py-8 text-center text-slate-500">
                                                 Nenhum usuário encontrado.
                                             </td>
                                         </tr>

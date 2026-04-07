@@ -15,7 +15,6 @@ import { hasAcceptedLGPD, registerConsent } from './services/lgpdService';
 import { NotificationProvider } from './contexts/NotificationContext';
 
 // Lazy load components for better performance
-const ComparisonView = React.lazy(() => import('./components/ComparisonView'));
 const AiConsultantView = React.lazy(() => import('./components/AiConsultantView'));
 const AboutAppView = React.lazy(() => import('./components/AboutAppView'));
 const HowToUseView = React.lazy(() => import('./components/HowToUseView'));
@@ -39,16 +38,16 @@ const InventoryView = React.lazy(() => import('./components/InventoryView'));
 const PatientsView = React.lazy(() => import('./components/PatientsView'));
 const ClinicsView = React.lazy(() => import('./components/ClinicsView'));
 const BillingView = React.lazy(() => import('./components/BillingView'));
-const RepasseCalculationView = React.lazy(() => import('./components/RepasseCalculationView'));
+const OnboardingView = React.lazy(() => import('./components/OnboardingView'));
 const ReceiptsView = React.lazy(() => import('./components/ReceiptsView'));
 const ClinicHoursView = React.lazy(() => import('./components/ClinicHoursView'));
 const BookingSettingsView = React.lazy(() => import('./components/BookingSettingsView'));
+const RepasseCalculationView = React.lazy(() => import('./components/RepasseCalculationView'));
 const PublicBookingPage = React.lazy(() => import('./components/PublicBookingPage'));
 const TISSView = React.lazy(() => import('./components/TISSView'));
 const UsersManagementView = React.lazy(() => import('./components/UsersManagementView'));
 const PermissionsManagementView = React.lazy(() => import('./components/PermissionsManagementView'));
 const FeaturesPage = React.lazy(() => import('./components/FeaturesPage'));
-const IrpfSimulator = React.lazy(() => import('./components/IrpfSimulator'));
 const DebugView = React.lazy(() => import('./components/DebugView'));
 const PlansView = React.lazy(() => import('./components/PlansView'));
 const AccountantModule = React.lazy(() => import('./components/AccountantModule'));
@@ -192,7 +191,7 @@ function App() {
             case AppView.HEALTH_DASHBOARD:
               return <HealthDashboard />;
             case AppView.PATIENTS:
-              return <PatientsView />;
+              return <PatientsView setView={setView} />;
             case AppView.APPOINTMENTS:
               return <AppointmentsView />;
             case AppView.EMR:
@@ -229,14 +228,11 @@ function App() {
 
             // User Management
             case AppView.USERS_MANAGEMENT:
-              return <UsersManagementView />;
+              return <UsersManagementView setView={setView} />;
             case AppView.PERMISSIONS_MANAGEMENT:
               return <PermissionsManagementView />;
 
             // Legacy views
-            case AppView.SIMULATOR:
-              return <ComparisonView />;
-
             case AppView.AI_CONSULTANT:
               return <AiConsultantView />;
             case AppView.FINANCIAL_CONTROL:
@@ -260,24 +256,25 @@ function App() {
             case AppView.FEEDBACK:
               return <FeedbackView />;
 
-            // IRPF Calculator
-            case AppView.IRPF_CALC:
-              return <IrpfSimulator />;
-
-            case AppView.IRPF_CALC:
-              return <IrpfSimulator />;
-
             case AppView.DEBUG:
               return <DebugView />;
 
             case AppView.PLANS:
-              return <PlansView />;
+              return <PlansView setView={setView} />;
 
             case AppView.ACCOUNTANT_MODULE:
               return <AccountantModule />;
 
             case AppView.CLINIC_TEAMS:
               return <ClinicTeamsView />;
+
+            case AppView.ONBOARDING:
+              return <OnboardingView 
+                setView={setView} 
+                onComplete={async () => {
+                  setView(AppView.DASHBOARD);
+                }}
+              />;
 
             default:
               return <DashboardView setView={setView} />;

@@ -145,30 +145,25 @@ export const getAllPatients = async (professionalId?: string): Promise<Patient[]
             snap2.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...d.data() }));
             console.log('[PATIENT] Patients created by user:', managedDocs.size);
         } else {
-            // Unrestricted mode: All patients of the manager
-            // Query 1: Patients owned by this Manager (Standard)
-            const q1 = query(patientsRef, where('managerId', '==', effectiveManagerId), where('active', '==', true));
-            // Query 2: Legacy fallback (Patients created by this professional ID before manager linking)
-            // We usually don't need q2 if q1 covers it, but to be safe we keep q2 if managerId link is missing on some docs?
-            // Actually, for unrestricted, q1 should cover everything if data is clean. 
-            // But let's keep q2 just in case "effectiveManagerId" logic leaves some out or if user is their own manager.
-            const q2 = query(patientsRef, where('professionalId', '==', effectiveManagerId), where('active', '==', true));
+            // Unrestricted mode: Patients of the manager and fallback to professionalId
+            const queries = [
+                query(patientsRef, where('managerId', '==', effectiveManagerId), where('active', '==', true))
+            ];
 
-            const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-            snap1.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...d.data() }));
-            snap2.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...d.data() }));
+            // If effectiveManagerId is the same as userId, querying professionalId captures legacy/own data
+            if (effectiveManagerId === userId) {
+                queries.push(query(patientsRef, where('professionalId', '==', userId), where('active', '==', true)));
+            }
+
+            const snapshots = await Promise.all(queries.map(q => getDocs(q)));
+            snapshots.forEach(snap => {
+                snap.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...(d.data() as any) } as Patient));
+            });
         }
 
-        console.log('[PATIENT] Managed/Owned patients found:', managedDocs.size);
+        console.log('[PATIENT] Patients from manager/owner queries:', managedDocs.size);
 
-        /* 
-           TEAM PATIENTS (Care Team Logic)
-           If specific visibility via 'patient_teams' is still needed for cross-clinic sharing or 
-           specific assignments not covered by manager ownership, we keep this.
-           However, "Same Team" visibility usually means everyone under Manager M sees patients of M.
-           The above queries cover the "Same Team" requirement.
-           We retain this ONLY for cases where a patient might be shared explicitly from OUTSIDE the team.
-        */
+        // 3. TEAM MEMBERSHIP QUERY: Patients where I am a team member
         const teamRef = collection(db, 'patient_teams');
         const teamQuery = query(teamRef, where('professionalId', '==', userId));
         const teamSnapshot = await getDocs(teamQuery);
@@ -666,12 +661,20 @@ export const addTeamMember = async (
     member: Omit<PatientTeamMember, 'id' | 'assignedAt'>
 ): Promise<string | null> => {
     try {
-        const teamRef = collection(db, 'patient_teams');
-        const docRef = await addDoc(teamRef, {
+        if (!member.patientId || !member.professionalId) {
+            throw new Error('Patient ID and Professional ID are required to add a team member.');
+        }
+
+        const memberId = `${member.patientId}_${member.professionalId}`;
+        const memberRef = doc(db, 'patient_teams', memberId);
+        
+        await setDoc(memberRef, {
             ...member,
+            id: memberId,
             assignedAt: serverTimestamp()
         });
-        return docRef.id;
+        
+        return memberId;
     } catch (error) {
         console.error('Erro ao adicionar membro da equipe:', error);
         return null;
@@ -782,15 +785,14 @@ export const subscribeToPatients = (
             );
         } else {
             const managerId = await getManagerIdForUser(userId);
-            if (managerId) {
-                q = query(
-                    patientsRef,
-                    where('managerId', '==', managerId),
-                    where('active', '==', true)
-                );
-            } else {
-                q = query(patientsRef, where('active', '==', true));
-            }
+            // Effective Manager ID is the manager's ID, or the user's own ID if they are independent/manager
+            const effectiveId = managerId || userId;
+            
+            q = query(
+                patientsRef,
+                where('managerId', '==', effectiveId),
+                where('active', '==', true)
+            );
         }
 
         unsubscribe = onSnapshot(q, (snapshot) => {
@@ -825,6 +827,23 @@ export const addAnamnesis = async (
     } catch (error) {
         console.error('Erro ao adicionar anamnese:', error);
         return null;
+    }
+};
+
+export const updateAnamnesis = async (
+    anamnesisId: string,
+    data: Partial<Omit<Anamnesis, 'id' | 'createdAt'>>
+): Promise<boolean> => {
+    try {
+        const anamnesisRef = doc(db, 'anamneses', anamnesisId);
+        await updateDoc(anamnesisRef, {
+            ...data,
+            updatedAt: serverTimestamp()
+        });
+        return true;
+    } catch (error) {
+        console.error('Erro ao atualizar anamnese:', error);
+        return false;
     }
 };
 
@@ -926,21 +945,19 @@ export const getTeamInvitations = async (professionalId: string, professionalEma
         // 1. Query by ID
         const q1 = query(
             invitationsRef,
-            where('invitedProfessionalId', '==', professionalId),
-            orderBy('createdAt', 'desc')
+            where('invitedProfessionalId', '==', professionalId)
         );
 
         const snapshot1 = await getDocs(q1);
         snapshot1.docs.forEach(doc => {
-            invitationsMap.set(doc.id, { id: doc.id, ...doc.data() } as TeamInvitation);
+            invitationsMap.set(doc.id, { id: doc.id, ...(doc.data() as any) } as TeamInvitation);
         });
 
         // 2. Query by Email (if provided)
         if (professionalEmail) {
             const q2 = query(
                 invitationsRef,
-                where('invitedProfessionalEmail', '==', professionalEmail),
-                orderBy('createdAt', 'desc')
+                where('invitedProfessionalEmail', '==', professionalEmail)
             );
 
             const snapshot2 = await getDocs(q2);
@@ -1000,11 +1017,17 @@ export const getInvitationsByPatient = async (patientId: string): Promise<TeamIn
         const invitationsRef = collection(db, 'team_invitations');
         const q = query(
             invitationsRef,
-            where('patientId', '==', patientId),
-            orderBy('createdAt', 'desc')
+            where('patientId', '==', patientId)
         );
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamInvitation));
+        const invitations = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as TeamInvitation));
+        
+        // Manual sort by createdAt descending
+        return invitations.sort((a, b) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+        });
     } catch (error) {
         console.error('Erro ao buscar convites do paciente:', error);
         return [];
