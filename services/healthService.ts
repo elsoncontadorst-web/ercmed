@@ -15,7 +15,7 @@ import {
     onSnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { UserRecord, Appointment, Medication, Measurement, Patient, ClinicalNote, Prescription, ExamRequest, PatientEvolution, PatientTeamMember, Anamnesis, MixedAnamnesis, TeamInvitation } from '../types/health';
+import { UserRecord, Appointment, Medication, Measurement, Patient, ClinicalNote, Prescription, ExamRequest, PatientEvolution, PatientTeamMember, Anamnesis, MixedAnamnesis, TeamInvitation, ProfessionalAnamnesis } from '../types/health';
 import { createTeamQuery, getManagerIdForUser, getUserAccessSettings } from './accessControlService';
 import { auth } from './firebase';
 
@@ -1097,3 +1097,66 @@ export const cancelInvitation = async (invitationId: string): Promise<boolean> =
     }
 };
 
+// ============================================================
+// PROFESSIONAL ANAMNESES (Multiprofessional System)
+// ============================================================
+
+export const saveProfessionalAnamnesis = async (
+    data: Omit<ProfessionalAnamnesis, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string | null> => {
+    try {
+        const ref = collection(db, 'professional_anamneses');
+        const docRef = await addDoc(ref, {
+            ...data,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+        return docRef.id;
+    } catch (error) {
+        console.error('Erro ao salvar anamnese profissional:', error);
+        return null;
+    }
+};
+
+export const getProfessionalAnamneses = async (
+    patientId: string
+): Promise<ProfessionalAnamnesis[]> => {
+    try {
+        const ref = collection(db, 'professional_anamneses');
+        const q = query(ref, where('patientId', '==', patientId));
+        const snap = await getDocs(q);
+        const results = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) } as ProfessionalAnamnesis));
+        return results.sort((a, b) => {
+            const tA = (a.createdAt?.seconds || 0);
+            const tB = (b.createdAt?.seconds || 0);
+            return tB - tA;
+        });
+    } catch (error) {
+        console.error('Erro ao buscar anamneses profissionais:', error);
+        return [];
+    }
+};
+
+export const updateProfessionalAnamnesis = async (
+    id: string,
+    data: Partial<Omit<ProfessionalAnamnesis, 'id' | 'createdAt'>>
+): Promise<boolean> => {
+    try {
+        const ref = doc(db, 'professional_anamneses', id);
+        await updateDoc(ref, { ...data, updatedAt: serverTimestamp() });
+        return true;
+    } catch (error) {
+        console.error('Erro ao atualizar anamnese profissional:', error);
+        return false;
+    }
+};
+
+export const deleteProfessionalAnamnesis = async (id: string): Promise<boolean> => {
+    try {
+        await deleteDoc(doc(db, 'professional_anamneses', id));
+        return true;
+    } catch (error) {
+        console.error('Erro ao excluir anamnese profissional:', error);
+        return false;
+    }
+};

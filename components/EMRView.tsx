@@ -15,6 +15,7 @@ import { AccountTier } from '../types/accountTiers';
 import { getProfessionalSettings } from '../services/userDataService';
 import { ProfessionalSettings } from '../types';
 import jsPDF from 'jspdf';
+import ProfessionalAnamnesisView from './ProfessionalAnamnesisView';
 
 interface MedicationRow {
     name: string;
@@ -26,7 +27,7 @@ interface MedicationRow {
 const EMRView: React.FC = () => {
     const { userProfile } = useUser();
     const [hasAdvancedEMR, setHasAdvancedEMR] = useState(false);
-    const [activeTab, setActiveTab] = useState<'SUMMARY' | 'EVOLUTION' | 'PRESCRIPTION' | 'EXAMS' | 'DOCUMENTS' | 'TEAM' | 'ANAMNESIS' | 'MIXED_ANAMNESIS'>('SUMMARY');
+    const [activeTab, setActiveTab] = useState<'SUMMARY' | 'EVOLUTION' | 'PRESCRIPTION' | 'EXAMS' | 'DOCUMENTS' | 'TEAM' | 'ANAMNESIS' | 'MIXED_ANAMNESIS' | 'PROF_ANAMNESIS'>('SUMMARY');
     const [patients, setPatients] = useState<Patient[]>([]);
     const [selectedPatientId, setSelectedPatientId] = useState<string>('');
     const [clinicalNote, setClinicalNote] = useState('');
@@ -1313,6 +1314,7 @@ const EMRView: React.FC = () => {
                                     { id: 'EXAMS', label: 'Exames', icon: Activity },
                                     { id: 'ANAMNESIS', label: 'Anamnese', icon: Stethoscope },
                                     { id: 'MIXED_ANAMNESIS', label: 'Anamnese Mista', icon: GitMerge },
+                                    { id: 'PROF_ANAMNESIS', label: 'Anamnese Prof.', icon: Brain },
                                     { id: 'TEAM', label: 'Equipe', icon: Users },
                                 ].map(tab => (
                                     <button
@@ -2286,6 +2288,13 @@ const EMRView: React.FC = () => {
                                         )}
                                     </div>
                                 </div>
+                            )}
+
+                            {activeTab === 'PROF_ANAMNESIS' && selectedPatient && (
+                                <ProfessionalAnamnesisView
+                                    patientId={selectedPatient.id}
+                                    patientName={selectedPatient.name}
+                                />
                             )}
 
                             {activeTab === 'TEAM' && (

@@ -300,3 +300,35 @@ export interface MixedAnamnesis {
   sourceAnamnesesIds: string[]; // IDs of the individual anamneses used
   createdAt: any;
 }
+
+// ============================================================
+// PROFESSIONAL ANAMNESIS (Multiprofessional Dynamic System)
+// ============================================================
+
+export interface FilledField {
+  id: string;
+  label: string;
+  type: string;
+  value: any; // Text, number, boolean, string[], etc.
+}
+
+export interface FilledSection {
+  id: string;
+  title: string;
+  fields: FilledField[];
+}
+
+export interface ProfessionalAnamnesis {
+  id?: string;
+  patientId: string;
+  professionalId: string;
+  professionalName: string;
+  templateId: string;       // e.g., 'psicologica'
+  templateName: string;     // e.g., 'Anamnese Psicológica'
+  profession: string;       // e.g., 'Psicólogo(a)'
+  date: string;             // ISO date string
+  sections: FilledSection[]; // Filled-in template sections with values
+  narrative?: string;       // AI-generated clinical narrative
+  createdAt: any;
+  updatedAt: any;
+}
