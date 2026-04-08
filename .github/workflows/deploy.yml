@@ -22,16 +22,26 @@ jobs:
         run: npm ci
 
       - name: Create .env file from secrets
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_GENAI_API_KEY: ${{ secrets.VITE_GOOGLE_GENAI_API_KEY }}
+          VITE_GROQ_API_KEY: ${{ secrets.VITE_GROQ_API_KEY }}
+          VITE_GROQ_API_KEY_ALT: ${{ secrets.VITE_GROQ_API_KEY_ALT }}
         run: |
-          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env
-          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
-          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
-          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
-          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
-          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
-          echo "VITE_GOOGLE_GENAI_API_KEY=${{ secrets.VITE_GOOGLE_GENAI_API_KEY }}" >> .env
-          echo "VITE_GROQ_API_KEY=${{ secrets.VITE_GROQ_API_KEY }}" >> .env
-          echo "VITE_GROQ_API_KEY_ALT=${{ secrets.VITE_GROQ_API_KEY_ALT }}" >> .env
+          echo "VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY" >> .env
+          echo "VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN" >> .env
+          echo "VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID" >> .env
+          echo "VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET" >> .env
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID" >> .env
+          echo "VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID" >> .env
+          echo "VITE_GOOGLE_GENAI_API_KEY=$VITE_GOOGLE_GENAI_API_KEY" >> .env
+          echo "VITE_GROQ_API_KEY=$VITE_GROQ_API_KEY" >> .env
+          echo "VITE_GROQ_API_KEY_ALT=$VITE_GROQ_API_KEY_ALT" >> .env
 
       - name: Build production bundle
         run: npm run build

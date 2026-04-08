@@ -13,6 +13,8 @@ const ClinicsView: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingClinic, setEditingClinic] = useState<Clinic | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
 
     const [formData, setFormData] = useState<ClinicFormData>({
         name: '',
@@ -88,10 +90,12 @@ const ClinicsView: React.FC = () => {
 
             setShowModal(false);
             resetForm();
+            setErrorMessage('');
             await loadClinics();
         } catch (error) {
             console.error('Error saving clinic:', error);
-            alert('Erro ao salvar consultório. Tente novamente.');
+            const msg = error instanceof Error ? error.message : 'Erro ao salvar consultório. Tente novamente.';
+            setErrorMessage(msg);
         } finally {
             setLoading(false);
         }
@@ -248,6 +252,12 @@ const ClinicsView: React.FC = () => {
                         <div className="flex justify-between items-center p-6 border-b border-gray-200 sticky top-0 bg-white">
                             <h2 className="text-xl font-bold text-slate-800">
                                 {editingClinic ? 'Editar Consultório' : 'Novo Consultório'}
+{errorMessage && (
+  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 mt-2">
+    <span>{errorMessage}</span>
+    <button onClick={() => setErrorMessage('')} className="absolute top-0 bottom-0 right-0 px-4 py-3 text-red-500">×</button>
+  </div>
+)}
                             </h2>
                             <button
                                 onClick={() => {

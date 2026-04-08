@@ -1314,7 +1314,6 @@ const EMRView: React.FC = () => {
                                     { id: 'EXAMS', label: 'Exames', icon: Activity },
                                     { id: 'ANAMNESIS', label: 'Anamnese', icon: Stethoscope },
                                     { id: 'MIXED_ANAMNESIS', label: 'Anamnese Mista', icon: GitMerge },
-                                    { id: 'PROF_ANAMNESIS', label: 'Anamnese Prof.', icon: Brain },
                                     { id: 'TEAM', label: 'Equipe', icon: Users },
                                 ].map(tab => (
                                     <button
@@ -1664,29 +1663,27 @@ const EMRView: React.FC = () => {
 
                             {activeTab === 'ANAMNESIS' && (
                                 <div className="space-y-6 max-w-5xl mx-auto">
-                                    {/* Header */}
-                                    <div className="flex justify-between items-center">
-                                        <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                                            <Stethoscope className="w-5 h-5 text-teal-600" />
-                                            {isEditingAnamnesis ? 'Atualizar Anamnese' : 'Anamnese Clínica'}
-                                        </h3>
-                                        <button
-                                            onClick={() => {
-                                                if (showAnamnesisForm) {
+                                    {/* Header (Medical Form Mode) */}
+                                    {showAnamnesisForm && (
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                                                <Stethoscope className="w-5 h-5 text-teal-600" />
+                                                {isEditingAnamnesis ? 'Atualizar Anamnese' : 'Anamnese Médica'}
+                                            </h3>
+                                            <button
+                                                onClick={() => {
                                                     setShowAnamnesisForm(false);
                                                     setIsEditingAnamnesis(false);
                                                     setEditingAnamnesisId(null);
                                                     setNewAnamnesis(initialAnamnesisState);
-                                                } else {
-                                                    setShowAnamnesisForm(true);
-                                                }
-                                            }}
-                                            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2 transition-all"
-                                        >
-                                            {showAnamnesisForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                                            {showAnamnesisForm ? 'Cancelar' : 'Nova Anamnese'}
-                                        </button>
-                                    </div>
+                                                }}
+                                                className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2 transition-all"
+                                            >
+                                                <X className="w-4 h-4" />
+                                                Cancelar
+                                            </button>
+                                        </div>
+                                    )}
 
                                     {/* ===== FORM ===== */}
                                     {showAnamnesisForm && (
@@ -2101,88 +2098,27 @@ const EMRView: React.FC = () => {
                                         </div>
                                     )}
 
-                                    {/* ===== HISTORY LIST ===== */}
-                                    <div className="space-y-4">
-                                        {anamneses.length === 0 ? (
-                                            <p className="text-slate-500 text-center py-8">Nenhuma anamnese registrada para este paciente.</p>
-                                        ) : (
-                                            anamneses.map(anam => (
-                                                <div key={anam.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                                    <div className="flex justify-between items-start mb-4 border-b pb-4">
-                                                        <div>
-                                                            <p className="font-bold text-slate-800 text-lg">
-                                                                {anam.professionalName}, {anam.specialty}
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="text-sm text-slate-500 mr-2">
-                                                                {new Date(anam.date).toLocaleDateString('pt-BR')}
-                                                            </span>
-                                                            <button onClick={() => handleEditAnamnesis(anam)} className="text-blue-600 hover:text-blue-800 p-2 rounded-lg hover:bg-blue-50 transition-all" title="Editar Anamnese">
-                                                                <Edit3 className="w-4 h-4" />
-                                                            </button>
-                                                            <button onClick={() => generateAnamnesisPDF(anam)} className="text-teal-600 hover:text-teal-800 p-2 rounded-lg hover:bg-slate-100 transition-all" title="Imprimir Anamnese">
-                                                                <Printer className="w-4 h-4" />
-                                                            </button>
-                                                            <button onClick={() => handleDeleteAnamnesis(anam.id)} className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-all" title="Excluir Anamnese">
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                                                        <div>
-                                                            <p className="font-bold text-slate-700 mb-1">Queixa Principal</p>
-                                                            <p className="text-slate-600 mb-3">{anam.mainComplaint || '—'}</p>
-                                                            <p className="font-bold text-slate-700 mb-1">HDA</p>
-                                                            <p className="text-slate-600 mb-3">{anam.historyOfPresentIllness || '—'}</p>
-                                                            <p className="font-bold text-slate-700 mb-1">HPP</p>
-                                                            <p className="text-slate-600">{anam.pastMedicalHistory || '—'}</p>
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-slate-700 mb-1">Histórico Familiar</p>
-                                                            <p className="text-slate-600 mb-3">{anam.familyHistory || '—'}</p>
-                                                            <p className="font-bold text-slate-700 mb-1">Histórico Social</p>
-                                                            <p className="text-slate-600 mb-3">{anam.socialHistory || '—'}</p>
-                                                            <p className="font-bold text-slate-700 mb-1">Revisão de Sistemas</p>
-                                                            <p className="text-slate-600">{anam.reviewOfSystems || '—'}</p>
-                                                        </div>
-                                                    </div>
-                                                    {/* Vitals & Clinical Eval display */}
-                                                    {anam.vitals && (anam.vitals.bpSistolic || anam.vitals.heartRate || anam.vitals.weight) && (
-                                                        <div className="mt-4 pt-4 border-t border-slate-100">
-                                                            <p className="font-bold text-slate-700 mb-2 text-sm">Sinais Vitais</p>
-                                                            <div className="flex flex-wrap gap-3 text-xs">
-                                                                {anam.vitals.bpSistolic && <span className="px-2.5 py-1 bg-red-50 text-red-700 rounded-full">PA: {anam.vitals.bpSistolic}/{anam.vitals.bpDiastolic} mmHg</span>}
-                                                                {anam.vitals.heartRate && <span className="px-2.5 py-1 bg-pink-50 text-pink-700 rounded-full">FC: {anam.vitals.heartRate} bpm</span>}
-                                                                {anam.vitals.respRate && <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">FR: {anam.vitals.respRate} irpm</span>}
-                                                                {anam.vitals.temperature && <span className="px-2.5 py-1 bg-orange-50 text-orange-700 rounded-full">T: {anam.vitals.temperature}°C</span>}
-                                                                {anam.vitals.saturation && <span className="px-2.5 py-1 bg-cyan-50 text-cyan-700 rounded-full">SpO₂: {anam.vitals.saturation}%</span>}
-                                                                {anam.vitals.weight && <span className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full">Peso: {anam.vitals.weight}kg</span>}
-                                                                {anam.vitals.height && <span className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full">Alt: {anam.vitals.height}cm</span>}
-                                                                {anam.vitals.imc && <span className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full font-bold">IMC: {anam.vitals.imc}</span>}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {(anam.clinicalEvaluation || anam.carePlan) && (
-                                                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                                            {anam.clinicalEvaluation && (
-                                                                <div>
-                                                                    <p className="font-bold text-slate-700 mb-1">Hipóteses Diagnósticas</p>
-                                                                    <p className="text-slate-600">{anam.clinicalEvaluation}</p>
-                                                                </div>
-                                                            )}
-                                                            {anam.carePlan && (
-                                                                <div>
-                                                                    <p className="font-bold text-slate-700 mb-1">Conduta / Plano</p>
-                                                                    <p className="text-slate-600">{anam.carePlan}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
+                                    {/* ===== HISTORY LIST & SELECTOR ===== */}
+                                    {!showAnamnesisForm && selectedPatient && (
+                                        <ProfessionalAnamnesisView
+                                            patientId={selectedPatient.id}
+                                            patientName={selectedPatient.name}
+                                            onOpenLegacyMedicalForm={() => {
+                                                setNewAnamnesis(initialAnamnesisState);
+                                                setIsEditingAnamnesis(false);
+                                                setEditingAnamnesisId(null);
+                                                setShowAnamnesisForm(true);
+                                            }}
+                                            onEditLegacyMedicalForm={(a) => {
+                                                setNewAnamnesis(a); 
+                                                setIsEditingAnamnesis(true); 
+                                                setEditingAnamnesisId(a.id); 
+                                                setShowAnamnesisForm(true);
+                                            }}
+                                            onDeleteLegacyMedical={(id) => handleDeleteAnamnesis(id)}
+                                            legacyAnamneses={anamneses}
+                                        />
+                                    )}
                                 </div>
                             )}
 
@@ -2288,13 +2224,6 @@ const EMRView: React.FC = () => {
                                         )}
                                     </div>
                                 </div>
-                            )}
-
-                            {activeTab === 'PROF_ANAMNESIS' && selectedPatient && (
-                                <ProfessionalAnamnesisView
-                                    patientId={selectedPatient.id}
-                                    patientName={selectedPatient.name}
-                                />
                             )}
 
                             {activeTab === 'TEAM' && (

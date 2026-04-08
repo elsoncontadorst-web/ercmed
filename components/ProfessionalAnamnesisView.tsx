@@ -10,6 +10,10 @@ import jsPDF from 'jspdf';
 interface Props {
   patientId: string;
   patientName: string;
+  onOpenLegacyMedicalForm?: () => void;
+  onEditLegacyMedicalForm?: (anamnesis: Anamnesis) => void;
+  onDeleteLegacyMedical?: (id: string) => void;
+  legacyAnamneses?: Anamnesis[];
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -133,7 +137,14 @@ const FieldRenderer: React.FC<{
 // ─────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────
-const ProfessionalAnamnesisView: React.FC<Props> = ({ patientId, patientName }) => {
+const ProfessionalAnamnesisView: React.FC<Props> = ({ 
+  patientId, 
+  patientName,
+  onOpenLegacyMedicalForm,
+  onEditLegacyMedicalForm,
+  onDeleteLegacyMedical,
+  legacyAnamneses = []
+}) => {
   const { userProfile } = useUser();
   const [mode, setMode] = useState<'list' | 'new' | 'view' | 'edit'>('list');
   const [selectedTemplate, setSelectedTemplate] = useState<AnamnesisTemplate | null>(null);
@@ -326,7 +337,14 @@ const ProfessionalAnamnesisView: React.FC<Props> = ({ patientId, patientName }) 
             <Plus className="w-5 h-5 text-teal-600" />
             <h3 className="font-bold text-slate-800">Iniciar Nova Anamnese</h3>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            {onOpenLegacyMedicalForm && (
+              <button onClick={onOpenLegacyMedicalForm}
+                className="flex flex-col items-center gap-2 p-4 bg-white rounded-xl border-2 border-transparent hover:border-teal-400 hover:shadow-md transition-all group text-center">
+                <span className="text-3xl">🩺</span>
+                <span className="text-xs font-semibold text-slate-700 group-hover:text-teal-700 leading-tight">Anamnese Médica</span>
+              </button>
+            )}
             {ALL_ANAMNESIS_TEMPLATES.map(t => (
               <button key={t.id} onClick={() => handleSelectTemplate(t)}
                 className="flex flex-col items-center gap-2 p-4 bg-white rounded-xl border-2 border-transparent hover:border-teal-400 hover:shadow-md transition-all group text-center">
@@ -342,11 +360,11 @@ const ProfessionalAnamnesisView: React.FC<Props> = ({ patientId, patientName }) 
           <div className="flex items-center gap-2 mb-3">
             <FileText className="w-5 h-5 text-slate-500" />
             <h3 className="font-bold text-slate-800">Anamneses Registradas</h3>
-            <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{savedAnamneses.length}</span>
+            <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{savedAnamneses.length + legacyAnamneses.length}</span>
           </div>
           {loading ? (
             <div className="text-center py-8 text-slate-400">Carregando...</div>
-          ) : savedAnamneses.length === 0 ? (
+          ) : (savedAnamneses.length === 0 && legacyAnamneses.length === 0) ? (
             <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-300">
               <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
               <p className="text-sm">Nenhuma anamnese registrada ainda.</p>
@@ -354,6 +372,37 @@ const ProfessionalAnamnesisView: React.FC<Props> = ({ patientId, patientName }) 
             </div>
           ) : (
             <div className="space-y-2">
+              {/* Render Legacy Medical Anamneses */}
+              {legacyAnamneses.map(a => (
+                  <div key={a.id} className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:shadow-sm transition-all">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🩺</span>
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">Anamnese Médica</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-800">Médico(a)</span>
+                          <span className="text-xs text-slate-400 flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(a.date).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {onEditLegacyMedicalForm && (
+                        <button onClick={() => onEditLegacyMedicalForm(a)}
+                          className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition-all flex items-center gap-1">
+                          <Edit3 className="w-3 h-3" /> Ver/Editar
+                        </button>
+                      )}
+                      {onDeleteLegacyMedical && (
+                        <button onClick={() => onDeleteLegacyMedical(a.id!)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+              ))}
+
+              {/* Render Dynamic Multiprofessional Anamneses */}
               {savedAnamneses.map(a => {
                 const tpl = getTemplateById(a.templateId);
                 const colorClass = BADGE_MAP[tpl?.color || 'teal'];
