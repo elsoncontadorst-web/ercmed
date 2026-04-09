@@ -3,13 +3,15 @@ import { FileText, ChevronDown, ChevronUp, Save, Wand2, Printer, Trash2, Plus, E
 import { auth } from '../services/firebase';
 import { ALL_ANAMNESIS_TEMPLATES, AnamnesisTemplate, AnamnesisFieldDef, getTemplateById } from '../services/anamnesisTemplates';
 import { saveProfessionalAnamnesis, getProfessionalAnamneses, updateProfessionalAnamnesis, deleteProfessionalAnamnesis } from '../services/healthService';
-import { ProfessionalAnamnesis, FilledSection, FilledField } from '../types/health';
+import { ProfessionalAnamnesis, FilledSection, FilledField, Patient } from '../types/health';
+import { calculateAge } from '../utils/formatters';
 import { useUser } from '../contexts/UserContext';
 import jsPDF from 'jspdf';
 
 interface Props {
   patientId: string;
   patientName: string;
+  patient?: Patient;
   onOpenLegacyMedicalForm?: () => void;
   onEditLegacyMedicalForm?: (anamnesis: Anamnesis) => void;
   onDeleteLegacyMedical?: (id: string) => void;
@@ -140,6 +142,7 @@ const FieldRenderer: React.FC<{
 const ProfessionalAnamnesisView: React.FC<Props> = ({ 
   patientId, 
   patientName,
+  patient,
   onOpenLegacyMedicalForm,
   onEditLegacyMedicalForm,
   onDeleteLegacyMedical,
@@ -170,7 +173,26 @@ const ProfessionalAnamnesisView: React.FC<Props> = ({
 
   const handleSelectTemplate = (template: AnamnesisTemplate) => {
     setSelectedTemplate(template);
-    setFormValues({});
+    
+    // Pre-fill Identification section if patient data is available
+    const initialValues: Record<string, Record<string, any>> = {};
+    
+    if (patient) {
+        const identSection = template.sections.find(s => s.id === 'identificacao');
+        if (identSection) {
+            initialValues['identificacao'] = {};
+            identSection.fields.forEach(f => {
+                if (f.id === 'nome') initialValues['identificacao']['nome'] = patient.name;
+                if (f.id === 'idade') initialValues['identificacao']['idade'] = calculateAge(patient.birthdate);
+                if (f.id === 'sexo') initialValues['identificacao']['sexo'] = patient.gender;
+                if (f.id === 'responsavel' && patient.isMinor && patient.guardian) {
+                    initialValues['identificacao']['responsavel'] = `${patient.guardian.name} (${patient.guardian.relationship})`;
+                }
+            });
+        }
+    }
+
+    setFormValues(initialValues);
     setNarrative('');
     setCurrentAnamnesis(null);
     setCollapsedSections(new Set());

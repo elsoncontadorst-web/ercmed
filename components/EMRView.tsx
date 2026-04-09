@@ -2101,6 +2101,7 @@ const EMRView: React.FC = () => {
                                     {/* ===== HISTORY LIST & SELECTOR ===== */}
                                     {!showAnamnesisForm && selectedPatient && (
                                         <ProfessionalAnamnesisView
+                                            patient={selectedPatient}
                                             patientId={selectedPatient.id}
                                             patientName={selectedPatient.name}
                                             onOpenLegacyMedicalForm={() => {

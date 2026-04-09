@@ -306,19 +306,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
 
         <nav className="flex-1 px-4 py-6 space-y-2">
           {/* 1. DASHBOARD */}
-          <ModuleGroup
-            title="Dashboards"
-            icon={LayoutDashboard}
-            isOpen={true} // Keep main group open
-            setIsOpen={() => {}} // Controlled or permanently open for clarity
-            currentView={currentView}
-            views={[AppView.DASHBOARD, AppView.HEALTH_DASHBOARD]}
-          >
-            {isAdmin && (
-              <NavButton view={AppView.DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" />
-            )}
-            <NavButton view={AppView.HEALTH_DASHBOARD} icon={Activity} label="Indicadores de Saúde" moduleName="healthManagement" />
-          </ModuleGroup>
+          <NavButton view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" moduleName="healthManagement" />
 
           {/* 2. OPERAÇÃO CLÍNICA */}
           <ModuleGroup
@@ -491,21 +479,18 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               </button>
               <div className="h-px bg-slate-700 my-2"></div>
 
-              {/* Dashboard Geral - Admin only */}
-              {isAdmin && (
-                <NavButton view={AppView.DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" />
-              )}
+              {/* Dashboard Geral */}
+              <NavButton view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" />
 
-              {/* Gestão de Saúde */}
+              {/* Operação Clínica (Previously Gestão de Saúde) */}
               <ModuleGroup
-                title="Gestão de Saúde"
+                title="Operação Clínica"
                 icon={Heart}
                 isOpen={isSaudeOpen}
                 setIsOpen={setIsSaudeOpen}
                 currentView={currentView}
-                views={[AppView.HEALTH_DASHBOARD, AppView.PATIENTS, AppView.APPOINTMENTS, AppView.EMR, AppView.RECEIPTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS, AppView.TEAM_INVITATIONS]}
+                views={[AppView.PATIENTS, AppView.APPOINTMENTS, AppView.EMR, AppView.RECEIPTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS, AppView.TEAM_INVITATIONS]}
               >
-                <NavButton view={AppView.HEALTH_DASHBOARD} icon={Activity} label="Dashboard de Saúde" />
                 <NavButton view={AppView.PATIENTS} icon={Users} label="Pacientes" />
                 <NavButton view={AppView.APPOINTMENTS} icon={Calendar} label="Meus Atendimentos" />
                 <NavButton view={AppView.EMR} icon={FileText} label="Clínica" />

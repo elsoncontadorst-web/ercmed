@@ -35,8 +35,17 @@ export const getUserPermissions = async (userId: string): Promise<UserPermission
     }
 };
 
+// Cache for manager IDs to avoid repeated Firestore calls
+let managerIdCache: { [userId: string]: { managerId: string | null; timestamp: number } } = {};
+
 export const getManagerIdForUser = async (userId: string): Promise<string | null> => {
+    // Check cache
+    if (managerIdCache[userId] && Date.now() - managerIdCache[userId].timestamp < CACHE_TTL) {
+        return managerIdCache[userId].managerId;
+    }
+
     try {
+        let managerId: string | null = null;
         const userRef = doc(db, 'system_users', userId);
         const userSnap = await getDoc(userRef);
 
@@ -44,22 +53,30 @@ export const getManagerIdForUser = async (userId: string): Promise<string | null
             const userData = userSnap.data() as SystemUser;
             // If user is a manager/admin, they are their own manager
             if (['admin', 'manager'].includes(userData.role) || userData.email === 'elsoncontador.st@gmail.com') {
-                return userId;
+                managerId = userId;
+            } else {
+                managerId = userData.managerId || userId;
             }
-            return userData.managerId || userId; // Fallback to userId to allow clinic creation
+        } else {
+            // Check user_profiles as fallback
+            const profileRef = doc(db, 'user_profiles', userId);
+            const profileSnap = await getDoc(profileRef);
+            if (profileSnap.exists()) {
+                const profileData = profileSnap.data();
+                if (profileData.isClinicManager || profileData.email === 'elsoncontador.st@gmail.com') {
+                    managerId = userId;
+                } else {
+                    managerId = profileData.managerId || userId;
+                }
+            } else {
+                // Return userId as final fallback to allow any authenticated user to create clinics
+                managerId = userId;
+            }
         }
 
-        // Check user_profiles as fallback
-        const profileRef = doc(db, 'user_profiles', userId);
-        const profileSnap = await getDoc(profileRef);
-        if (profileSnap.exists()) {
-            const profileData = profileSnap.data();
-            if (profileData.isClinicManager || profileData.email === 'elsoncontador.st@gmail.com') return userId;
-            return profileData.managerId || userId; // Fallback to userId to allow clinic creation
-        }
-
-        // Return userId as final fallback to allow any authenticated user to create clinics
-        return userId;
+        // Update cache
+        managerIdCache[userId] = { managerId, timestamp: Date.now() };
+        return managerId;
     } catch (error) {
         console.error('Error fetching manager ID:', error);
         return null;

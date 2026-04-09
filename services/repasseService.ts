@@ -248,6 +248,17 @@ export const updateBillingRecord = async (
     }
 };
 
+export const deleteBillingRecord = async (billingId: string): Promise<boolean> => {
+    try {
+        const billingRef = doc(db, 'consultation_billing', billingId);
+        await deleteDoc(billingRef);
+        return true;
+    } catch (error) {
+        console.error('Erro ao deletar registro de faturamento:', error);
+        return false;
+    }
+};
+
 // ==================== REPASSE CALCULATION ====================
 
 /**

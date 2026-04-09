@@ -208,8 +208,20 @@ export const validateCNPJ = (cnpj: string): boolean => {
         if (pos < 2) pos = 9;
     }
 
-    result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
-    if (result !== parseInt(digits.charAt(1))) return false;
-
     return true;
+};
+
+/**
+ * Calculate age based on birthdate (YYYY-MM-DD)
+ */
+export const calculateAge = (birthdate: string | undefined): number => {
+    if (!birthdate) return 0;
+    const today = new Date();
+    const birth = new Date(birthdate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
+    }
+    return age;
 };

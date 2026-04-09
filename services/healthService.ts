@@ -724,41 +724,57 @@ export const subscribeToAppointments = (
 };
 
 export const subscribeToAllAppointments = (
-    onUpdate: (appointments: Appointment[]) => void
+    onUpdate: (appointments: Appointment[]) => void,
+    onError?: (error: any) => void
 ): (() => void) => {
     const userId = auth.currentUser?.uid;
     if (!userId) {
+        onUpdate([]);
         return () => { };
     }
 
-    let unsubscribe: (() => void) | null = null;
+    let unsubscribe: () => void = () => { };
 
-    getManagerIdForUser(userId).then((managerId) => {
-        const effectiveManagerId = managerId || userId;
+    const setup = async () => {
+        try {
+            const managerId = await getManagerIdForUser(userId);
+            const effectiveManagerId = managerId || userId;
 
-        if (!effectiveManagerId) {
-            onUpdate([]);
-            return;
-        }
+            if (!effectiveManagerId) {
+                onUpdate([]);
+                return;
+            }
 
-        const appointmentsRef = collectionGroup(db, 'appointments');
-        const q = query(appointmentsRef, where('managerId', '==', effectiveManagerId));
+            const appointmentsRef = collectionGroup(db, 'appointments');
+            const q = query(
+                appointmentsRef,
+                where('managerId', '==', effectiveManagerId),
+                where('status', 'in', ['scheduled', 'confirmed']),
+                orderBy('date', 'asc'),
+                orderBy('time', 'asc')
+            );
 
-        unsubscribe = onSnapshot(q, (snapshot) => {
-            const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
-            const sorted = appointments.sort((a, b) => {
-                const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
-                const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
-                return dateB.getTime() - dateA.getTime();
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                const appointments = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })) as Appointment[];
+                onUpdate(appointments);
+            }, (error) => {
+                console.error('Error in appointments snapshot:', error);
+                if (onError) onError(error);
+                onUpdate([]); // Resolve loading state
             });
-            onUpdate(sorted);
-        }, (error) => {
-            console.error('Error in all appointments listener:', error);
-        });
-    });
+        } catch (error) {
+            console.error('Error setting up all appointments listener:', error);
+            if (onError) onError(error);
+            onUpdate([]);
+        }
+    };
 
+    setup();
     return () => {
-        if (unsubscribe) unsubscribe();
+        unsubscribe();
     };
 };
 

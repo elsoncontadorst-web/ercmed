@@ -46,6 +46,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
         phone: '',
         email: '',
         address: '',
+        gender: '',
         clinicId: '',
         isMinor: false,
         guardianName: '',
@@ -166,6 +167,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                 phone: formData.phone,
                 email: formData.email || undefined,
                 address: formData.address || undefined,
+                gender: formData.gender || undefined,
                 clinicId: formData.clinicId,
                 isMinor,
                 guardian: isMinor ? {
@@ -213,6 +215,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             phone: '',
             email: '',
             address: '',
+            gender: '',
             clinicId: clinics.length === 1 ? clinics[0].id : (clinics.length > 0 ? clinics[0].id : ''),
             isMinor: false,
             guardianName: '',
@@ -238,6 +241,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             phone: patient.phone,
             email: patient.email || '',
             address: patient.address || '',
+            gender: patient.gender || '',
             clinicId: patient.clinicId || '',
             isMinor: patient.isMinor,
             guardianName: patient.guardian?.name || '',
@@ -535,6 +539,21 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                         className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-brand-500"
                                     />
+                                </div>
+
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700">Sexo</label>
+                                    <select
+                                        value={formData.gender}
+                                        onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                                    >
+                                        <option value="">Selecione...</option>
+                                        <option value="Masculino">Masculino</option>
+                                        <option value="Feminino">Feminino</option>
+                                        <option value="Outro">Outro</option>
+                                        <option value="Prefiro não informar">Prefiro não informar</option>
+                                    </select>
                                 </div>
 
                                 <div className="col-span-2">

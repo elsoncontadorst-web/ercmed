@@ -33,6 +33,7 @@ export interface Patient {
   phone: string;
   email?: string;
   address?: string;
+  gender?: string; // e.g., 'Masculino', 'Feminino', 'Outro', 'Prefiro não informar'
   isMinor: boolean;
   guardian?: Guardian; // Required if isMinor is true
   medicalNotes?: string;

@@ -3,7 +3,9 @@ import { Upload, FileSpreadsheet, Plus, Filter, Download, Trash2, CheckCircle, X
 import * as XLSX from 'xlsx';
 import { auth } from '../services/firebase';
 import { saveTransactions, getTransactions, SavedTransaction, saveCustomCategories, getCustomCategories } from '../services/userDataService';
+import { getAllBillingRecords, deleteBillingRecord } from '../services/repasseService';
 import { useUser } from '../contexts/UserContext';
+import { ConsultationBilling } from '../types/finance';
 
 // Reusing the interface from service or defining compatible one
 interface Transaction extends SavedTransaction { }
@@ -11,7 +13,8 @@ interface Transaction extends SavedTransaction { }
 export const FinancialControlView: React.FC = () => {
     const { userProfile } = useUser();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [activeTab, setActiveTab] = useState<'transactions' | 'payable' | 'receivable' | 'reports'>('transactions');
+    const [billingRecords, setBillingRecords] = useState<ConsultationBilling[]>([]);
+    const [activeTab, setActiveTab] = useState<'transactions' | 'payable' | 'receivable' | 'billing'>('transactions');
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
@@ -56,6 +59,11 @@ export const FinancialControlView: React.FC = () => {
                     setCustomExpenseCategories(categoriesData.expense);
                     setCustomIncomeCategories(categoriesData.income);
                 }
+                // Load Billing Records
+                const billingData = await getAllBillingRecords();
+                if (billingData) {
+                    setBillingRecords(billingData);
+                }
             } catch (error) {
                 console.error("Erro ao carregar dados:", error);
             } finally {
@@ -66,6 +74,17 @@ export const FinancialControlView: React.FC = () => {
 
         loadData();
     }, []);
+
+    const handleDeleteBilling = async (id: string) => {
+        if (window.confirm('Tem certeza que deseja excluir este registro de faturamento? Isso removerá o valor do Dashboard Geral.')) {
+            const success = await deleteBillingRecord(id);
+            if (success) {
+                setBillingRecords(prev => prev.filter(b => b.id !== id));
+            } else {
+                alert('Erro ao excluir registro.');
+            }
+        }
+    };
 
     // Helper to save custom categories to Firebase
     const saveCustomCategoriesData = async (type: 'expense' | 'income', categories: string[]) => {
@@ -546,6 +565,12 @@ export const FinancialControlView: React.FC = () => {
                         >
                             Contas a Pagar
                         </button>
+                        <button
+                            onClick={() => setActiveTab('billing')}
+                            className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'billing' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Faturamento Clínico
+                        </button>
                     </div>
 
                     <div className="px-4">
@@ -589,6 +614,56 @@ export const FinancialControlView: React.FC = () => {
                                 groups[key].count++;
                             });
                             filteredTransactions = Object.values(groups).sort((a, b) => b.amount - a.amount);
+                        }
+
+                        if (activeTab === 'billing') {
+                            return (
+                                <div className="space-y-4">
+                                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-4">
+                                        <p className="text-sm text-blue-800">
+                                            Estes são os registros automáticos gerados a partir de consultas e atendimentos. 
+                                            <strong> Exclua registros aqui se desejar remover valores incorretos do Dashboard Geral.</strong>
+                                        </p>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="border-b border-slate-200">
+                                                    <th className="py-3 px-4 text-sm font-semibold text-slate-600">Data</th>
+                                                    <th className="py-3 px-4 text-sm font-semibold text-slate-600">Paciente</th>
+                                                    <th className="py-3 px-4 text-sm font-semibold text-slate-600">Profissional</th>
+                                                    <th className="py-3 px-4 text-sm font-semibold text-slate-600 text-right">Valor Bruto</th>
+                                                    <th className="py-3 px-4 text-sm font-semibold text-slate-600 text-center">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {billingRecords.map((b) => (
+                                                    <tr key={b.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                                        <td className="py-3 px-4 text-sm text-slate-600">{b.consultationDate}</td>
+                                                        <td className="py-3 px-4 text-sm text-slate-800 font-medium">{b.patientName}</td>
+                                                        <td className="py-3 px-4 text-sm text-slate-600">{b.professionalName}</td>
+                                                        <td className="py-3 px-4 text-sm font-bold text-right text-green-600">{formatMoney(b.grossAmount)}</td>
+                                                        <td className="py-3 px-4 text-center">
+                                                            <button
+                                                                onClick={() => handleDeleteBilling(b.id!)}
+                                                                className="text-slate-400 hover:text-red-500 transition-colors"
+                                                                title="Excluir do faturamento"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {billingRecords.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={5} className="py-12 text-center text-slate-500">Nenhum registro de faturamento encontrado.</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
                         }
 
                         return (
