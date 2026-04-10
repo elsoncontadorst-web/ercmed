@@ -7,6 +7,11 @@ import {
     getProfessionalStats
 } from '../services/repasseService';
 import { Professional, ConsultationBilling, RepasseStatement } from '../types/finance';
+import { useUser } from '../contexts/UserContext';
+import { auth } from '../services/firebase';
+
+// Only the master admin defined in services can bypass clinic filtering
+const MASTER_ADMIN_EMAIL = 'elsoncontador.st@gmail.com';
 
 const RepasseDashboard: React.FC = () => {
     const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -18,19 +23,27 @@ const RepasseDashboard: React.FC = () => {
         totalProfessionals: 0,
         pendingRepasse: 0
     });
+    const { userProfile, isAdminMaster, isAdmin: isSystemAdmin } = useUser();
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         loadDashboardData();
-    }, []);
+    }, [userProfile]);
 
     const loadDashboardData = async () => {
         setLoading(true);
         try {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            // Determine if user should see everything or just their clinic
+            // Only Master Admin sees everything. Others see only their managerId-linked data.
+            const managerId = isAdminMaster ? undefined : user.uid;
+
             const [profsData, billingsData, statementsData] = await Promise.all([
-                getAllProfessionals(),
-                getAllBillingRecords(),
-                getRepasseStatements()
+                getAllProfessionals(managerId),
+                getAllBillingRecords(managerId),
+                getRepasseStatements(managerId)
             ]);
 
             setProfessionals(profsData);

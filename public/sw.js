@@ -1,9 +1,9 @@
-const CACHE_NAME = 'easymed-v1';
+const CACHE_NAME = 'easymed-v2';
 const urlsToCache = [
     '/',
     '/index.html',
     '/manifest.json',
-    '/favicon.ico',
+    '/favicon.png',
     '/icon-192.png',
     '/icon-512.png'
 ];

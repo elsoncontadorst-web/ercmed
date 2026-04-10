@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Receipt, DollarSign, Plus, Calendar, Search, Filter, FileText, X, Check, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Receipt, DollarSign, Plus, Calendar, Search, Filter, FileText, X, Check, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
 import { auth } from '../services/firebase';
-import { getAllBillingRecords, processBilling, getAllProfessionals } from '../services/repasseService';
+import { getAllBillingRecords, processBilling, getAllProfessionals, deleteBillingRecord } from '../services/repasseService';
 import { ConsultationBilling, Professional } from '../types/finance';
 import { addTransaction } from '../services/userDataService';
+import { useUser } from '../contexts/UserContext';
 
-const ADMIN_EMAILS = ['usuario020@ercmed.com.br', 'elsoncontador.st@gmail.com'];
+// Only the master admin defined in services can bypass clinic filtering
+const MASTER_ADMIN_EMAIL = 'elsoncontador.st@gmail.com';
 
 const BillingView: React.FC = () => {
+    const { userProfile, isAdminMaster } = useUser();
     const [billingRecords, setBillingRecords] = useState<ConsultationBilling[]>([]);
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [loading, setLoading] = useState(false);
@@ -32,24 +35,33 @@ const BillingView: React.FC = () => {
     useEffect(() => {
         const user = auth.currentUser;
         if (user) {
-            const adminStatus = ADMIN_EMAILS.includes(user.email || '');
+            // isAdmin state for UI elements (like "New Billing" button)
+            // Note: Data filtering uses isAdminMaster which is more strict
+            const adminStatus = isAdminMaster || userProfile?.isClinicManager === true || userProfile?.role === 'admin' || userProfile?.role === 'admin_master';
+            
             setIsAdmin(adminStatus);
             loadData(adminStatus, user.uid);
         }
-    }, []);
+    }, [userProfile, isAdminMaster]);
 
     const loadData = async (admin: boolean, userId: string) => {
         setLoading(true);
         try {
+            const isClinicManager = userProfile?.isClinicManager === true;
+            
+            // ONLY Master Admins see everything (no managerId filter)
+            // Clinic managers and regular admins (from profile) see only their own data
+            const managerId = isAdminMaster ? undefined : userId;
+
             if (admin) {
                 const [allBillings, allProfs] = await Promise.all([
-                    getAllBillingRecords(),
-                    getAllProfessionals()
+                    getAllBillingRecords(managerId),
+                    getAllProfessionals(managerId)
                 ]);
                 setBillingRecords(allBillings);
                 setProfessionals(allProfs);
             } else {
-                const myBillings = await getAllBillingRecords(userId);
+                const myBillings = await getAllBillingRecords(undefined, userId);
                 setBillingRecords(myBillings);
             }
         } catch (error) {
@@ -93,6 +105,7 @@ const BillingView: React.FC = () => {
             await processBilling({
                 professionalId: formData.professionalId,
                 professionalName: selectedProf.name,
+                managerId: userProfile?.isClinicManager ? user.uid : undefined, // Store managerId 
                 patientName: formData.patientName,
                 consultationDate: formData.consultationDate,
                 grossAmount: grossAmount,
@@ -144,6 +157,25 @@ const BillingView: React.FC = () => {
         } catch (error) {
             console.error("Error saving billing", error);
             setNotification({ type: 'error', message: 'Erro ao salvar faturamento. Tente novamente.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm('Excluir este faturamento permanentemente? Esta ação atualizará o Dashboard.')) return;
+        setLoading(true);
+        try {
+            const success = await deleteBillingRecord(id);
+            if (success) {
+                setBillingRecords(prev => prev.filter(b => b.id !== id));
+                setNotification({ type: 'success', message: 'Faturamento excluído com sucesso.' });
+            } else {
+                setNotification({ type: 'error', message: 'Erro ao excluir faturamento.' });
+            }
+        } catch (error) {
+            console.error(error);
+            setNotification({ type: 'error', message: 'Erro ao conectar ao servidor.' });
         } finally {
             setLoading(false);
         }
@@ -237,12 +269,13 @@ const BillingView: React.FC = () => {
                             <th className="p-4 font-semibold text-slate-700">Paciente</th>
                             <th className="p-4 font-semibold text-slate-700">Valor</th>
                             <th className="p-4 font-semibold text-slate-700">Status</th>
+                            <th className="p-4 font-semibold text-slate-700 text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredBillings.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="p-8 text-center text-slate-500">
+                                <td colSpan={6} className="p-8 text-center text-slate-500">
                                     Nenhum faturamento encontrado
                                 </td>
                             </tr>
@@ -264,6 +297,17 @@ const BillingView: React.FC = () => {
                                             }`}>
                                             {billing.paymentStatus === 'received' ? 'Recebido' : 'Pendente'}
                                         </span>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="flex justify-center gap-2">
+                                            <button 
+                                                onClick={() => handleDelete(billing.id!)}
+                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                title="Excluir Lançamento"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))

@@ -35,6 +35,7 @@ const EMRView: React.FC = () => {
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [examRequests, setExamRequests] = useState<ExamRequest[]>([]);
     const [loading, setLoading] = useState(false);
+    const { isAdminMaster, isAdmin: isSystemAdmin } = useUser();
 
     // Team & Anamnesis State
     const [teamMembers, setTeamMembers] = useState<PatientTeamMember[]>([]);
@@ -168,7 +169,7 @@ const EMRView: React.FC = () => {
         loadPatients();
         loadProfessionals();
         loadProfessionalSettings();
-    }, []);
+    }, [userProfile]);
 
     const loadProfessionalSettings = async () => {
         if (auth.currentUser) {
@@ -188,7 +189,15 @@ const EMRView: React.FC = () => {
     };
 
     const loadProfessionals = async () => {
-        const data = await getAllProfessionals();
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const isClinicManager = userProfile?.isClinicManager === true;
+        
+        // Only Master Admin can bypass the managerId filter
+        const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+
+        const data = await getAllProfessionals(managerId);
         setProfessionals(data);
     };
 
@@ -206,7 +215,12 @@ const EMRView: React.FC = () => {
     const loadPatients = async () => {
         const user = auth.currentUser;
         if (user) {
-            const data = await getAllPatients(user.uid);
+            const isClinicManager = userProfile?.isClinicManager === true;
+            
+            // Only Master Admin can bypass the managerId filter
+            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+
+            const data = await getAllPatients(managerId);
             setPatients(data);
         }
     };
@@ -2111,7 +2125,7 @@ const EMRView: React.FC = () => {
                                                 setShowAnamnesisForm(true);
                                             }}
                                             onEditLegacyMedicalForm={(a) => {
-                                                setNewAnamnesis(a); 
+                                                setNewAnamnesis(a as any); 
                                                 setIsEditingAnamnesis(true); 
                                                 setEditingAnamnesisId(a.id); 
                                                 setShowAnamnesisForm(true);

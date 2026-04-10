@@ -54,6 +54,7 @@ export interface ConsultationBilling {
     id: string;
     professionalId: string;
     professionalName: string;
+    managerId?: string; // ID of the manager who owns this record
     patientName?: string;
     consultationDate: string;
 
@@ -99,6 +100,7 @@ export interface RepasseStatement {
     id: string;
     professionalId: string;
     professionalName: string;
+    managerId?: string; // ID of the manager who owns this record
     periodStart: string;
     periodEnd: string;
 

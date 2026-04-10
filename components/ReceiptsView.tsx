@@ -11,7 +11,7 @@ import { useUser } from '../contexts/UserContext';
 import jsPDF from 'jspdf';
 
 const ReceiptsView: React.FC = () => {
-    const { isAdmin } = useUser();
+    const { user, userProfile, isAdminMaster, isAdmin } = useUser();
     const [receipts, setReceipts] = useState<Receipt[]>([]);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -33,8 +33,11 @@ const ReceiptsView: React.FC = () => {
 
     useEffect(() => {
         loadData();
+    }, [user, userProfile, isAdminMaster]);
+
+    useEffect(() => {
         loadProfessionals();
-    }, []);
+    }, [user, userProfile, isAdminMaster]);
 
     useEffect(() => {
         if (selectedProfessionalId) {
@@ -60,17 +63,26 @@ const ReceiptsView: React.FC = () => {
     }, [selectedAppointment]);
 
     const loadProfessionals = async () => {
-        const user = auth.currentUser;
         if (!user) return;
 
         try {
+            const isClinicManager = userProfile?.isClinicManager === true;
+            
+            // SECURITY: Only Master Admin can bypass the clinic filter
+            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+
             if (isAdmin) {
-                // Admin vê todos os profissionais
-                const profs = await getAllProfessionals();
+                // Admin/Manager vê os profissionais da sua clínica
+                const profs = await getAllProfessionals(managerId);
                 setProfessionals(profs);
+                
+                // If there's only one professional and it's the current user, select it
+                if (profs.length === 1) {
+                    setSelectedProfessionalId(profs[0].id);
+                }
             } else {
                 // Profissional vê apenas ele mesmo
-                const profs = await getAllProfessionals();
+                const profs = await getAllProfessionals(managerId);
                 const userProf = profs.find(p => p.userId === user.uid);
                 if (userProf) {
                     setProfessionals([userProf]);
@@ -83,11 +95,12 @@ const ReceiptsView: React.FC = () => {
     };
 
     const loadAppointments = async (professionalId: string) => {
-        const user = auth.currentUser;
         if (!user) return;
 
         try {
-            // Buscar atendimentos do usuário (clínica)
+            // Buscar atendimentos vinculados ao profissional selecionado
+            // Nota: Se for clinic manager, user.uid é o managerId.
+            // Precisamos garantir que a busca seja segura.
             const allAppointments = await getAppointments(user.uid);
 
             // Filtrar por profissional e status concluído/confirmado
@@ -103,14 +116,16 @@ const ReceiptsView: React.FC = () => {
     };
 
     const loadData = async () => {
-        const user = auth.currentUser;
         if (!user) return;
 
         setLoading(true);
         try {
+            const isClinicManager = userProfile?.isClinicManager === true;
+            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+
             const [receiptsData, patientsData] = await Promise.all([
-                getReceipts(user.uid),
-                getAllPatients(user.uid)
+                getReceipts(user.uid, isAdminMaster),
+                getAllPatients(managerId)
             ]);
             setReceipts(receiptsData);
             setPatients(patientsData);

@@ -11,7 +11,7 @@ import { ConsultationBilling } from '../types/finance';
 interface Transaction extends SavedTransaction { }
 
 export const FinancialControlView: React.FC = () => {
-    const { userProfile } = useUser();
+    const { user, userProfile, isAdmin: contextIsAdmin, loading: userLoading } = useUser();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [billingRecords, setBillingRecords] = useState<ConsultationBilling[]>([]);
     const [activeTab, setActiveTab] = useState<'transactions' | 'payable' | 'receivable' | 'billing'>('transactions');
@@ -39,11 +39,9 @@ export const FinancialControlView: React.FC = () => {
     const [isGrouped, setIsGrouped] = useState(false);
     const [xmlClassMode, setXmlClassMode] = useState<'auto' | 'income' | 'expense'>('auto');
 
-    // Load data on mount/auth change
     useEffect(() => {
         const loadData = async () => {
-            const user = auth.currentUser;
-            if (!user) return;
+            if (userLoading || !user) return;
 
             setIsLoading(true);
             try {
@@ -59,11 +57,24 @@ export const FinancialControlView: React.FC = () => {
                     setCustomExpenseCategories(categoriesData.expense);
                     setCustomIncomeCategories(categoriesData.income);
                 }
+                
                 // Load Billing Records
-                const billingData = await getAllBillingRecords();
-                if (billingData) {
-                    setBillingRecords(billingData);
+                let billingData: ConsultationBilling[] = [];
+                
+                // Determine managerId for filtering: Only Master Admins see everything
+                const managerId = (userProfile?.isClinicManager && !isAdminMaster) ? user.uid : undefined;
+                billingData = await getAllBillingRecords(managerId);
+
+                // Fallback: This usually shouldn't be needed if logic above is correct, 
+                // but kept for compatibility with existing professional-level access if any
+                if (billingData.length === 0 && !isAdminMaster && !userProfile?.isClinicManager) {
+                    const fallbackData = await getAllBillingRecords(undefined, user.uid);
+                    if (fallbackData.length > 0) {
+                        billingData = fallbackData;
+                    }
                 }
+
+                setBillingRecords(billingData);
             } catch (error) {
                 console.error("Erro ao carregar dados:", error);
             } finally {
@@ -73,7 +84,7 @@ export const FinancialControlView: React.FC = () => {
         };
 
         loadData();
-    }, []);
+    }, [user, userLoading, contextIsAdmin, userProfile]);
 
     const handleDeleteBilling = async (id: string) => {
         if (window.confirm('Tem certeza que deseja excluir este registro de faturamento? Isso removerá o valor do Dashboard Geral.')) {
@@ -88,7 +99,6 @@ export const FinancialControlView: React.FC = () => {
 
     // Helper to save custom categories to Firebase
     const saveCustomCategoriesData = async (type: 'expense' | 'income', categories: string[]) => {
-        const user = auth.currentUser;
         if (!user) return;
 
         try {
@@ -438,12 +448,19 @@ export const FinancialControlView: React.FC = () => {
     };
 
     const getBalance = () => {
-        return transactions.reduce((acc, t) => {
+        const transactionBalance = transactions.reduce((acc, t) => {
             return t.type === 'income' ? acc + (t.amount || 0) : acc - (t.amount || 0);
         }, 0);
+        const billingBalance = billingRecords.reduce((acc, b) => acc + (b.grossAmount || 0), 0);
+        return transactionBalance + billingBalance;
     };
 
-    const getIncome = () => transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + (t.amount || 0), 0);
+    const getIncome = () => {
+        const transactionIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + (t.amount || 0), 0);
+        const billingIncome = billingRecords.reduce((acc, b) => acc + (b.grossAmount || 0), 0);
+        return transactionIncome + billingIncome;
+    };
+    
     const getExpenses = () => transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + (t.amount || 0), 0);
 
     return (
@@ -676,14 +693,29 @@ export const FinancialControlView: React.FC = () => {
                                     <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <FileSpreadsheet className="w-8 h-8 text-slate-400" />
                                     </div>
-                                    <h3 className="text-lg font-medium text-slate-800 mb-2">Nenhum lançamento encontrado</h3>
-                                    <p className="text-slate-500 mb-6">Comece importando uma planilha ou adicione um lançamento manual.</p>
-                                    <button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="text-brand-600 font-medium hover:underline"
-                                    >
-                                        Importar planilha agora
-                                    </button>
+                                    <h3 className="text-lg font-medium text-slate-800 mb-2">Nenhum lançamento manual</h3>
+                                    <p className="text-slate-500 mb-2">Sua lista de lançamentos manuais está vazia.</p>
+                                    
+                                    {billingRecords.length > 0 && (
+                                        <div className="bg-blue-50 text-blue-700 p-3 rounded-lg inline-block text-sm border border-blue-100 mb-6">
+                                            <strong>Nota:</strong> Existem {billingRecords.length} registros no <strong>Faturamento Clínico</strong>.
+                                            <button 
+                                                onClick={() => setActiveTab('billing')}
+                                                className="ml-2 underline font-bold hover:text-blue-900"
+                                            >
+                                                Ver faturamento automático
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="block">
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="text-brand-600 font-medium hover:underline"
+                                        >
+                                            {billingRecords.length > 0 ? 'Ou importe uma planilha agora' : 'Importar planilha agora'}
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">

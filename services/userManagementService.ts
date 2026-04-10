@@ -18,6 +18,8 @@ import { SystemUser, UserCreationByAdmin, DEFAULT_PERMISSIONS } from '../types/u
 import { addContract } from './contractService';
 import { Contract } from '../types/finance';
 
+const MASTER_ADMIN_EMAIL = 'elsoncontador.st@gmail.com';
+
 // ==================== USER MANAGEMENT ====================
 
 export const getAllUsers = async (managerId?: string): Promise<SystemUser[]> => {
@@ -28,9 +30,12 @@ export const getAllUsers = async (managerId?: string): Promise<SystemUser[]> => 
         if (managerId) {
             // Filter by managerId for clinical managers
             q = query(usersRef, where('managerId', '==', managerId));
-        } else {
+        } else if (auth.currentUser?.email === MASTER_ADMIN_EMAIL) {
             // Master Admin sees all
             q = query(usersRef);
+        } else {
+            // Safety fallback: Unauthorized or no managerId provided for restricted user
+            return [];
         }
 
         const snapshot = await getDocs(q);
@@ -42,8 +47,10 @@ export const getAllUsers = async (managerId?: string): Promise<SystemUser[]> => 
             let qProfiles;
             if (managerId) {
                 qProfiles = query(profilesRef, where('managerId', '==', managerId));
-            } else {
+            } else if (auth.currentUser?.email === MASTER_ADMIN_EMAIL) {
                 qProfiles = query(profilesRef);
+            } else {
+                return [];
             }
             
             const snapshotProfiles = await getDocs(qProfiles);
@@ -83,6 +90,12 @@ export const getAllUsers = async (managerId?: string): Promise<SystemUser[]> => 
 
 export const getAllUserProfiles = async (): Promise<SystemUser[]> => {
     try {
+        const currentUserEmail = auth.currentUser?.email;
+        if (currentUserEmail !== MASTER_ADMIN_EMAIL) {
+            console.warn(`[SECURITY] Unauthorized fetch of all user profiles by ${currentUserEmail}`);
+            return [];
+        }
+
         const profilesRef = collection(db, 'user_profiles');
         const snapshot = await getDocs(profilesRef);
         return snapshot.docs.map(doc => {
@@ -115,8 +128,10 @@ export const getPendingUsers = async (managerId?: string): Promise<SystemUser[]>
         let q;
         if (managerId) {
             q = query(usersRef, where('status', '==', 'pending'), where('managerId', '==', managerId));
-        } else {
+        } else if (auth.currentUser?.email === MASTER_ADMIN_EMAIL) {
             q = query(usersRef, where('status', '==', 'pending'));
+        } else {
+            return [];
         }
         const snapshot = await getDocs(q);
         const users = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as SystemUser));

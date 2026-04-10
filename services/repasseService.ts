@@ -9,11 +9,14 @@ import {
     orderBy,
     serverTimestamp,
     setDoc,
-    updateDoc
+    updateDoc,
+    deleteDoc
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Professional, ConsultationBilling, RepasseStatement, RepasseDeductions, Contract } from '../types/finance';
 import { getContracts, getContractsByOwner } from './contractService';
+
+const MASTER_ADMIN_EMAIL = 'elsoncontador.st@gmail.com';
 
 // Helper to map Contract to Professional (for backward compatibility)
 const contractToProfessional = (contract: Contract): Professional => {
@@ -68,10 +71,10 @@ export const getProfessionalConfig = async (professionalId: string): Promise<Pro
     }
 };
 
-export const getAllProfessionals = async (): Promise<Professional[]> => {
+export const getAllProfessionals = async (managerId?: string): Promise<Professional[]> => {
     try {
         // Fetch from contracts
-        const contracts = await getContracts();
+        const contracts = await getContracts(managerId);
 
         // Map to professionals
         const professionals = contracts
@@ -194,18 +197,32 @@ export const processBilling = async (
 export const getBillingRecords = async (
     professionalId: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    managerId?: string
 ): Promise<ConsultationBilling[]> => {
     try {
         const billingRef = collection(db, 'consultation_billing');
-        const q = query(
-            billingRef,
-            where('professionalId', '==', professionalId),
-            where('consultationDate', '>=', startDate),
-            where('consultationDate', '<=', endDate),
-            where('paymentStatus', '==', 'received'),
-            orderBy('consultationDate', 'desc')
-        );
+        let q;
+        if (managerId) {
+            q = query(
+                billingRef,
+                where('managerId', '==', managerId),
+                where('professionalId', '==', professionalId),
+                where('consultationDate', '>=', startDate),
+                where('consultationDate', '<=', endDate),
+                where('paymentStatus', '==', 'received'),
+                orderBy('consultationDate', 'desc')
+            );
+        } else {
+            q = query(
+                billingRef,
+                where('professionalId', '==', professionalId),
+                where('consultationDate', '>=', startDate),
+                where('consultationDate', '<=', endDate),
+                where('paymentStatus', '==', 'received'),
+                orderBy('consultationDate', 'desc')
+            );
+        }
         const snapshot = await getDocs(q);
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConsultationBilling));
     } catch (error) {
@@ -214,19 +231,30 @@ export const getBillingRecords = async (
     }
 };
 
-export const getAllBillingRecords = async (professionalId?: string): Promise<ConsultationBilling[]> => {
+export const getAllBillingRecords = async (managerId?: string, professionalId?: string): Promise<ConsultationBilling[]> => {
     try {
+        const currentUserEmail = auth.currentUser?.email;
+        const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
+
         const billingRef = collection(db, 'consultation_billing');
         let q;
-        if (professionalId) {
+
+        if (managerId) {
+            q = query(billingRef, where('managerId', '==', managerId), orderBy('consultationDate', 'desc'));
+        } else if (professionalId) {
             q = query(billingRef, where('professionalId', '==', professionalId), orderBy('consultationDate', 'desc'));
-        } else {
+        } else if (isMasterAdmin) {
+            // Only Master Admin sees everything
             q = query(billingRef, orderBy('consultationDate', 'desc'));
+        } else {
+            console.warn(`[SECURITY] Unauthorized fetch of all billing records by ${currentUserEmail}`);
+            return [];
         }
+
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ConsultationBilling));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConsultationBilling));
     } catch (error) {
-        console.error('Erro ao buscar todos os registros de faturamento:', error);
+        console.error('Erro ao buscar faturamentos:', error);
         return [];
     }
 };
@@ -354,6 +382,7 @@ export const calculateRepasse = async (
         const statement: Omit<RepasseStatement, 'id'> = {
             professionalId,
             professionalName: professional.name,
+            managerId: contract?.managerId, // Propagate managerId from contract
             periodStart: startDate,
             periodEnd: endDate,
             totalGross,
@@ -380,19 +409,41 @@ export const calculateRepasse = async (
     }
 };
 
-export const getRepasseStatements = async (professionalId?: string): Promise<RepasseStatement[]> => {
+export const getRepasseStatements = async (managerId?: string, professionalId?: string): Promise<RepasseStatement[]> => {
     try {
+        const currentUserEmail = auth.currentUser?.email;
+        const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
+
         const statementsRef = collection(db, 'repasse_statements');
         let q;
-        if (professionalId) {
+
+        if (managerId && professionalId) {
+            q = query(
+                statementsRef,
+                where('managerId', '==', managerId),
+                where('professionalId', '==', professionalId),
+                orderBy('periodStart', 'desc')
+            );
+        } else if (managerId) {
+            q = query(
+                statementsRef,
+                where('managerId', '==', managerId),
+                orderBy('periodStart', 'desc')
+            );
+        } else if (professionalId) {
             q = query(
                 statementsRef,
                 where('professionalId', '==', professionalId),
                 orderBy('periodStart', 'desc')
             );
-        } else {
+        } else if (isMasterAdmin) {
+            // Only Master Admin sees everything
             q = query(statementsRef, orderBy('periodStart', 'desc'));
+        } else {
+            console.warn(`[SECURITY] Unauthorized fetch of all repasse statements by ${currentUserEmail}`);
+            return [];
         }
+        
         const snapshot = await getDocs(q);
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as RepasseStatement));
     } catch (error) {

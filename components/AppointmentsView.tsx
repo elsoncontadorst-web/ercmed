@@ -12,6 +12,7 @@ import { NotificationContainer } from './NotificationToast';
 import { Notification, createNotification } from '../services/notificationService';
 
 const AppointmentsView: React.FC = () => {
+    const { user, userProfile, isAdminMaster } = useUser();
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -97,13 +98,31 @@ const AppointmentsView: React.FC = () => {
 
         // Load professionals (one-time) - from the clinic manager (owner)
         // This ensures team members see all professionals of the clinic, not just themselves
-        import('../services/accessControlService').then(async ({ getManagerIdForUser }) => {
-            const managerId = await getManagerIdForUser(user.uid);
-            const effectiveOwnerId = managerId || user.uid;
-            console.log('Loading professionals for owner:', effectiveOwnerId);
-            const pros = await getProfessionalsByOwner(effectiveOwnerId);
-            setProfessionals(pros);
-        });
+        const loadProfessionals = async () => {
+            if (!user) return;
+            try {
+                const isClinicManager = userProfile?.isClinicManager === true;
+                
+                // SECURITY: Only Master Admin can bypass the managerId filter
+                // If isAdminMaster is true, we pass undefined to see everyone
+                // If not, we try to find the managerId for the current user
+                let effectiveManagerId: string | undefined = undefined;
+                
+                if (!isAdminMaster) {
+                    const { getManagerIdForUser } = await import('../services/accessControlService');
+                    const managerId = await getManagerIdForUser(user.uid);
+                    effectiveManagerId = managerId || user.uid;
+                }
+
+
+                const pros = await getAllProfessionals(effectiveManagerId);
+                setProfessionals(pros);
+            } catch (error) {
+                console.error('Error loading professionals:', error);
+            }
+        };
+
+        loadProfessionals();
 
         // Cleanup listeners on unmount
         return () => {

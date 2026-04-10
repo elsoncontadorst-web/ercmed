@@ -7,7 +7,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 const ClinicTeamsView: React.FC = () => {
-    const { userProfile } = useUser();
+    const { user, userProfile, isAdminMaster } = useUser();
     const [patients, setPatients] = useState<Patient[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -24,13 +24,19 @@ const ClinicTeamsView: React.FC = () => {
 
     useEffect(() => {
         loadPatients();
-    }, []);
+    }, [user, userProfile, isAdminMaster]);
 
     const loadPatients = async () => {
+        if (!user) return;
         setLoading(true);
         try {
+            const isClinicManager = userProfile?.isClinicManager === true;
+            
+            // SECURITY: Only Master Admin can bypass the clinic filter
+            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+
             // Load patients managed by this user
-            const data = await getAllPatients();
+            const data = await getAllPatients(managerId);
             setPatients(data);
         } catch (error) {
             console.error('Error loading patients:', error);

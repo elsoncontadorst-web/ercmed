@@ -80,3 +80,43 @@ Revisão de Sistemas: ${a.reviewOfSystems}
         throw new Error("Falha ao processar a solicitação com a IA.");
     }
 };
+
+/**
+ * Gera uma narrativa clínica profissional para uma anamnese individual.
+ * @param prompt O conjunto de dados formatado como prompt para a IA.
+ * @returns O texto da narrativa clínica gerada.
+ */
+export const generateClinicalNarrative = async (prompt: string): Promise<string> => {
+    if (!prompt || prompt.trim() === "") {
+        throw new Error("Prompt vazio fornecido para geração da narrativa.");
+    }
+
+    try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${GROQ_API_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                messages: [{ role: "user", content: prompt }],
+                model: "llama-3.3-70b-versatile",
+                temperature: 0.5,
+                max_tokens: 1536 // Menor para narrativas individuais
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Erro na API Groq: ${errorData.error?.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.choices[0]?.message?.content || "";
+
+    } catch (error) {
+        console.error("Erro ao gerar narrativa clínica com IA:", error);
+        throw new Error("Falha ao processar a solicitação de narrativa com a IA.");
+    }
+};
+

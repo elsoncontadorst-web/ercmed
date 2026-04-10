@@ -17,7 +17,116 @@ interface LayoutProps {
   setView: (view: AppView) => void;
 }
 
+// Persist scroll position across view changes
+let sidebarScrollPos = 0;
+
+const NavButton = ({ 
+  view, 
+  icon: Icon, 
+  label, 
+  locked = false, 
+  moduleName, 
+  badgeCount,
+  userTier,
+  currentView,
+  setView,
+  setMobileMenuOpen
+}: { 
+  view: AppView; 
+  icon: any; 
+  label: string; 
+  locked?: boolean; 
+  moduleName?: string;
+  badgeCount?: number;
+  userTier?: AccountTier;
+  currentView: AppView;
+  setView: (view: AppView) => void;
+  setMobileMenuOpen: (open: boolean) => void;
+}) => {
+  // Check if module is allowed for current tier
+  const isModuleAllowed = moduleName && userTier ? tierAllowsModule(userTier, moduleName) : true;
+  const isLocked = locked || !isModuleAllowed;
+
+  return (
+    <button
+      onClick={() => {
+        if (isLocked) {
+          // Redirect to Plans view instead of showing modal
+          setView(AppView.PLANS);
+          setMobileMenuOpen(false);
+          return;
+        }
+        setView(view);
+        setMobileMenuOpen(false);
+      }}
+      className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all ${currentView === view
+        ? 'bg-brand-600 text-white shadow-lg shadow-brand-900/20'
+        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+        } ${isLocked ? 'opacity-60' : ''}`}
+    >
+      <div className="flex items-center space-x-3">
+        <Icon className="w-5 h-5" />
+        <span className="font-medium">{label}</span>
+        {!isLocked && badgeCount !== undefined && badgeCount > 0 && (
+          <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
+            {badgeCount}
+          </span>
+        )}
+      </div>
+      {isLocked && <Lock className="w-4 h-4 text-slate-500" />}
+    </button>
+  );
+};
+
+const ModuleGroup = ({
+  title,
+  icon: Icon,
+  isOpen,
+  setIsOpen,
+  currentView: _currentView,
+  views,
+  children
+}: {
+  title: string;
+  icon: any;
+  isOpen: boolean;
+  setIsOpen: (val: boolean) => void;
+  currentView: AppView;
+  views: AppView[];
+  children: React.ReactNode;
+}) => {
+  const isActive = views.includes(_currentView);
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all ${
+          isOpen 
+            ? 'bg-slate-800/60 text-white shadow-inner border border-slate-700/50' 
+            : isActive 
+              ? 'text-white bg-slate-800/30' 
+              : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+        }`}
+      >
+        <div className="flex items-center space-x-3">
+          <Icon className="w-5 h-5" />
+          <span className="font-medium">{title}</span>
+        </div>
+        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+      </button>
+
+      {isOpen && (
+        <div className="pl-4 space-y-1 animate-fade-in">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
+  const sidebarRef = React.useRef<HTMLElement>(null);
   const { theme, toggleTheme, cloudSaveEnabled, toggleCloudSave } = useSettings();
   const { userRole, isAdmin, userProfile, userTier, refreshUserData, modulePermissions, isTrialExpired, trialDaysRemaining } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -181,90 +290,23 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
     }
   };
 
-  const NavButton = ({ view, icon: Icon, label, locked = false, moduleName, badgeCount }: { view: AppView; icon: any; label: string; locked?: boolean; moduleName?: string, badgeCount?: number }) => {
-    // Check if module is allowed for current tier
-    const isModuleAllowed = moduleName ? tierAllowsModule(userTier, moduleName) : true;
-    const isLocked = locked || !isModuleAllowed;
+  // Restore sidebar scroll position on view change
+  useEffect(() => {
+    if (sidebarRef.current) {
+      sidebarRef.current.scrollTop = sidebarScrollPos;
+    }
+  }, [currentView]);
 
-    return (
-      <button
-        onClick={() => {
-          if (isLocked) {
-            // Redirect to Plans view instead of showing modal
-            setView(AppView.PLANS);
-            setMobileMenuOpen(false);
-            return;
-          }
-          setView(view);
-          setMobileMenuOpen(false);
-        }}
-        className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all ${currentView === view
-          ? 'bg-brand-600 text-white shadow-lg shadow-brand-900/20'
-          : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-          } ${isLocked ? 'opacity-60' : ''}`}
-      >
-        <div className="flex items-center space-x-3">
-          <Icon className="w-5 h-5" />
-          <span className="font-medium">{label}</span>
-          {!isLocked && badgeCount !== undefined && badgeCount > 0 && (
-            <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
-              {badgeCount}
-            </span>
-          )}
-        </div>
-        {isLocked && <Lock className="w-4 h-4 text-slate-500" />}
-      </button>
-    );
-  };
-
-  const ModuleGroup = ({
-    title,
-    icon: Icon,
-    isOpen,
-    setIsOpen,
-    currentView: _currentView,
-    views,
-    children
-  }: {
-    title: string;
-    icon: any;
-    isOpen: boolean;
-    setIsOpen: (val: boolean) => void;
-    currentView: AppView;
-    views: AppView[];
-    children: React.ReactNode;
-  }) => {
-    const isActive = views.includes(_currentView);
-
-    return (
-      <div className="space-y-1">
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all ${isActive ? 'text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            } `}
-        >
-          <div className="flex items-center space-x-3">
-            <Icon className="w-5 h-5" />
-            <span className="font-medium">{title}</span>
-          </div>
-          {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        </button>
-
-        {isOpen && (
-          <div className="pl-4 space-y-1 animate-fade-in">
-            {children}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-
-
-  return (
+  const handleSidebarScroll = (e: React.UIEvent<HTMLElement>) => {
+    sidebarScrollPos = e.currentTarget.scrollTop;
+  };  return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar Desktop */}
-      <aside className="hidden md:flex flex-col w-72 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto border-r border-slate-800 z-50">
+      <aside 
+        ref={sidebarRef}
+        onScroll={handleSidebarScroll}
+        className="hidden md:flex flex-col w-72 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto border-r border-slate-800 z-50"
+      >
         <div className="p-8 flex flex-col items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm">
           <SystemLogo variant="white" className="h-14" />
           
@@ -306,7 +348,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
 
         <nav className="flex-1 px-4 py-6 space-y-2">
           {/* 1. DASHBOARD */}
-          <NavButton view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" moduleName="healthManagement" />
+          <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" moduleName="healthManagement" />
 
           {/* 2. OPERAÇÃO CLÍNICA */}
           <ModuleGroup
@@ -317,10 +359,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             currentView={currentView}
             views={[AppView.PATIENTS, AppView.EMR, AppView.RECEIPTS, AppView.TEAM_INVITATIONS]}
           >
-            <NavButton view={AppView.PATIENTS} icon={Users} label="Pacientes" moduleName="patients" />
-            <NavButton view={AppView.EMR} icon={FileText} label="Prontuário (Clínica)" moduleName="emr" />
-            <NavButton view={AppView.RECEIPTS} icon={Receipt} label="Recibos Médicos" moduleName="receipts" />
-            <NavButton view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PATIENTS} icon={Users} label="Pacientes" moduleName="patients" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.EMR} icon={FileText} label="Prontuário (Clínica)" moduleName="emr" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.RECEIPTS} icon={Receipt} label="Recibos Médicos" moduleName="receipts" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
           </ModuleGroup>
 
           {/* 3. AGENDA */}
@@ -332,9 +374,9 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             currentView={currentView}
             views={[AppView.APPOINTMENTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS]}
           >
-            <NavButton view={AppView.APPOINTMENTS} icon={Calendar} label="Meus Atendimentos" moduleName="appointments" />
-            <NavButton view={AppView.CLINIC_HOURS} icon={Clock} label="Horários da Clínica" moduleName="clinicHours" />
-            <NavButton view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" moduleName="bookingSettings" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.APPOINTMENTS} icon={Calendar} label="Meus Atendimentos" moduleName="appointments" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_HOURS} icon={Clock} label="Horários da Clínica" moduleName="clinicHours" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" moduleName="bookingSettings" />
           </ModuleGroup>
 
           {/* 4. FINANCEIRO & FATURAMENTO */}
@@ -354,14 +396,14 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               AppView.TISS_BILLING
             ]}
           >
-            <NavButton view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" moduleName="financial" />
-            <NavButton view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" moduleName="financial" />
-            <NavButton view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" moduleName="financial" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" moduleName="financial" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" moduleName="financial" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" moduleName="financial" />
             <div className="h-px bg-slate-800 my-1"></div>
-            <NavButton view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" moduleName="repasse" />
-            <NavButton view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" moduleName="repasse" />
-            <NavButton view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" moduleName="repasse" />
-            <NavButton view={AppView.TISS_BILLING} icon={Building2} label="Faturamento TISS" moduleName="tiss" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" moduleName="repasse" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" moduleName="repasse" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" moduleName="repasse" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TISS_BILLING} icon={Building2} label="Faturamento TISS" moduleName="tiss" />
           </ModuleGroup>
 
           {/* 5. ADMINISTRAÇÃO */}
@@ -373,21 +415,21 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             currentView={currentView}
             views={[AppView.CLINICS, AppView.CLINIC_TEAMS, AppView.TEAM_INVITATIONS, AppView.CONTRACTS, AppView.USERS_MANAGEMENT, AppView.PERMISSIONS_MANAGEMENT, AppView.DEBUG, AppView.PLANS]}
           >
-            <NavButton view={AppView.CLINICS} icon={Building2} label="Consultórios" moduleName="clinics" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINICS} icon={Building2} label="Consultórios" moduleName="clinics" />
             {(isAdmin || userProfile?.isClinicManager) && (
-              <NavButton view={AppView.CLINIC_TEAMS} icon={Shield} label="Equipes da Clínica" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_TEAMS} icon={Shield} label="Equipes da Clínica" />
             )}
-            <NavButton view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" moduleName="contracts" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" moduleName="contracts" />
             {isAdmin && (
-              <NavButton view={AppView.USERS_MANAGEMENT} icon={Users} label="Gerenciar Usuários" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.USERS_MANAGEMENT} icon={Users} label="Gerenciar Usuários" />
             )}
             {userRole === UserRole.ADMIN_MASTER && (
-              <NavButton view={AppView.PERMISSIONS_MANAGEMENT} icon={Shield} label="Permissões Master" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PERMISSIONS_MANAGEMENT} icon={Shield} label="Permissões Master" />
             )}
             {(isAdmin || userProfile?.isClinicManager) && (
-              <NavButton view={AppView.DEBUG} icon={Activity} label="Diagnóstico" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.DEBUG} icon={Activity} label="Diagnóstico" />
             )}
-            <NavButton view={AppView.PLANS} icon={Crown} label="Planos e Preços" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PLANS} icon={Crown} label="Planos e Preços" />
           </ModuleGroup>
 
           {/* 6. APOIO & SUPORTE */}
@@ -399,11 +441,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             currentView={currentView}
             views={[AppView.AI_CONSULTANT, AppView.USER_PROFILE, AppView.HOW_TO_USE, AppView.ABOUT_APP, AppView.FEEDBACK]}
           >
-            <NavButton view={AppView.AI_CONSULTANT} icon={MessageSquare} label="Consultor IA" />
-            <NavButton view={AppView.USER_PROFILE} icon={UserIcon} label="Meu Perfil" />
-            <NavButton view={AppView.HOW_TO_USE} icon={BookOpen} label="Como Usar" />
-            <NavButton view={AppView.ABOUT_APP} icon={Info} label="Sobre" />
-            <NavButton view={AppView.FEEDBACK} icon={MessageSquare} label="Feedback" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.AI_CONSULTANT} icon={MessageSquare} label="Consultor IA" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.USER_PROFILE} icon={UserIcon} label="Meu Perfil" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HOW_TO_USE} icon={BookOpen} label="Como Usar" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.ABOUT_APP} icon={Info} label="Sobre" />
+            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FEEDBACK} icon={MessageSquare} label="Feedback" />
           </ModuleGroup>
         </nav>
 
@@ -480,7 +522,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               <div className="h-px bg-slate-700 my-2"></div>
 
               {/* Dashboard Geral */}
-              <NavButton view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" />
 
               {/* Operação Clínica (Previously Gestão de Saúde) */}
               <ModuleGroup
@@ -491,13 +533,13 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                 currentView={currentView}
                 views={[AppView.PATIENTS, AppView.APPOINTMENTS, AppView.EMR, AppView.RECEIPTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS, AppView.TEAM_INVITATIONS]}
               >
-                <NavButton view={AppView.PATIENTS} icon={Users} label="Pacientes" />
-                <NavButton view={AppView.APPOINTMENTS} icon={Calendar} label="Meus Atendimentos" />
-                <NavButton view={AppView.EMR} icon={FileText} label="Clínica" />
-                <NavButton view={AppView.RECEIPTS} icon={Receipt} label="Recibos" />
-                <NavButton view={AppView.CLINIC_HOURS} icon={Clock} label="Horários" />
-                <NavButton view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" />
-                <NavButton view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PATIENTS} icon={Users} label="Pacientes" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.APPOINTMENTS} icon={Calendar} label="Meus Atendimentos" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.EMR} icon={FileText} label="Clínica" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.RECEIPTS} icon={Receipt} label="Recibos" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_HOURS} icon={Clock} label="Horários" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
               </ModuleGroup>
 
               {/* Gestão de Repasse Clínico - Admin Only */}
@@ -510,10 +552,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                   currentView={currentView}
                   views={[AppView.REPASSE_DASHBOARD, AppView.BILLING_MANAGEMENT, AppView.REPASSE_CALCULATION]}
                 >
-                  <NavButton view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" />
-                  <NavButton view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" />
-                  <NavButton view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" />
-                  {/* <NavButton view={AppView.PROFESSIONAL_CONFIG} icon={Settings} label="Profissionais" /> */}
+                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" />
+                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" />
+                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" />
+                  {/* <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PROFESSIONAL_CONFIG} icon={Settings} label="Profissionais" /> */}
                 </ModuleGroup>
               )}
 
@@ -521,7 +563,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
 
               {/* Contratos - Admin only */}
               {(isAdmin || userRole === UserRole.BILLER || userProfile?.isClinicManager) && (
-                <NavButton view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" />
               )}
 
               {/* Módulo Financeiro - Admin only */}
@@ -538,19 +580,19 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                     AppView.CASH_FLOW
                   ]}
                 >
-                  <NavButton view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" />
-                  <NavButton view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" />
-                  <NavButton view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" />
+                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" />
+                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" />
+                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" />
                 </ModuleGroup>
               )}
 
               <div className="h-px bg-slate-700 my-2"></div>
 
-              <NavButton view={AppView.AI_CONSULTANT} icon={MessageSquare} label="Consultor IA" />
-              <NavButton view={AppView.USER_PROFILE} icon={UserIcon} label="Meu Perfil" />
-              <NavButton view={AppView.HOW_TO_USE} icon={BookOpen} label="Como Usar" />
-              <NavButton view={AppView.ABOUT_APP} icon={Info} label="Sobre" />
-              <NavButton view={AppView.FEEDBACK} icon={MessageSquare} label="Feedback" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.AI_CONSULTANT} icon={MessageSquare} label="Consultor IA" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.USER_PROFILE} icon={UserIcon} label="Meu Perfil" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HOW_TO_USE} icon={BookOpen} label="Como Usar" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.ABOUT_APP} icon={Info} label="Sobre" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FEEDBACK} icon={MessageSquare} label="Feedback" />
             </div>
 
             <div className="mt-auto border-t border-slate-700 pt-4 pb-4 space-y-4">

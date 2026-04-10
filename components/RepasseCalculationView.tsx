@@ -3,6 +3,7 @@ import { Calculator, DollarSign, FileText, Download, Calendar, User, TrendingUp,
 import { auth } from '../services/firebase';
 import { getAllBillingRecords, getAllProfessionals } from '../services/repasseService';
 import { ConsultationBilling, Professional } from '../types/finance';
+import { useUser } from '../contexts/UserContext';
 import jsPDF from 'jspdf';
 
 const RepasseCalculationView: React.FC = () => {
@@ -16,6 +17,7 @@ const RepasseCalculationView: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [calculation, setCalculation] = useState<any>(null);
     const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+    const { userProfile, isAdmin: isSystemAdmin } = useUser();
 
     // Editable fields for manual adjustments
     // Allow string to handle empty input (deleting the zero)
@@ -37,7 +39,7 @@ const RepasseCalculationView: React.FC = () => {
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [userProfile]);
 
     // New Effect: Pre-fill data when professional is selected
     useEffect(() => {
@@ -66,9 +68,17 @@ const RepasseCalculationView: React.FC = () => {
     const loadData = async () => {
         setLoading(true);
         try {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            const isClinicManager = userProfile?.isClinicManager === true;
+            
+            // Only Master Admin can bypass the managerId filter
+            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+
             const [allProfs, allBillings] = await Promise.all([
-                getAllProfessionals(),
-                getAllBillingRecords()
+                getAllProfessionals(managerId),
+                getAllBillingRecords(managerId)
             ]);
             setProfessionals(allProfs);
             setBillings(allBillings);

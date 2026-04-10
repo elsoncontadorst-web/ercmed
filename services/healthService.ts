@@ -81,7 +81,7 @@ export const addPatient = async (
         const userId = auth.currentUser?.uid || '';
         const managerId = await getManagerIdForUser(userId);
 
-        console.log('[PATIENT] Adding patient - userId:', userId, 'managerId:', managerId);
+
 
         const docRef = await addDoc(patientsRef, {
             ...patient,
@@ -91,7 +91,7 @@ export const addPatient = async (
             updatedAt: serverTimestamp()
         });
 
-        console.log('[PATIENT] Patient saved! ID:', docRef.id);
+
         return docRef.id;
     } catch (error) {
         console.error('[PATIENT] Erro ao adicionar paciente:', error);
@@ -113,55 +113,60 @@ export const getPatient = async (patientId: string): Promise<Patient | null> => 
     }
 };
 
-export const getAllPatients = async (professionalId?: string): Promise<Patient[]> => {
+const MASTER_ADMIN_EMAIL = 'elsoncontador.st@gmail.com';
+
+export const getAllPatients = async (managerId?: string): Promise<Patient[]> => {
     try {
-        const userId = auth.currentUser?.uid || professionalId;
+        const userId = auth.currentUser?.uid;
+        const currentUserEmail = auth.currentUser?.email;
+        const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
+
         if (!userId) {
             console.log('[PATIENT] No user ID provided');
             return [];
         }
 
-        const managerId = await getManagerIdForUser(userId);
-
-        // Effective Manager ID is the manager's ID, or the user's own ID if they are independent/manager
-        // Note: getAllowedClinicsForUser might return clinics, but for patient ownership we use managerId strictly.
-        // If managerId logic returns null (unlikely with fix), we fall back to userId.
-        const effectiveManagerId = managerId || userId;
-
-        console.log('[PATIENT] === LOADING PATIENTS FOR USER:', userId, '===');
-        console.log('[PATIENT] Effective Manager ID:', effectiveManagerId);
-
-        const { restrictToOwnPatients } = await getUserAccessSettings(userId);
-        console.log('[PATIENT] Restrict to own patients:', restrictToOwnPatients);
-
+        // SECURITY: If managerId is provided, we filter by it.
+        // If not provided AND not master admin, we use the user's managerId.
+        // If master admin AND no managerId, we fetch everything.
+        
         const patientsRef = collection(db, 'patients');
         let managedDocs = new Map<string, any>();
 
-        if (restrictToOwnPatients) {
-            // Restricted mode: Only patients created by me OR where I am in the team
-            // Query 2: Patients created by this professional
-            const q2 = query(patientsRef, where('professionalId', '==', userId), where('active', '==', true));
-            const snap2 = await getDocs(q2);
-            snap2.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...d.data() }));
-            console.log('[PATIENT] Patients created by user:', managedDocs.size);
+        if (!managerId && isMasterAdmin) {
+            // Master Admin Global Fetch
+
+            const snapshot = await getDocs(query(patientsRef, where('active', '==', true)));
+            snapshot.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...d.data() }));
         } else {
-            // Unrestricted mode: Patients of the manager and fallback to professionalId
-            const queries = [
-                query(patientsRef, where('managerId', '==', effectiveManagerId), where('active', '==', true))
-            ];
+            const effectiveManagerId = managerId || (await getManagerIdForUser(userId)) || userId;
 
-            // If effectiveManagerId is the same as userId, querying professionalId captures legacy/own data
-            if (effectiveManagerId === userId) {
-                queries.push(query(patientsRef, where('professionalId', '==', userId), where('active', '==', true)));
+
+            const { restrictToOwnPatients } = await getUserAccessSettings(userId);
+            
+            if (restrictToOwnPatients) {
+                // Restricted mode: Only patients created by me OR where I am in the team
+                const q2 = query(patientsRef, where('professionalId', '==', userId), where('active', '==', true));
+                const snap2 = await getDocs(q2);
+                snap2.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...d.data() }));
+            } else {
+                // Unrestricted mode: Patients of the manager and fallback to professionalId
+                const queries = [
+                    query(patientsRef, where('managerId', '==', effectiveManagerId), where('active', '==', true))
+                ];
+
+                if (effectiveManagerId === userId) {
+                    queries.push(query(patientsRef, where('professionalId', '==', userId), where('active', '==', true)));
+                }
+
+                const snapshots = await Promise.all(queries.map(q => getDocs(q)));
+                snapshots.forEach(snap => {
+                    snap.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...(d.data() as any) } as Patient));
+                });
             }
-
-            const snapshots = await Promise.all(queries.map(q => getDocs(q)));
-            snapshots.forEach(snap => {
-                snap.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...(d.data() as any) } as Patient));
-            });
         }
 
-        console.log('[PATIENT] Patients from manager/owner queries:', managedDocs.size);
+
 
         // 3. TEAM MEMBERSHIP QUERY: Patients where I am a team member
         const teamRef = collection(db, 'patient_teams');
@@ -169,7 +174,7 @@ export const getAllPatients = async (professionalId?: string): Promise<Patient[]
         const teamSnapshot = await getDocs(teamQuery);
 
         if (!teamSnapshot.empty) {
-            console.log('[PATIENT] Found', teamSnapshot.size, 'explicit team memberships');
+
             const teamPatientIds = teamSnapshot.docs.map(doc => doc.data().patientId);
             // Fetch these patients
             const teamPatientsPromises = teamPatientIds.map(id => getPatient(id));
@@ -183,7 +188,7 @@ export const getAllPatients = async (professionalId?: string): Promise<Patient[]
         }
 
         const allPatients = Array.from(managedDocs.values()) as Patient[];
-        console.log('[PATIENT] Total unique patients returned:', allPatients.length);
+
 
         return allPatients.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -274,23 +279,25 @@ export const getAppointments = async (userId: string): Promise<Appointment[]> =>
 export const getAllAppointments = async (): Promise<Appointment[]> => {
     try {
         const userId = auth.currentUser?.uid;
+        const currentUserEmail = auth.currentUser?.email;
+        const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
+        
         if (!userId) return [];
 
-        const managerId = await getManagerIdForUser(userId);
-
-        // If no managerId found, fallback to userId (independent professional)
-        const effectiveManagerId = managerId || userId;
-
-        if (!effectiveManagerId) return [];
-
-        // We need to query appointments that belong to the team.
-        // Since appointments are subcollections of users, collectionGroup is needed.
-        // But filtering collectionGroup by managerId of the *parent* user is hard.
-        // Instead, we should rely on 'managerId' being present on the appointment document itself.
-        // We need to ensure addAppointment adds managerId.
-
         const appointmentsRef = collectionGroup(db, 'appointments');
-        const q = query(appointmentsRef, where('managerId', '==', effectiveManagerId));
+        let q;
+
+        if (isMasterAdmin) {
+            // Master Admin sees ALL appointments globally
+
+            q = query(appointmentsRef, orderBy('date', 'desc'));
+        } else {
+            const managerId = await getManagerIdForUser(userId);
+            const effectiveManagerId = managerId || userId;
+            if (!effectiveManagerId) return [];
+
+            q = query(appointmentsRef, where('managerId', '==', effectiveManagerId));
+        }
 
         const snapshot = await getDocs(q);
         const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
@@ -345,16 +352,25 @@ export const updateAppointment = async (
 export const getAllUpcomingAppointments = async (): Promise<Appointment[]> => {
     try {
         const userId = auth.currentUser?.uid;
+        const currentUserEmail = auth.currentUser?.email;
+        const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
+        
         if (!userId) return [];
-
-        const managerId = await getManagerIdForUser(userId);
-        const effectiveManagerId = managerId || userId;
-
-        if (!effectiveManagerId) return [];
 
         const today = new Date().toISOString().split('T')[0];
         const appointmentsRef = collectionGroup(db, 'appointments');
-        const q = query(appointmentsRef, where('managerId', '==', effectiveManagerId));
+        let q;
+
+        if (isMasterAdmin) {
+
+            q = query(appointmentsRef, where('date', '>=', today), where('status', '==', 'scheduled'));
+        } else {
+            const managerId = await getManagerIdForUser(userId);
+            const effectiveManagerId = managerId || userId;
+            if (!effectiveManagerId) return [];
+
+            q = query(appointmentsRef, where('managerId', '==', effectiveManagerId));
+        }
 
         const snapshot = await getDocs(q);
         const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
@@ -737,22 +753,37 @@ export const subscribeToAllAppointments = (
 
     const setup = async () => {
         try {
-            const managerId = await getManagerIdForUser(userId);
-            const effectiveManagerId = managerId || userId;
-
-            if (!effectiveManagerId) {
-                onUpdate([]);
-                return;
-            }
-
+            const currentUserEmail = auth.currentUser?.email;
+            const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
+            
             const appointmentsRef = collectionGroup(db, 'appointments');
-            const q = query(
-                appointmentsRef,
-                where('managerId', '==', effectiveManagerId),
-                where('status', 'in', ['scheduled', 'confirmed']),
-                orderBy('date', 'asc'),
-                orderBy('time', 'asc')
-            );
+            let q;
+
+            if (isMasterAdmin) {
+
+                q = query(
+                    appointmentsRef,
+                    where('status', 'in', ['scheduled', 'confirmed']),
+                    orderBy('date', 'asc'),
+                    orderBy('time', 'asc')
+                );
+            } else {
+                const managerId = await getManagerIdForUser(userId);
+                const effectiveManagerId = managerId || userId;
+
+                if (!effectiveManagerId) {
+                    onUpdate([]);
+                    return;
+                }
+
+                q = query(
+                    appointmentsRef,
+                    where('managerId', '==', effectiveManagerId),
+                    where('status', 'in', ['scheduled', 'confirmed']),
+                    orderBy('date', 'asc'),
+                    orderBy('time', 'asc')
+                );
+            }
 
             unsubscribe = onSnapshot(q, (snapshot) => {
                 const appointments = snapshot.docs.map(doc => ({

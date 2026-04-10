@@ -3,7 +3,7 @@ import { FileText, ChevronDown, ChevronUp, Save, Wand2, Printer, Trash2, Plus, E
 import { auth } from '../services/firebase';
 import { ALL_ANAMNESIS_TEMPLATES, AnamnesisTemplate, AnamnesisFieldDef, getTemplateById } from '../services/anamnesisTemplates';
 import { saveProfessionalAnamnesis, getProfessionalAnamneses, updateProfessionalAnamnesis, deleteProfessionalAnamnesis } from '../services/healthService';
-import { ProfessionalAnamnesis, FilledSection, FilledField, Patient } from '../types/health';
+import { ProfessionalAnamnesis, FilledSection, FilledField, Patient, Anamnesis } from '../types/health';
 import { calculateAge } from '../utils/formatters';
 import { useUser } from '../contexts/UserContext';
 import jsPDF from 'jspdf';
@@ -41,8 +41,9 @@ const FieldRenderer: React.FC<{
   field: AnamnesisFieldDef;
   value: any;
   onChange: (value: any) => void;
-}> = ({ field, value, onChange }) => {
-  const inputClass = "w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-400 outline-none bg-white text-slate-800 transition-all";
+  readOnly?: boolean;
+}> = ({ field, value, onChange, readOnly }) => {
+  const inputClass = `w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-400 outline-none bg-white text-slate-800 transition-all ${readOnly ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`;
 
   switch (field.type) {
     case 'textarea':
@@ -53,29 +54,67 @@ const FieldRenderer: React.FC<{
           placeholder={field.placeholder || ''}
           value={value || ''}
           onChange={e => onChange(e.target.value)}
+          readOnly={readOnly}
         />
       );
     case 'number':
       return (
-        <input type="number" className={inputClass} value={value || ''} placeholder={field.placeholder || ''}
-          onChange={e => onChange(e.target.value)} />
+        <input 
+          type="number" 
+          className={inputClass} 
+          value={value || ''} 
+          placeholder={field.placeholder || ''}
+          onChange={e => onChange(e.target.value)}
+          readOnly={readOnly}
+        />
       );
-    case 'date':
-      return <input type="date" className={inputClass} value={value || ''} onChange={e => onChange(e.target.value)} />;
+    case 'text':
+      return (
+        <input 
+          type="text" 
+          className={inputClass} 
+          value={value || ''} 
+          placeholder={field.placeholder || ''}
+          onChange={e => onChange(e.target.value)}
+          readOnly={readOnly}
+        />
+      );
     case 'select':
       return (
-        <select className={inputClass} value={value || ''} onChange={e => onChange(e.target.value)}>
+        <select 
+          className={inputClass} 
+          value={value || ''} 
+          onChange={e => onChange(e.target.value)}
+          disabled={readOnly}
+        >
           <option value="">Selecione...</option>
-          {field.options?.map(o => <option key={o} value={o}>{o}</option>)}
+          {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
+      );
+    case 'date':
+      return (
+        <input 
+          type="date" 
+          className={inputClass} 
+          value={value || ''} 
+          onChange={e => onChange(e.target.value)}
+          readOnly={readOnly}
+        />
       );
     case 'radio':
       return (
         <div className="flex flex-wrap gap-3 pt-1">
           {field.options?.map(o => (
             <label key={o} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-              <input type="radio" name={field.id} value={o} checked={value === o}
-                onChange={() => onChange(o)} className="accent-teal-600" />
+              <input 
+                type="radio" 
+                name={field.id} 
+                value={o} 
+                checked={value === o}
+                onChange={() => onChange(o)} 
+                className="accent-teal-600" 
+                disabled={readOnly}
+              />
               {o}
             </label>
           ))}
@@ -88,27 +127,20 @@ const FieldRenderer: React.FC<{
             const checked = Array.isArray(value) && value.includes(o);
             return (
               <label key={o} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                <input type="checkbox" checked={checked} className="accent-teal-600"
+                <input 
+                  type="checkbox" 
+                  checked={checked} 
+                  className="accent-teal-600"
+                  disabled={readOnly}
                   onChange={() => {
                     const current: string[] = Array.isArray(value) ? value : [];
                     onChange(checked ? current.filter(v => v !== o) : [...current, o]);
-                  }} />
+                  }} 
+                />
                 {o}
               </label>
             );
           })}
-        </div>
-      );
-    case 'boolean':
-      return (
-        <div className="flex gap-4 pt-1">
-          {['Sim', 'Não'].map(opt => (
-            <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-              <input type="radio" name={field.id} value={opt} checked={value === opt}
-                onChange={() => onChange(opt)} className="accent-teal-600" />
-              {opt}
-            </label>
-          ))}
         </div>
       );
     case 'escala':
@@ -118,9 +150,15 @@ const FieldRenderer: React.FC<{
         <div className="pt-1">
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate-500">{min}</span>
-            <input type="range" min={min} max={max} value={value ?? min}
+            <input 
+              type="range" 
+              min={min} 
+              max={max} 
+              value={value ?? min}
               onChange={e => onChange(Number(e.target.value))}
-              className="flex-1 accent-teal-600" />
+              className="flex-1 accent-teal-600" 
+              disabled={readOnly}
+            />
             <span className="text-xs text-slate-500">{max}</span>
             <span className="w-8 h-8 rounded-full bg-teal-600 text-white flex items-center justify-center text-sm font-bold">
               {value ?? min}
@@ -128,13 +166,32 @@ const FieldRenderer: React.FC<{
           </div>
         </div>
       );
-    default: // text
+    case 'boolean':
       return (
-        <input type="text" className={inputClass} value={value || ''} placeholder={field.placeholder || ''}
-          onChange={e => onChange(e.target.value)} />
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => onChange(true)}
+            disabled={readOnly}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${value === true ? 'bg-teal-500 border-teal-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            Sim
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange(false)}
+            disabled={readOnly}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${value === false ? 'bg-slate-500 border-slate-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            Não
+          </button>
+        </div>
       );
+    default:
+      return null;
   }
 };
+
 
 // ─────────────────────────────────────────
 // Main Component
@@ -272,9 +329,10 @@ const ProfessionalAnamnesisView: React.FC<Props> = ({
 
       const prompt = `Você é um ${selectedTemplate.profession} experiente. Com base nos dados de anamnese abaixo, elabore uma narrativa clínica estruturada e profissional, em português, adequada para prontuário. Use linguagem técnica mas clara.\n\nPaciente: ${patientName}\nTipo: ${selectedTemplate.name}\n\n${summaryText}`;
 
-      const { generateClinicalSummary } = await import('../services/aiService');
-      const result = await generateClinicalSummary(prompt);
+      const { generateClinicalNarrative } = await import('../services/aiService');
+      const result = await generateClinicalNarrative(prompt);
       setNarrative(result || 'Não foi possível gerar a narrativa. Verifique a conexão com a IA.');
+
     } catch (e) {
       setNarrative('Erro ao gerar narrativa. Tente novamente.');
     }
@@ -518,20 +576,28 @@ const ProfessionalAnamnesisView: React.FC<Props> = ({
                   const savedField = savedSection?.fields.find(f => f.id === field.id);
                   const current = formValues[section.id]?.[field.id] ?? savedField?.value ?? (field.type === 'escala' ? (field.min ?? 0) : '');
                   const isWide = ['textarea', 'checkbox', 'escala'].includes(field.type);
+                  
+                  // Auto-fill logic for Identification
+                  const isReadOnly = !isViewOnly && section.id === 'identificacao' && (field.id === 'nome' || field.id === 'idade' || field.id === 'sexo');
 
                   return (
                     <div key={field.id} className={isWide ? 'md:col-span-2' : ''}>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-2">
                         {field.label}
-                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                        {field.required && <span className="text-red-500">*</span>}
+                        {isReadOnly && <span className="text-[10px] bg-teal-50 text-teal-700 px-1.5 py-0.5 rounded border border-teal-100 font-normal normal-case">Cadastro do Paciente</span>}
                       </label>
                       {isViewOnly ? (
                         <div className="p-2.5 bg-slate-50 rounded-lg text-sm text-slate-700 min-h-[2rem] border border-slate-100">
                           {Array.isArray(current) ? current.join(', ') || '—' : String(current || '—')}
                         </div>
                       ) : (
-                        <FieldRenderer field={field} value={current}
-                          onChange={val => handleFieldChange(section.id, field.id, val)} />
+                        <FieldRenderer 
+                          field={field} 
+                          value={current} 
+                          onChange={val => handleFieldChange(section.id, field.id, val)}
+                          readOnly={isReadOnly}
+                        />
                       )}
                     </div>
                   );
@@ -541,6 +607,7 @@ const ProfessionalAnamnesisView: React.FC<Props> = ({
           </div>
         );
       })}
+
 
       {/* Narrative */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">

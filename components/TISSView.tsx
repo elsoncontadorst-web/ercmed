@@ -25,8 +25,10 @@ import { HealthInsurance, TissTable, TissGuide, TissBatch, TissGlosa, TissProced
 import { Patient } from '../types/health';
 import { Professional } from '../types/finance';
 import { formatCNPJ, formatPhone, formatCurrency } from '../utils/formatters';
+import { useUser } from '../contexts/UserContext';
 
 const TISSView: React.FC = () => {
+    const { userProfile, isAdminMaster, isAdmin: isSystemAdmin } = useUser();
     const [activeTab, setActiveTab] = useState<'CONVENIOS' | 'TABELAS' | 'GUIAS' | 'LOTES' | 'GLOSAS'>('CONVENIOS');
     const [loading, setLoading] = useState(false);
 
@@ -106,11 +108,16 @@ const TISSView: React.FC = () => {
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [userProfile]);
 
     const loadData = async () => {
         const user = auth.currentUser;
         if (!user) return;
+
+        const isClinicManager = userProfile?.isClinicManager === true;
+        
+        // Only Master Admin can bypass the managerId filter
+        const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
 
         const [insurancesData, tablesData, guidesData, batchesData, glosasData, patientsData, professionalsData] = await Promise.all([
             getHealthInsurances(user.uid),
@@ -118,8 +125,8 @@ const TISSView: React.FC = () => {
             getTissGuides(user.uid),
             getTissBatches(user.uid),
             getTissGlosas(user.uid),
-            getAllPatients(),
-            getAllProfessionals()
+            getAllPatients(managerId),
+            getAllProfessionals(managerId)
         ]);
         setInsurances(insurancesData);
         setTables(tablesData);

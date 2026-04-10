@@ -11,8 +11,10 @@ import {
     orderBy,
     serverTimestamp
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Contract } from '../types/finance';
+
+const MASTER_ADMIN_EMAIL = 'elsoncontador.st@gmail.com';
 
 export const addContract = async (
     contract: Omit<Contract, 'id' | 'createdAt' | 'updatedAt'>
@@ -33,13 +35,21 @@ export const addContract = async (
 
 export const getContracts = async (managerId?: string): Promise<Contract[]> => {
     try {
+        const currentUserEmail = auth.currentUser?.email;
+        const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
+        
         const contractsRef = collection(db, 'contracts');
         let q;
 
         if (managerId) {
             q = query(contractsRef, where('managerId', '==', managerId), orderBy('createdAt', 'desc'));
-        } else {
+        } else if (isMasterAdmin) {
+            // Only Master Admin can fetch ALL contracts
             q = query(contractsRef, orderBy('createdAt', 'desc'));
+        } else {
+            // Safety: return empty if unauthorized
+            console.warn(`[SECURITY] Unauthorized fetch by ${currentUserEmail}`);
+            return [];
         }
 
         const snapshot = await getDocs(q);
