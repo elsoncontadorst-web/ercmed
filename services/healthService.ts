@@ -814,47 +814,137 @@ export const subscribeToPatients = (
 ): (() => void) => {
     const userId = auth.currentUser?.uid;
     if (!userId) {
+        onUpdate([]);
         return () => { };
     }
 
-    let unsubscribe: (() => void) | null = null;
+    // Map to keep track of ALL patients being listened to (deduplicated by ID)
+    const patientMap = new Map<string, Patient>();
+    // Store all unsub functions to clean up later
+    const unsubscribes: { [key: string]: () => void } = {};
+    // Track IDs that come from the main query vs team query
+    const clinicPatientIds = new Set<string>();
+    const teamPatientIds = new Set<string>();
 
-    const setupListener = async () => {
-        const { restrictToOwnPatients } = await getUserAccessSettings(userId);
-        const patientsRef = collection(db, 'patients');
-        let q;
-
-        if (restrictToOwnPatients) {
-            q = query(
-                patientsRef,
-                where('professionalId', '==', userId),
-                where('active', '==', true)
-            );
-        } else {
-            const managerId = await getManagerIdForUser(userId);
-            // Effective Manager ID is the manager's ID, or the user's own ID if they are independent/manager
-            const effectiveId = managerId || userId;
-            
-            q = query(
-                patientsRef,
-                where('managerId', '==', effectiveId),
-                where('active', '==', true)
-            );
-        }
-
-        unsubscribe = onSnapshot(q, (snapshot) => {
-            const patients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Patient));
-            const sorted = patients.sort((a, b) => a.name.localeCompare(b.name));
-            onUpdate(sorted);
-        }, (error) => {
-            console.error('Error in patients listener:', error);
-        });
+    const triggerUpdate = () => {
+        const patients = Array.from(patientMap.values());
+        const sorted = patients.sort((a, b) => a.name.localeCompare(b.name));
+        onUpdate(sorted);
     };
 
-    setupListener();
+    const setupListeners = async () => {
+        try {
+            const { restrictToOwnPatients } = await getUserAccessSettings(userId);
+            const patientsRef = collection(db, 'patients');
+            
+            // 1. MAIN QUERY (Clinic/Own Patients)
+            let mainQuery;
+            if (restrictToOwnPatients) {
+                mainQuery = query(patientsRef, where('professionalId', '==', userId), where('active', '==', true));
+            } else {
+                const managerId = await getManagerIdForUser(userId);
+                const effectiveId = managerId || userId;
+                mainQuery = query(patientsRef, where('managerId', '==', effectiveId), where('active', '==', true));
+            }
+
+            unsubscribes['main'] = onSnapshot(mainQuery, (snapshot) => {
+                // Keep track of which IDs are still in the main query
+                const currentMainIds = new Set<string>();
+                snapshot.docs.forEach(doc => {
+                    const data = { id: doc.id, ...doc.data() } as Patient;
+                    patientMap.set(doc.id, data);
+                    currentMainIds.add(doc.id);
+                });
+
+                // Remove patients that are no longer in the main query AND not in teams
+                clinicPatientIds.forEach(id => {
+                    if (!currentMainIds.has(id) && !teamPatientIds.has(id)) {
+                        patientMap.delete(id);
+                    }
+                });
+
+                // Update state trackers
+                clinicPatientIds.clear();
+                currentMainIds.forEach(id => clinicPatientIds.add(id));
+
+                triggerUpdate();
+            }, (error) => {
+                console.error('Error in main patients listener:', error);
+            });
+
+            // 2. TEAM MEMBERSHIP LISTENER (Patients via Team)
+            const teamRef = collection(db, 'patient_teams');
+            const teamQuery = query(teamRef, where('professionalId', '==', userId));
+
+            unsubscribes['teams'] = onSnapshot(teamQuery, (snapshot) => {
+                const currentTeamIds = new Set<string>();
+                snapshot.docs.forEach(doc => {
+                    const patientId = doc.data().patientId;
+                    if (patientId) {
+                        currentTeamIds.add(patientId);
+                    }
+                });
+
+                // Stop listening to patients no longer in our team scope
+                teamPatientIds.forEach(id => {
+                    if (!currentTeamIds.has(id)) {
+                        // Only stop the specific patient listener if it's a team-only patient
+                        if (unsubscribes[`patient_${id}`]) {
+                            unsubscribes[`patient_${id}`]();
+                            delete unsubscribes[`patient_${id}`];
+                        }
+                        // Only delete from map if not also in clinic list
+                        if (!clinicPatientIds.has(id)) {
+                            patientMap.delete(id);
+                        }
+                    }
+                });
+
+                // Start listening to NEW team patients (that we aren't already listening to via main query)
+                currentTeamIds.forEach(id => {
+                    if (!teamPatientIds.has(id)) {
+                        // New team ID
+                        if (!clinicPatientIds.has(id) && !unsubscribes[`patient_${id}`]) {
+                            // We need an individual listener for this patient since they are outside our main clinic scope
+                            const patientDocRef = doc(db, 'patients', id);
+                            unsubscribes[`patient_${id}`] = onSnapshot(patientDocRef, (docSnap) => {
+                                if (docSnap.exists()) {
+                                    const data = { id: docSnap.id, ...docSnap.data() } as Patient;
+                                    if (data.active !== false) {
+                                        patientMap.set(docSnap.id, data);
+                                    } else {
+                                        patientMap.delete(docSnap.id);
+                                    }
+                                } else {
+                                    patientMap.delete(id);
+                                }
+                                triggerUpdate();
+                            }, (err) => {
+                                console.error(`Error listening to team patient ${id}:`, err);
+                            });
+                        }
+                    }
+                    teamPatientIds.add(id);
+                });
+
+                // Final sync of the teamPatientIds set
+                teamPatientIds.clear();
+                currentTeamIds.forEach(id => teamPatientIds.add(id));
+
+                triggerUpdate();
+            }, (error) => {
+                console.error('Error in team patients listener:', error);
+            });
+        } catch (error) {
+            console.error('Error setting up patients listeners:', error);
+            onUpdate([]);
+        }
+    };
+
+    setupListeners();
 
     return () => {
-        if (unsubscribe) unsubscribe();
+        Object.values(unsubscribes).forEach(unsub => unsub());
     };
 };
 

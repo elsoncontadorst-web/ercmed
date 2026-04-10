@@ -167,6 +167,20 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "managerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "consultationDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "consultation_billing",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "professionalId",
           "order": "ASCENDING"
         },
@@ -210,10 +224,14 @@
     },
     {
       "collectionGroup": "appointments",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
-          "fieldPath": "professionalId",
+          "fieldPath": "managerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
           "order": "ASCENDING"
         },
         {
@@ -221,8 +239,40 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "status",
+          "fieldPath": "time",
           "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "repasse_statements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "managerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "periodStart",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "repasse_statements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "managerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "professionalId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "periodStart",
+          "order": "DESCENDING"
         }
       ]
     }
