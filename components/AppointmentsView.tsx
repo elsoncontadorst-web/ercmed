@@ -10,6 +10,7 @@ import Pagination from './Pagination';
 import { requestNotificationPermission, notifyNewAppointment, notifyAppointmentStatusChange } from '../services/notificationService';
 import { NotificationContainer } from './NotificationToast';
 import { Notification, createNotification } from '../services/notificationService';
+import { useUser } from '../contexts/UserContext';
 
 const AppointmentsView: React.FC = () => {
     const { user, userProfile, isAdminMaster } = useUser();

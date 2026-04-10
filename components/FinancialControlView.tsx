@@ -11,7 +11,7 @@ import { ConsultationBilling } from '../types/finance';
 interface Transaction extends SavedTransaction { }
 
 export const FinancialControlView: React.FC = () => {
-    const { user, userProfile, isAdmin: contextIsAdmin, loading: userLoading } = useUser();
+    const { user, userProfile, isAdmin: contextIsAdmin, isAdminMaster, loading: userLoading } = useUser();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [billingRecords, setBillingRecords] = useState<ConsultationBilling[]>([]);
     const [activeTab, setActiveTab] = useState<'transactions' | 'payable' | 'receivable' | 'billing'>('transactions');
