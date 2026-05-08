@@ -30,7 +30,7 @@ export const TIER_CONFIG: Record<AccountTier, TierLimits> = {
             'healthManagement', 'patients', 'appointments', 'emr', 'receipts',
             'clinicHours', 'bookingSettings', 'medications', 'healthMetrics',
             'clinics', 'contracts', 'tiss_billing', 'clinic_teams',
-            'financial', 'repasse', 'tiss'
+            'financial', 'repasse', 'tiss', 'therapeuticIntelligence'
         ]
     },
     [AccountTier.SILVER]: {
