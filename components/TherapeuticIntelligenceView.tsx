@@ -53,7 +53,24 @@ const TherapeuticIntelligenceView: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<TherapeuticAnalysis | null>(null);
 
-  // ... (existing resources state)
+  // Mock initial data for demonstration (including the requested lemongrass example)
+  const [resources, setResources] = useState<ResearchResource[]>([
+    {
+      id: '1',
+      name: 'Capim-Santo (Cymbopogon citratus)',
+      type: 'PLANTA',
+      description: 'Planta medicinal com propriedades sedativas, analgésicas e hipotensoras.',
+      activeIngredients: ['Citral', 'Geraniol', 'Mirceno'],
+      mechanismsOfAction: ['Modulação de canais de cálcio', 'Efeito diurético suave', 'Relaxamento da musculatura lisa vascular'],
+      indications: ['Hipertensão Arterial Leve', 'Ansiedade', 'Insônia'],
+      interactions: [
+        { substance: 'Anti-hipertensivos', effect: 'Potencialização do efeito (risco de hipotensão)', severity: 'MEDIUM' }
+      ],
+      evidenceLevel: 4,
+      scientificSources: ['UFS Research 2023', 'PubMed: PMC123456'],
+      suggestedDosage: 'Infusão (chá): 2g de folhas secas em 150ml de água, 2-3x ao dia.'
+    }
+  ]);
 
   const handleGlobalSearch = () => {
     setIsSearching(true);
