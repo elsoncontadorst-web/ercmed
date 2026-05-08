@@ -1,7 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
 const genAI = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY || "" });
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 export interface TherapeuticAnalysis {
   title: string;
@@ -42,7 +41,11 @@ export const analyzeTherapeuticIdea = async (prompt: string, patientContext?: st
       IMPORTANTE: Responda APENAS o JSON, sem markdown ou explicações extras.
     `;
 
-    const result = await model.generateContent(aiPrompt);
+    const result = await genAI.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [{ role: 'user', parts: [{ text: aiPrompt }] }]
+    });
+
     const response = await result.response;
     const text = response.text();
     
