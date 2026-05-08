@@ -15,7 +15,7 @@ import {
     onSnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { UserRecord, Appointment, Medication, Measurement, Patient, ClinicalNote, Prescription, ExamRequest, PatientEvolution, PatientTeamMember, Anamnesis, MixedAnamnesis, TeamInvitation, ProfessionalAnamnesis } from '../types/health';
+import { UserRecord, Appointment, Medication, Measurement, Patient, ClinicalNote, Prescription, ExamRequest, ExamResult, PatientEvolution, PatientTeamMember, Anamnesis, MixedAnamnesis, TeamInvitation, ProfessionalAnamnesis } from '../types/health';
 import { createTeamQuery, getManagerIdForUser, getUserAccessSettings } from './accessControlService';
 import { auth } from './firebase';
 
@@ -633,6 +633,47 @@ export const getExamRequests = async (patientId: string): Promise<ExamRequest[]>
     } catch (error) {
         console.error('Erro ao buscar solicitações de exames:', error);
         return [];
+    }
+};
+
+// ==================== EXAM RESULTS ====================
+
+export const addExamResult = async (
+    result: Omit<ExamResult, 'id' | 'createdAt'>
+): Promise<string | null> => {
+    try {
+        const resultsRef = collection(db, 'exam_results');
+        const docRef = await addDoc(resultsRef, {
+            ...result,
+            createdAt: serverTimestamp()
+        });
+        return docRef.id;
+    } catch (error) {
+        console.error('Erro ao adicionar resultado de exame:', error);
+        return null;
+    }
+};
+
+export const getExamResults = async (patientId: string): Promise<ExamResult[]> => {
+    try {
+        const resultsRef = collection(db, 'exam_results');
+        const q = query(resultsRef, where('patientId', '==', patientId), orderBy('date', 'desc'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamResult));
+    } catch (error) {
+        console.error('Erro ao buscar resultados de exames:', error);
+        return [];
+    }
+};
+
+export const deleteExamResult = async (resultId: string): Promise<boolean> => {
+    try {
+        const resultRef = doc(db, 'exam_results', resultId);
+        await deleteDoc(resultRef);
+        return true;
+    } catch (error) {
+        console.error('Erro ao deletar resultado de exame:', error);
+        return false;
     }
 };
 

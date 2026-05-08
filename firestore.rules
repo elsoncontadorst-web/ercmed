@@ -58,7 +58,15 @@ service cloud.firestore {
     // SYSTEM USERS (Authenticated only)
     // =============================================
     match /system_users/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || 
+        get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == resource.data.managerId ||
+        isMasterAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        isOwner(userId) || 
+        isMasterAdmin()
+      );
     }
 
     // =============================================
@@ -67,9 +75,9 @@ service cloud.firestore {
     match /patients/{patientId} {
       allow read, write: if isAuthenticated() && (
         // Owner of the clinic (Manager)
-        request.auth.uid == data.managerId ||
+        request.auth.uid == resource.data.managerId ||
         // Professional who created the record
-        request.auth.uid == data.professionalId ||
+        request.auth.uid == resource.data.professionalId ||
         // Legacy/fallback manager check
         request.auth.uid == resource.data.managerId ||
         request.auth.uid == resource.data.professionalId ||
@@ -118,7 +126,16 @@ service cloud.firestore {
     // TEAM MANAGEMENT
     // =============================================
     match /patient_teams/{teamId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        resource.data.professionalId == request.auth.uid || 
+        resource.data.managerId == request.auth.uid ||
+        isMasterAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        request.resource.data.managerId == request.auth.uid ||
+        resource.data.managerId == request.auth.uid ||
+        isMasterAdmin()
+      );
     }
 
     match /team_invitations/{invitationId} {
@@ -226,8 +243,16 @@ service cloud.firestore {
     // CONTRACTS & PROFESSIONALS (Semi-public for booking)
     // =============================================
     match /contracts/{contractId} {
-      allow read: if true; // Public needs professional names for booking
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        resource.data.managerId == request.auth.uid || 
+        resource.data.userId == request.auth.uid ||
+        isMasterAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        request.resource.data.managerId == request.auth.uid ||
+        resource.data.managerId == request.auth.uid ||
+        isMasterAdmin()
+      );
     }
 
     match /professionals/{profId} {
@@ -239,11 +264,29 @@ service cloud.firestore {
     // FINANCIAL - REPASSE
     // =============================================
     match /repasse_statements/{statementId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        resource.data.managerId == request.auth.uid || 
+        resource.data.professionalId == request.auth.uid ||
+        isMasterAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        request.resource.data.managerId == request.auth.uid ||
+        resource.data.managerId == request.auth.uid ||
+        isMasterAdmin()
+      );
     }
 
     match /consultation_billing/{billingId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        resource.data.managerId == request.auth.uid || 
+        resource.data.professionalId == request.auth.uid ||
+        isMasterAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        request.resource.data.managerId == request.auth.uid ||
+        resource.data.managerId == request.auth.uid ||
+        isMasterAdmin()
+      );
     }
 
     // =============================================

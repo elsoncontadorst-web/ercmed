@@ -11,7 +11,7 @@ export interface SystemUser {
     id: string;
     email: string;
     name: string;
-    role: 'admin' | 'manager' | 'professional' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider';
+    role: 'admin' | 'manager' | 'professional' | 'health_professional' | 'admin_gestor' | 'admin_master' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider';
     status: 'pending' | 'approved' | 'rejected' | 'active' | 'inactive';
     createdAt: any;
     updatedAt: any;
@@ -64,7 +64,7 @@ export interface UserCreationByAdmin {
     email: string;
     password: string;
     name: string;
-    role: 'admin' | 'manager' | 'professional' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider';
+    role: 'admin' | 'manager' | 'professional' | 'health_professional' | 'admin_gestor' | 'admin_master' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider';
     phone?: string;
     specialty?: string;
     crm?: string;
@@ -106,6 +106,36 @@ export const DEFAULT_PERMISSIONS: Record<SystemUser['role'], UserPermissions> = 
         canManageContracts: false,
         canViewReports: true,
         canManageSettings: false
+    },
+    health_professional: {
+        canManageUsers: false,
+        canManagePatients: true,
+        canManageAppointments: true,
+        canManageBilling: false,
+        canManageInventory: false,
+        canManageContracts: false,
+        canViewReports: true,
+        canManageSettings: false
+    },
+    admin_gestor: {
+        canManageUsers: true,
+        canManagePatients: true,
+        canManageAppointments: true,
+        canManageBilling: true,
+        canManageInventory: true,
+        canManageContracts: true,
+        canViewReports: true,
+        canManageSettings: false
+    },
+    admin_master: {
+        canManageUsers: true,
+        canManagePatients: true,
+        canManageAppointments: true,
+        canManageBilling: true,
+        canManageInventory: true,
+        canManageContracts: true,
+        canViewReports: true,
+        canManageSettings: true
     },
     receptionist: {
         canManageUsers: false,

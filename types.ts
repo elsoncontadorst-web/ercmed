@@ -69,7 +69,8 @@ export enum AppView {
   DEBUG = 'debug',
   PLANS = 'plans',
   ACCOUNTANT_MODULE = 'accountant_module',
-  ONBOARDING = 'onboarding'
+  ONBOARDING = 'onboarding',
+  THERAPEUTIC_INTELLIGENCE = 'therapeutic_intelligence'
 }
 
 // User Profile

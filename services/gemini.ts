@@ -121,3 +121,49 @@ export const synthesizeMixedAnamnesis = async (
     throw new Error("Erro ao processar a síntese da anamnese mista com IA.");
   }
 };
+
+/**
+ * Analisa um arquivo de exame (PDF ou Imagem) e extrai dados estruturados.
+ */
+export const parseExamDocument = async (fileBase64: string, mimeType: string) => {
+  const PROMPT_PARSE = `
+  Aja como um especialista em análise de laudos médicos. 
+  Sua tarefa é extrair as informações principais deste exame para preenchimento de um prontuário eletrônico.
+  
+  Extraia os seguintes campos em formato JSON:
+  {
+    "examName": "Nome do exame (ex: Hemograma)",
+    "type": "Laboratorial" | "Imagem" | "Outros",
+    "date": "Data do exame no formato YYYY-MM-DD",
+    "result": "Um resumo do laudo ou achado principal",
+    "metrics": [
+      { "name": "Nome da métrica (ex: Hemoglobina)", "value": 14.5, "unit": "g/dL", "referenceRange": "12-16" }
+    ]
+  }
+  
+  Se não encontrar uma métrica específica, deixe o array vazio. Retorne APENAS o JSON, sem markdown.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: PROMPT_PARSE },
+            { inlineData: { mimeType, data: fileBase64 } }
+          ]
+        }
+      ]
+    });
+
+    const text = response.text || "{}";
+    // Remove potential markdown blocks
+    const cleanedJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanedJson);
+  } catch (error) {
+    console.error("Exam Parsing Error:", error);
+    throw new Error("Erro ao analisar o arquivo de exame.");
+  }
+};

@@ -53,6 +53,7 @@ const PlansView = React.lazy(() => import('./components/PlansView'));
 const AccountantModule = React.lazy(() => import('./components/AccountantModule'));
 const TeamInvitationsView = React.lazy(() => import('./components/TeamInvitationsView'));
 const ClinicTeamsView = React.lazy(() => import('./components/ClinicTeamsView'));
+const TherapeuticIntelligenceView = React.lazy(() => import('./components/TherapeuticIntelligenceView'));
 
 
 // Error Boundary Component
@@ -275,6 +276,9 @@ function App() {
                   setView(AppView.DASHBOARD);
                 }}
               />;
+
+            case AppView.THERAPEUTIC_INTELLIGENCE:
+              return <TherapeuticIntelligenceView />;
 
             default:
               return <DashboardView setView={setView} />;

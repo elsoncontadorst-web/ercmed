@@ -206,11 +206,13 @@ export const createUserByAdmin = async (
         const userId = userCredential.user.uid;
 
         // Create user document in Firestore
+        const role = userData.role === 'professional' ? 'health_professional' : userData.role;
+        
         const userRef = doc(db, 'system_users', userId);
         await setDoc(userRef, {
             email: userData.email,
             name: userData.name,
-            role: userData.role,
+            role: role,
             status: 'active',
             phone: userData.phone || '',
             specialty: userData.specialty || '',

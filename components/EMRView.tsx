@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, User, Plus, Search, FileSignature, Paperclip, Activity, Save, Clock, Printer, Trash2, X, Users, Stethoscope, GitMerge, Lock, ArrowLeft, Building2, Heart, Wind, Droplets, Brain, Bone, Thermometer, Scale, Wand2, History, Edit3 } from 'lucide-react';
-import { getAllPatients, addClinicalNote, getClinicalNotes, addPatientEvolution, getPatientEvolutions, addTeamMember, getTeamMembers, removeTeamMember, addAnamnesis, getAnamneses, addMixedAnamnesis, getMixedAnamneses, createTeamInvitation, getInvitationsByPatient, cancelInvitation, addPrescription, getPrescriptions, addExamRequest, getExamRequests, deleteAnamnesis, updateAnamnesis } from '../services/healthService';
+import { getAllPatients, addClinicalNote, getClinicalNotes, addPatientEvolution, getPatientEvolutions, addTeamMember, getTeamMembers, removeTeamMember, addAnamnesis, getAnamneses, addMixedAnamnesis, getMixedAnamneses, createTeamInvitation, getInvitationsByPatient, cancelInvitation, addPrescription, getPrescriptions, addExamRequest, getExamRequests, addExamResult, getExamResults, deleteExamResult, deleteAnamnesis, updateAnamnesis } from '../services/healthService';
 import { getClinics } from '../services/clinicService';
 import { Clinic } from '../types/clinic';
 import { getAllProfessionals } from '../services/repasseService';
-import { Patient, ClinicalNote, Prescription, ExamRequest, PatientEvolution, PatientTeamMember, Anamnesis, MixedAnamnesis, TeamInvitation } from '../types/health';
+import { Patient, ClinicalNote, Prescription, ExamRequest, ExamResult, PatientEvolution, PatientTeamMember, Anamnesis, MixedAnamnesis, TeamInvitation } from '../types/health';
 import { generateClinicalSummary } from '../services/aiService';
 import { Professional } from '../types/finance';
 import { auth, db } from '../services/firebase';
@@ -16,6 +16,8 @@ import { getProfessionalSettings } from '../services/userDataService';
 import { ProfessionalSettings } from '../types';
 import jsPDF from 'jspdf';
 import ProfessionalAnamnesisView from './ProfessionalAnamnesisView';
+import { EXAM_DATABASE } from '../services/examDatabase';
+import { parseExamDocument } from '../services/gemini';
 
 interface MedicationRow {
     name: string;
@@ -34,6 +36,7 @@ const EMRView: React.FC = () => {
     const [notes, setNotes] = useState<ClinicalNote[]>([]);
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [examRequests, setExamRequests] = useState<ExamRequest[]>([]);
+    const [examResults, setExamResults] = useState<ExamResult[]>([]);
     const [loading, setLoading] = useState(false);
     const { isAdminMaster, isAdmin: isSystemAdmin } = useUser();
 
@@ -130,26 +133,27 @@ const EMRView: React.FC = () => {
     const [customExam, setCustomExam] = useState('');
     const [clinicalIndication, setClinicalIndication] = useState('');
 
+    // Exam result form state
+    const [showExamResultForm, setShowExamResultForm] = useState(false);
+    const [newExamResult, setNewExamResult] = useState<Omit<ExamResult, 'id' | 'createdAt'>>({
+        patientId: '',
+        professionalId: '',
+        professionalName: '',
+        examName: '',
+        date: new Date().toISOString().split('T')[0],
+        type: 'Laboratorial',
+        result: '',
+        metrics: []
+    });
+    const [newResultMetric, setNewResultMetric] = useState({ name: '', value: '', unit: '', referenceRange: '' });
+    const [examSearchTerm, setExamSearchTerm] = useState('');
+    const [isParsingExam, setIsParsingExam] = useState(false);
+
     // Documents State
     const [showDocumentModal, setShowDocumentModal] = useState(false);
     const [documentType, setDocumentType] = useState<'ATESTADO' | 'DECLARACAO'>('ATESTADO');
     const [documentDays, setDocumentDays] = useState('1');
     const [documentCid, setDocumentCid] = useState('');
-
-    const commonExams = [
-        'Hemograma Completo',
-        'Glicemia em Jejum',
-        'Colesterol Total e Frações',
-        'Triglicerídeos',
-        'Ureia e Creatinina',
-        'TGO/TGP',
-        'TSH e T4 Livre',
-        'Raio-X de Tórax',
-        'Raio-X de Coluna',
-        'Ultrassonografia Abdominal',
-        'Eletrocardiograma',
-        'Ecocardiograma'
-    ];
 
     // Derived state
     const selectedPatient = patients.find(p => p.id === selectedPatientId);
@@ -208,6 +212,7 @@ const EMRView: React.FC = () => {
             setNotes([]);
             setPrescriptions([]);
             setExamRequests([]);
+            setExamResults([]);
             setEvolutions([]);
         }
     }, [selectedPatientId]);
@@ -231,10 +236,11 @@ const EMRView: React.FC = () => {
 
 
         try {
-            const [notesData, prescriptionsData, examsData, evolutionsData, teamData, invitationsData, anamnesisData, mixedAnamnesisData] = await Promise.all([
+            const [notesData, prescriptionsData, examsData, resultsData, evolutionsData, teamData, invitationsData, anamnesisData, mixedAnamnesisData] = await Promise.all([
                 getClinicalNotes(patientId),
                 getPrescriptions(patientId),
                 getExamRequests(patientId),
+                getExamResults(patientId),
                 getPatientEvolutions(patientId),
                 getTeamMembers(patientId),
                 getInvitationsByPatient(patientId),
@@ -244,6 +250,7 @@ const EMRView: React.FC = () => {
             setNotes(notesData);
             setPrescriptions(prescriptionsData);
             setExamRequests(examsData);
+            setExamResults(resultsData);
             setEvolutions(evolutionsData);
             setTeamMembers(teamData);
             setTeamInvitations(invitationsData.filter(inv => inv.status === 'pending'));
@@ -472,6 +479,110 @@ const EMRView: React.FC = () => {
             alert('Erro ao salvar solicitação.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSaveExamResult = async () => {
+        const user = auth.currentUser;
+        if (!user || !selectedPatient) return;
+
+        if (!newExamResult.examName || !newExamResult.result) {
+            alert('Por favor, preencha o nome do exame e o resultado.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await addExamResult({
+                ...newExamResult,
+                patientId: selectedPatient.id,
+                professionalId: user.uid,
+                professionalName: getCurrentProfessional().name,
+            });
+
+            alert('Resultado de exame salvo com sucesso!');
+            setNewExamResult({
+                patientId: '',
+                professionalId: '',
+                professionalName: '',
+                examName: '',
+                date: new Date().toISOString().split('T')[0],
+                type: 'Laboratorial',
+                result: '',
+                metrics: []
+            });
+            setShowExamResultForm(false);
+            const results = await getExamResults(selectedPatient.id);
+            setExamResults(results);
+        } catch (error) {
+            console.error(error);
+            alert('Erro ao salvar resultado de exame.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const addResultMetric = () => {
+        if (newResultMetric.name && newResultMetric.value) {
+            setNewExamResult(prev => ({
+                ...prev,
+                metrics: [...(prev.metrics || []), {
+                    name: newResultMetric.name,
+                    value: Number(newResultMetric.value),
+                    unit: newResultMetric.unit,
+                    referenceRange: newResultMetric.referenceRange
+                }]
+            }));
+            setNewResultMetric({ name: '', value: '', unit: '', referenceRange: '' });
+        }
+    };
+
+    const removeResultMetric = (index: number) => {
+        setNewExamResult(prev => ({
+            ...prev,
+            metrics: prev.metrics?.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleExamFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsParsingExam(true);
+        try {
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64 = (reader.result as string).split(',')[1];
+                const parsed = await parseExamDocument(base64, file.type);
+                
+                setNewExamResult(prev => ({
+                    ...prev,
+                    examName: parsed.examName || prev.examName,
+                    type: parsed.type || prev.type,
+                    date: parsed.date || prev.date,
+                    result: parsed.result || prev.result,
+                    metrics: parsed.metrics || prev.metrics
+                }));
+                setShowExamResultForm(true);
+                alert('Arquivo analisado com sucesso! Os campos foram preenchidos automaticamente.');
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error(error);
+            alert('Erro ao analisar o arquivo. Tente preencher manualmente.');
+        } finally {
+            setIsParsingExam(false);
+        }
+    };
+
+    const handleDeleteExamResult = async (id: string) => {
+        if (!window.confirm('Tem certeza que deseja excluir este resultado?')) return;
+        try {
+            await deleteExamResult(id);
+            setExamResults(examResults.filter(r => r.id !== id));
+        } catch (error) {
+            console.error(error);
+            alert('Erro ao excluir resultado.');
         }
     };
 
@@ -865,7 +976,13 @@ const EMRView: React.FC = () => {
 
         setIsGeneratingAI(true);
         try {
-            const summary = await generateClinicalSummary(anamneses);
+            const summary = await generateClinicalSummary({
+                anamneses,
+                evolutions,
+                prescriptions,
+                examRequests,
+                examResults
+            });
             setGeneratedSummary(summary);
         } catch (error) {
             console.error(error);
@@ -894,6 +1011,9 @@ const EMRView: React.FC = () => {
             });
 
             const updatedMixed = await getMixedAnamneses(selectedPatientId);
+            setMixedAnamneses(updatedMixed);
+            setGeneratedSummary('');
+            alert('Anamnese Mista salva com sucesso!');
         } catch (error) {
             console.error(error);
             alert('Erro ao salvar Anamnese Mista.');
@@ -1240,6 +1360,92 @@ const EMRView: React.FC = () => {
         );
     };
 
+    const isOutOfRange = (value: any, range: string) => {
+        if (!range || range === 'N/A') return false;
+        const val = Number(String(value).replace(',', '.'));
+        if (isNaN(val)) return false;
+
+        try {
+            // Handle range like "12-16" or "12 - 16"
+            if (range.includes('-')) {
+                const parts = range.split('-').map(v => Number(v.trim().replace(',', '.')));
+                if (parts.length === 2 && !parts.some(isNaN)) {
+                    return val < parts[0] || val > parts[1];
+                }
+            }
+            // Handle "< 10"
+            if (range.includes('<')) {
+                const limit = Number(range.replace('<', '').trim().replace(',', '.'));
+                if (!isNaN(limit)) return val >= limit;
+            }
+            // Handle "> 10"
+            if (range.includes('>')) {
+                const limit = Number(range.replace('>', '').trim().replace(',', '.'));
+                if (!isNaN(limit)) return val <= limit;
+            }
+        } catch (e) {
+            return false;
+        }
+        return false;
+    };
+
+    const LabTrendChart = ({ data, metricName }: { data: ExamResult[], metricName: string }) => {
+        const filteredData = data
+            .filter(e => e.metrics && e.metrics.some(m => m.name.toLowerCase().includes(metricName.toLowerCase())))
+            .map(e => ({
+                date: new Date(e.date).toLocaleDateString('pt-BR'),
+                value: Number(String(e.metrics.find(m => m.name.toLowerCase().includes(metricName.toLowerCase()))?.value).replace(',', '.')) || 0,
+                unit: e.metrics.find(m => m.name.toLowerCase().includes(metricName.toLowerCase()))?.unit || ''
+            }))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        if (filteredData.length < 2) return null;
+
+        const maxValue = Math.max(...filteredData.map(d => d.value));
+        const minValue = Math.min(...filteredData.map(d => d.value));
+        const range = maxValue - minValue || 1;
+
+        const height = 150;
+        const width = 400;
+        const padding = 30;
+
+        const getX = (index: number) => padding + (index / (filteredData.length - 1)) * (width - 2 * padding);
+        const getY = (value: number) => height - padding - ((value - minValue) / range) * (height - 2 * padding);
+
+        const points = filteredData.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
+
+        return (
+            <div className="mt-4 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
+                <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-purple-500" />
+                    Tendência: {metricName}
+                </h4>
+                <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
+                    {/* Grid lines */}
+                    <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#e2e8f0" strokeDasharray="4" />
+                    <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#e2e8f0" strokeDasharray="4" />
+                    
+                    <polyline
+                        fill="none"
+                        stroke="#8b5cf6"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points={points}
+                        className="drop-shadow-sm"
+                    />
+                    {filteredData.map((d, i) => (
+                        <g key={i} className="group">
+                            <circle cx={getX(i)} cy={getY(d.value)} r="4" fill="#8b5cf6" className="cursor-pointer hover:r-6 transition-all" />
+                            <text x={getX(i)} y={getY(d.value) - 8} fontSize="10" fontWeight="bold" textAnchor="middle" fill="#5b21b6">{d.value}</text>
+                            <text x={getX(i)} y={height - 10} fontSize="8" textAnchor="middle" fill="#94a3b8" className="rotate-[-20] origin-top">{d.date}</text>
+                        </g>
+                    ))}
+                </svg>
+            </div>
+        );
+    };
+
     return (
         <div className="flex h-screen bg-slate-50">
             {/* Sidebar - Patient List */}
@@ -1349,6 +1555,34 @@ const EMRView: React.FC = () => {
                         <div className="flex-1 overflow-y-auto p-8">
                             {activeTab === 'SUMMARY' && (
                                 <div className="space-y-6 max-w-4xl mx-auto">
+                                    {/* AI Insight Widget */}
+                                    {mixedAnamneses.length > 0 && (
+                                        <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-0.5 rounded-2xl shadow-lg animate-in fade-in slide-in-from-top-4 duration-500">
+                                            <div className="bg-white rounded-[14px] p-5">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="bg-purple-100 p-1.5 rounded-lg">
+                                                            <Brain className="w-5 h-5 text-purple-600" />
+                                                        </div>
+                                                        <h3 className="font-bold text-slate-800">Cérebro Clínico: Insights Recentes</h3>
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider bg-purple-50 px-2 py-1 rounded-full">
+                                                        AI Powered
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-slate-600 line-clamp-3 italic leading-relaxed">
+                                                    "{mixedAnamneses[0].content}"
+                                                </p>
+                                                <button 
+                                                    onClick={() => setActiveTab('MIXED_ANAMNESIS')}
+                                                    className="mt-3 text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1 transition-colors"
+                                                >
+                                                    Ver análise completa <ArrowLeft className="w-3 h-3 rotate-180" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                         <label className="block text-sm font-medium text-slate-700 mb-2">Adicionar Nota Clínica</label>
                                         <textarea
@@ -1611,18 +1845,55 @@ const EMRView: React.FC = () => {
                                             Solicitação de Exames
                                         </h3>
 
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-                                            {commonExams.map(exam => (
-                                                <label key={exam} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedExams.includes(exam)}
-                                                        onChange={() => handleToggleExam(exam)}
-                                                        className="rounded text-teal-600 focus:ring-teal-500"
-                                                    />
-                                                    <span className="text-sm text-slate-700">{exam}</span>
-                                                </label>
-                                            ))}
+                                        <div className="mb-6">
+                                            <div className="relative mb-4">
+                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                    <Search className="h-4 w-4 text-slate-400" />
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Buscar exames (ex: Hemograma, Ressonância...)"
+                                                    value={examSearchTerm}
+                                                    onChange={e => setExamSearchTerm(e.target.value)}
+                                                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
+                                                />
+                                            </div>
+
+                                            {examSearchTerm.length > 1 && (
+                                                <div className="border rounded-lg max-h-48 overflow-y-auto mb-4 bg-slate-50 p-2 shadow-inner">
+                                                    {EXAM_DATABASE.filter(exam => exam.name.toLowerCase().includes(examSearchTerm.toLowerCase())).map(exam => (
+                                                        <label key={exam.name} className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded cursor-pointer transition-colors">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedExams.includes(exam.name)}
+                                                                onChange={() => handleToggleExam(exam.name)}
+                                                                className="rounded text-teal-600 focus:ring-teal-500"
+                                                            />
+                                                            <div>
+                                                                <span className="text-sm font-medium text-slate-700 block">{exam.name}</span>
+                                                                <span className="text-[10px] text-slate-500">{exam.category} • {exam.subcategory}</span>
+                                                            </div>
+                                                        </label>
+                                                    ))}
+                                                    {EXAM_DATABASE.filter(exam => exam.name.toLowerCase().includes(examSearchTerm.toLowerCase())).length === 0 && (
+                                                        <p className="text-sm text-slate-500 text-center py-2">Nenhum exame encontrado.</p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {selectedExams.length > 0 && (
+                                                <div className="mb-4">
+                                                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Exames Selecionados:</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {selectedExams.map(exam => (
+                                                            <span key={exam} className="bg-teal-50 text-teal-700 px-3 py-1 rounded-full text-xs font-medium border border-teal-100 flex items-center gap-1.5 shadow-sm">
+                                                                {exam}
+                                                                <button onClick={() => handleToggleExam(exam)} className="hover:text-red-500 transition-colors"><X className="w-3 h-3" /></button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex gap-2 mb-4">
@@ -1647,6 +1918,195 @@ const EMRView: React.FC = () => {
                                             <button onClick={handleSaveExamRequest} disabled={loading} className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 font-medium flex items-center gap-2">
                                                 <Save className="w-4 h-4" /> Salvar Solicitação
                                             </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Exam Results Section */}
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                                <FileText className="w-5 h-5 text-teal-600" />
+                                                Resultados de Exames
+                                            </h3>
+                                            <div className="flex gap-2">
+                                                <label className="cursor-pointer text-purple-600 bg-purple-50 px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-100 flex items-center gap-2 transition-all">
+                                                    {isParsingExam ? <Activity className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+                                                    {isParsingExam ? 'Analisando...' : 'Ler PDF/Imagem'}
+                                                    <input 
+                                                        type="file" 
+                                                        className="hidden" 
+                                                        accept="application/pdf,image/*"
+                                                        onChange={handleExamFileUpload}
+                                                        disabled={isParsingExam}
+                                                    />
+                                                </label>
+                                                <button 
+                                                    onClick={() => setShowExamResultForm(!showExamResultForm)}
+                                                    className="text-teal-600 bg-teal-50 px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-100 flex items-center gap-2 transition-all"
+                                                >
+                                                    {showExamResultForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                                                    {showExamResultForm ? 'Cancelar' : 'Registrar Manual'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {showExamResultForm && (
+                                            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-6 space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 mb-1">Nome do Exame</label>
+                                                        <input 
+                                                            className="w-full p-2 border rounded-lg"
+                                                            placeholder="Ex: Hemograma, Tomografia..."
+                                                            value={newExamResult.examName}
+                                                            onChange={e => setNewExamResult({...newExamResult, examName: e.target.value})}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 mb-1">Tipo</label>
+                                                        <select 
+                                                            className="w-full p-2 border rounded-lg"
+                                                            value={newExamResult.type}
+                                                            onChange={e => setNewExamResult({...newExamResult, type: e.target.value as any})}
+                                                        >
+                                                            <option value="Laboratorial">Laboratorial</option>
+                                                            <option value="Imagem">Imagem</option>
+                                                            <option value="Outros">Outros</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Laudo / Resultado Principal</label>
+                                                    <textarea 
+                                                        className="w-full p-3 border rounded-lg"
+                                                        rows={3}
+                                                        placeholder="Descreva o achado principal do exame..."
+                                                        value={newExamResult.result}
+                                                        onChange={e => setNewExamResult({...newExamResult, result: e.target.value})}
+                                                    />
+                                                </div>
+
+                                                {/* Metrics/Values */}
+                                                <div className="border-t pt-4">
+                                                    <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Valores/Métricas (Opcional)</p>
+                                                    <div className="grid grid-cols-4 gap-2 mb-2">
+                                                        <input 
+                                                            placeholder="Métrica (ex: Glicose)"
+                                                            className="p-2 border rounded-lg text-sm"
+                                                            value={newResultMetric.name}
+                                                            onChange={e => setNewResultMetric({...newResultMetric, name: e.target.value})}
+                                                        />
+                                                        <input 
+                                                            placeholder="Valor"
+                                                            type="number"
+                                                            className="p-2 border rounded-lg text-sm"
+                                                            value={newResultMetric.value}
+                                                            onChange={e => setNewResultMetric({...newResultMetric, value: e.target.value})}
+                                                        />
+                                                        <input 
+                                                            placeholder="Unid."
+                                                            className="p-2 border rounded-lg text-sm"
+                                                            value={newResultMetric.unit}
+                                                            onChange={e => setNewResultMetric({...newResultMetric, unit: e.target.value})}
+                                                        />
+                                                        <button 
+                                                            onClick={addResultMetric}
+                                                            className="bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                                                        >
+                                                            <Plus className="w-4 h-4 mx-auto" />
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {newExamResult.metrics?.map((m, i) => (
+                                                            <span key={i} className="bg-white border border-teal-200 text-teal-700 px-3 py-1 rounded-full text-xs flex items-center gap-2">
+                                                                {m.name}: {m.value}{m.unit}
+                                                                <button onClick={() => removeResultMetric(i)}><X className="w-3 h-3 text-red-500" /></button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex justify-end pt-2">
+                                                    <button 
+                                                        onClick={handleSaveExamResult}
+                                                        disabled={loading}
+                                                        className="bg-teal-600 text-white px-6 py-2 rounded-xl hover:bg-teal-700 font-bold flex items-center gap-2 shadow-sm transition-all"
+                                                    >
+                                                        <Save className="w-4 h-4" /> Salvar Resultado
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-4">
+                                            {/* Trends Section */}
+                                            {Array.from(new Set(examResults.flatMap(res => res.metrics?.map(m => m.name) || [])))
+                                                .filter(name => examResults.filter(r => r.metrics?.some(m => m.name === name)).length >= 2)
+                                                .map(name => (
+                                                    <LabTrendChart key={name} data={examResults} metricName={name} />
+                                                ))
+                                            }
+
+                                            {examResults.map(res => (
+                                                <div key={res.id} className="bg-slate-50 p-4 rounded-xl border border-slate-100 hover:border-teal-200 transition-colors">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${res.type === 'Laboratorial' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                                                    {res.type}
+                                                                </span>
+                                                                <p className="font-bold text-slate-800">{res.examName}</p>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 mt-0.5">
+                                                                {new Date(res.date).toLocaleDateString()} · {res.professionalName}
+                                                            </p>
+                                                        </div>
+                                                        <button 
+                                                            onClick={() => handleDeleteExamResult(res.id)}
+                                                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-sm text-slate-700 mt-3 bg-white p-3 rounded-lg border border-slate-100 italic">
+                                                        "{res.result}"
+                                                    </p>
+                                                    {res.metrics && res.metrics.length > 0 && (
+                                                        <div className="flex flex-wrap gap-2 mt-3">
+                                                            {res.metrics.map((m, i) => {
+                                                                const abnormal = isOutOfRange(m.value, m.referenceRange || '');
+                                                                return (
+                                                                    <div key={i} className={`rounded-lg px-2.5 py-1.5 flex items-center gap-2 border transition-all ${abnormal ? 'bg-red-50 border-red-200 text-red-700 ring-1 ring-red-100' : 'bg-teal-50 border-teal-100 text-teal-800'}`}>
+                                                                        <div className="flex flex-col">
+                                                                            <span className={`text-[9px] font-bold uppercase tracking-tight ${abnormal ? 'text-red-500' : 'text-teal-600'}`}>{m.name}</span>
+                                                                            <div className="flex items-baseline gap-1">
+                                                                                <span className="text-sm font-black">{m.value}</span>
+                                                                                <span className={`text-[10px] font-medium ${abnormal ? 'text-red-400' : 'text-teal-500'}`}>{m.unit}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        {m.referenceRange && (
+                                                                            <div className="pl-2 border-l border-current border-opacity-10">
+                                                                                <span className="text-[8px] block opacity-50 font-bold uppercase">Ref</span>
+                                                                                <span className="text-[10px] font-medium whitespace-nowrap">{m.referenceRange}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {abnormal && (
+                                                                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse ml-1" title="Valor Alterado" />
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {examResults.length === 0 && !showExamResultForm && (
+                                                <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed">
+                                                    <p className="text-sm">Nenhum resultado registrado ainda.</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -2139,30 +2599,36 @@ const EMRView: React.FC = () => {
 
                             {activeTab === 'MIXED_ANAMNESIS' && (
                                 <div className="space-y-6">
-                                    <div className="bg-purple-50 p-6 rounded-xl border border-purple-100 mb-6">
-                                        <h3 className="text-lg font-bold text-purple-800 flex items-center gap-2 mb-2">
-                                            <GitMerge className="w-5 h-5" />
-                                            Anamnese Mista
-                                        </h3>
-                                        <p className="text-purple-700 text-sm mb-4">
-                                            Utilize o recurso para gerar uma Síntese Clínica Interdisciplinar a partir das informações coletadas por todos os profissionais.
+                                    <div className="bg-gradient-to-br from-purple-50 to-indigo-50 p-6 rounded-2xl border border-purple-100 mb-6 shadow-sm">
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <div className="bg-purple-600 p-2 rounded-lg shadow-md">
+                                                <Brain className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-bold text-purple-900">Inteligência Clínica Avançada</h3>
+                                                <p className="text-purple-700/80 text-sm font-medium">Análise Interdisciplinar · Correlação de Dados · Evolução Temporal</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+                                            A IA analisará todo o histórico do paciente, incluindo <span className="font-bold text-purple-700">anamneses</span>, <span className="font-bold text-purple-700">evoluções</span>, <span className="font-bold text-purple-700">exames</span> e <span className="font-bold text-purple-700">prescrições</span> para gerar uma síntese diagnóstica e evolutiva completa.
                                         </p>
 
                                         {!generatedSummary ? (
                                             <button
                                                 onClick={handleGenerateMixedAnamnesis}
                                                 disabled={isGeneratingAI || anamneses.length === 0}
-                                                className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                                className="bg-purple-600 text-white px-8 py-3 rounded-xl hover:bg-purple-700 font-bold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-purple-200"
                                             >
                                                 {isGeneratingAI ? (
                                                     <>
-                                                        <Activity className="w-4 h-4 animate-spin" />
-                                                        Gerando Resumo com IA...
+                                                        <Activity className="w-5 h-5 animate-spin" />
+                                                        Processando Inteligência Clínica...
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <GitMerge className="w-4 h-4" />
-                                                        Gerar Síntese Clínica Integrada
+                                                        <Wand2 className="w-5 h-5" />
+                                                        Gerar Análise Clínica Integrada
                                                     </>
                                                 )}
                                             </button>

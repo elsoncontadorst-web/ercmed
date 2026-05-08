@@ -139,6 +139,25 @@ export interface ExamRequest {
   createdAt: any;
 }
 
+export interface ExamResult {
+  id: string;
+  patientId: string;
+  professionalId: string;
+  professionalName: string;
+  examName: string;
+  date: string;
+  type: 'Laboratorial' | 'Imagem' | 'Outros';
+  result: string; // Narrative or main finding
+  metrics?: {
+    name: string;
+    value: number;
+    unit: string;
+    referenceRange?: string;
+  }[];
+  attachments?: string[]; // URLs for PDF/Images
+  createdAt: any;
+}
+
 // Clinic Hours Configuration
 export interface TimeSlot {
   start: string; // HH:MM format
@@ -298,7 +317,12 @@ export interface MixedAnamnesis {
   professionalName: string;
   date: string;
   content: string; // The AI generated summary
-  sourceAnamnesesIds: string[]; // IDs of the individual anamneses used
+  sourceAnamnesesIds?: string[]; // IDs of the individual anamneses used
+  analysisData?: {
+    trends?: string;
+    correlations?: string;
+    suggestions?: string;
+  };
   createdAt: any;
 }
 

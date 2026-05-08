@@ -380,33 +380,56 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
           </ModuleGroup>
 
           {/* 4. FINANCEIRO & FATURAMENTO */}
+          {(isAdmin || userProfile?.isClinicManager || userRole === UserRole.BILLER) && (
+            <ModuleGroup
+              title="Financeiro & Faturamento"
+              icon={DollarSign}
+              isOpen={isFinanceiroOpen || isRepasseOpen}
+              setIsOpen={(val) => { setIsFinanceiroOpen(val); setIsRepasseOpen(val); }}
+              currentView={currentView}
+              views={[
+                AppView.FINANCIAL_CONTROL,
+                AppView.SALES_MANAGEMENT,
+                AppView.CASH_FLOW,
+                AppView.REPASSE_DASHBOARD,
+                AppView.BILLING_MANAGEMENT,
+                AppView.REPASSE_CALCULATION,
+                AppView.TISS_BILLING
+              ]}
+            >
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" moduleName="financial" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" moduleName="financial" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" moduleName="financial" />
+              <div className="h-px bg-slate-800 my-1"></div>
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" moduleName="repasse" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" moduleName="repasse" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" moduleName="repasse" />
+              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TISS_BILLING} icon={Building2} label="Faturamento TISS" moduleName="tiss" />
+            </ModuleGroup>
+          )}
+
+          {/* 5. INTELIGÊNCIA AVANÇADA */}
           <ModuleGroup
-            title="Financeiro & Faturamento"
-            icon={DollarSign}
-            isOpen={isFinanceiroOpen || isRepasseOpen}
-            setIsOpen={(val) => { setIsFinanceiroOpen(val); setIsRepasseOpen(val); }}
+            title="Inteligência Avançada"
+            icon={Brain}
+            isOpen={true}
+            setIsOpen={() => {}}
             currentView={currentView}
-            views={[
-              AppView.FINANCIAL_CONTROL,
-              AppView.SALES_MANAGEMENT,
-              AppView.CASH_FLOW,
-              AppView.REPASSE_DASHBOARD,
-              AppView.BILLING_MANAGEMENT,
-              AppView.REPASSE_CALCULATION,
-              AppView.TISS_BILLING
-            ]}
+            views={[AppView.THERAPEUTIC_INTELLIGENCE]}
           >
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" moduleName="financial" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" moduleName="financial" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" moduleName="financial" />
-            <div className="h-px bg-slate-800 my-1"></div>
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" moduleName="repasse" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" moduleName="repasse" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" moduleName="repasse" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TISS_BILLING} icon={Building2} label="Faturamento TISS" moduleName="tiss" />
+            <NavButton 
+              currentView={currentView} 
+              setView={setView} 
+              setMobileMenuOpen={setMobileMenuOpen} 
+              userTier={userTier} 
+              view={AppView.THERAPEUTIC_INTELLIGENCE} 
+              icon={Microscope} 
+              label="Pesquisa & Terapêutica" 
+              moduleName="therapeuticIntelligence" 
+            />
           </ModuleGroup>
 
-          {/* 5. ADMINISTRAÇÃO */}
+          {/* 6. ADMINISTRAÇÃO */}
           <ModuleGroup
             title="Administração"
             icon={Settings}
@@ -415,11 +438,13 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             currentView={currentView}
             views={[AppView.CLINICS, AppView.CLINIC_TEAMS, AppView.TEAM_INVITATIONS, AppView.CONTRACTS, AppView.USERS_MANAGEMENT, AppView.PERMISSIONS_MANAGEMENT, AppView.DEBUG, AppView.PLANS]}
           >
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINICS} icon={Building2} label="Consultórios" moduleName="clinics" />
             {(isAdmin || userProfile?.isClinicManager) && (
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_TEAMS} icon={Shield} label="Equipes da Clínica" />
+              <>
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINICS} icon={Building2} label="Consultórios" moduleName="clinics" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_TEAMS} icon={Shield} label="Equipes da Clínica" />
+                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" moduleName="contracts" />
+              </>
             )}
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" moduleName="contracts" />
             {isAdmin && (
               <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.USERS_MANAGEMENT} icon={Users} label="Gerenciar Usuários" />
             )}
@@ -543,7 +568,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               </ModuleGroup>
 
               {/* Gestão de Repasse Clínico - Admin Only */}
-              {(auth.currentUser?.email === 'usuario020@ercmed.com.br' || auth.currentUser?.email === 'elsoncontador.st@gmail.com' || userRole === UserRole.BILLER || userProfile?.isClinicManager) && (
+              {(isAdmin || userProfile?.isClinicManager || userRole === UserRole.BILLER) && (
                 <ModuleGroup
                   title="Gestão de Repasse"
                   icon={DollarSign}
@@ -555,14 +580,13 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                   <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" />
                   <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" />
                   <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" />
-                  {/* <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PROFESSIONAL_CONFIG} icon={Settings} label="Profissionais" /> */}
                 </ModuleGroup>
               )}
 
               <div className="h-px bg-slate-700 my-2"></div>
 
               {/* Contratos - Admin only */}
-              {(isAdmin || userRole === UserRole.BILLER || userProfile?.isClinicManager) && (
+              {(isAdmin || userProfile?.isClinicManager || userRole === UserRole.BILLER) && (
                 <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" />
               )}
 

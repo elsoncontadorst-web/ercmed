@@ -268,7 +268,7 @@ const ContractsView: React.FC = () => {
                     email: formData.userCreation.email,
                     password: formData.userCreation.password,
                     name: formData.providerName,
-                    role: roleMap[formData.userCreation.userType] === UserRole.HEALTH_PROFESSIONAL ? 'professional' : 'biller',
+                    role: roleMap[formData.userCreation.userType] || UserRole.HEALTH_PROFESSIONAL,
                     phone: formData.phone,
                     specialty: formData.serviceType,
                     crm: formData.councilNumber,
