@@ -46,8 +46,7 @@ export const analyzeTherapeuticIdea = async (prompt: string, patientContext?: st
       contents: [{ role: 'user', parts: [{ text: aiPrompt }] }]
     });
 
-    const response = await result.response;
-    const text = response.text();
+    const text = result.text || "";
     
     // Clean JSON string
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
