@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Calculator, Users, TrendingUp, LogOut, Menu, X, ChevronDown, ChevronRight, BookOpen, Info, DollarSign, MessageSquare, Calendar, FileText, Sun, Moon, Cloud, CloudOff, ShoppingCart, Heart, Activity, Pill, Receipt, Settings, FileSignature, Home, Building2, Clock, Link as LinkIcon, Edit, User as UserIcon, Save, Lock, Shield, Check, Crown, UserPlus } from 'lucide-react';
+import { LayoutDashboard, Calculator, Users, TrendingUp, LogOut, Menu, X, ChevronDown, ChevronRight, BookOpen, Info, DollarSign, MessageSquare, Calendar, FileText, Sun, Moon, Cloud, CloudOff, ShoppingCart, Heart, Activity, Pill, Receipt, Settings, FileSignature, Home, Building2, Clock, Link as LinkIcon, Edit, User as UserIcon, Save, Lock, Shield, Check, Crown, UserPlus, Brain, Microscope } from 'lucide-react';
 import SystemLogo from './SystemLogo';
 import { AppView, UserRole } from '../types';
 import { signOut, auth } from '../services/firebase';
