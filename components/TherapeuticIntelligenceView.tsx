@@ -53,31 +53,92 @@ const TherapeuticIntelligenceView: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<TherapeuticAnalysis | null>(null);
 
-  // Mock initial data for demonstration (including the requested lemongrass example)
-  const [resources, setResources] = useState<ResearchResource[]>([
-    {
-      id: '1',
-      name: 'Capim-Santo (Cymbopogon citratus)',
-      type: 'PLANTA',
-      description: 'Planta medicinal com propriedades sedativas, analgésicas e hipotensoras.',
-      activeIngredients: ['Citral', 'Geraniol', 'Mirceno'],
-      mechanismsOfAction: ['Modulação de canais de cálcio', 'Efeito diurético suave', 'Relaxamento da musculatura lisa vascular'],
-      indications: ['Hipertensão Arterial Leve', 'Ansiedade', 'Insônia'],
-      interactions: [
-        { substance: 'Anti-hipertensivos', effect: 'Potencialização do efeito (risco de hipotensão)', severity: 'MEDIUM' }
-      ],
-      evidenceLevel: 4,
-      scientificSources: ['UFS Research 2023', 'PubMed: PMC123456'],
-      suggestedDosage: 'Infusão (chá): 2g de folhas secas em 150ml de água, 2-3x ao dia.'
-    }
-  ]);
+  const [resources, setResources] = useState<ResearchResource[]>([]);
+  const [loadingResources, setLoadingResources] = useState(true);
+
+  // Load resources from Firestore
+  useEffect(() => {
+    const loadResources = async () => {
+      try {
+        const q = query(collection(db, 'therapeutic_resources'));
+        const querySnapshot = await getDocs(q);
+        const loadedResources = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as ResearchResource));
+        
+        // If empty, add the default lemongrass example as a starting point
+        if (loadedResources.length === 0) {
+          const defaultResource: ResearchResource = {
+            id: 'default_1',
+            name: 'Capim-Santo (Cymbopogon citratus)',
+            type: 'PLANTA',
+            description: 'Planta medicinal com propriedades sedativas, analgésicas e hipotensoras.',
+            activeIngredients: ['Citral', 'Geraniol', 'Mirceno'],
+            mechanismsOfAction: ['Modulação de canais de cálcio', 'Efeito diurético suave', 'Relaxamento da musculatura lisa vascular'],
+            indications: ['Hipertensão Arterial Leve', 'Ansiedade', 'Insônia'],
+            interactions: [
+              { substance: 'Anti-hipertensivos', effect: 'Potencialização do efeito (risco de hipotensão)', severity: 'MEDIUM' }
+            ],
+            evidenceLevel: 4,
+            scientificSources: ['UFS Research 2023', 'PubMed: PMC123456'],
+            suggestedDosage: 'Infusão (chá): 2g de folhas secas em 150ml de água, 2-3x ao dia.'
+          };
+          setResources([defaultResource]);
+        } else {
+          setResources(loadedResources);
+        }
+      } catch (error) {
+        console.error("Error loading resources:", error);
+      } finally {
+        setLoadingResources(false);
+      }
+    };
+
+    loadResources();
+  }, []);
 
   const handleGlobalSearch = () => {
     setIsSearching(true);
-    // Simulating AI Search
+    // Simulating AI Search (In a real scenario, this would filter Firestore resources)
     setTimeout(() => {
       setIsSearching(false);
     }, 1500);
+  };
+
+  const handleSaveToLibrary = async () => {
+    if (!analysisResult) return;
+    
+    try {
+      const newResource: Omit<ResearchResource, 'id'> = {
+        name: analysisResult.title,
+        type: researchPrompt.toLowerCase().includes('planta') ? 'PLANTA' : 'MEDICAMENTO',
+        description: analysisResult.summary,
+        activeIngredients: analysisResult.activeCompounds,
+        mechanismsOfAction: analysisResult.mechanismsOfAction,
+        indications: [], // AI could provide this in the future
+        interactions: analysisResult.risks.map(risk => ({
+          substance: 'Diversos',
+          effect: risk,
+          severity: 'MEDIUM'
+        })),
+        evidenceLevel: analysisResult.evidenceLevel.includes('A') ? 5 : analysisResult.evidenceLevel.includes('B') ? 4 : 3,
+        scientificSources: analysisResult.scientificSources,
+        suggestedDosage: analysisResult.suggestedProtocol
+      };
+
+      const docRef = await addDoc(collection(db, 'therapeutic_resources'), {
+        ...newResource,
+        createdAt: serverTimestamp(),
+        createdBy: auth.currentUser?.uid
+      });
+
+      setResources(prev => [{ id: docRef.id, ...newResource } as ResearchResource, ...prev]);
+      alert("Pesquisa salva com sucesso na Base de Conhecimento!");
+    } catch (error) {
+      console.error("Error saving resource:", error);
+      alert("Erro ao salvar na base de dados.");
+    }
   };
 
   const handleAiDiscovery = async () => {
@@ -277,8 +338,11 @@ const TherapeuticIntelligenceView: React.FC = () => {
                         <Globe className="w-3 h-3" />
                         Fontes: PubMed, UFS, Google Scholar
                       </div>
-                      <button className="text-purple-600 font-bold text-sm flex items-center gap-1 hover:underline">
-                        Integrar ao Protocolo Clínico <ArrowRight className="w-4 h-4" />
+                      <button 
+                        onClick={handleSaveToLibrary}
+                        className="text-purple-600 font-bold text-sm flex items-center gap-1 hover:underline"
+                      >
+                        Salvar na Base de Conhecimento <ArrowRight className="w-4 h-4" />
                       </button>
                     </div>
                   </div>

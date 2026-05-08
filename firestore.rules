@@ -304,6 +304,14 @@ service cloud.firestore {
     }
 
     // =============================================
+    // THERAPEUTIC INTELLIGENCE (Shared Knowledge Base)
+    // =============================================
+    match /therapeutic_resources/{resourceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // =============================================
     // CATCH-ALL: Deny everything else by default
     // =============================================
   }
