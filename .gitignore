@@ -39,3 +39,8 @@ fix_build.js
 fix_clinic_link_issue.ts
 delete_duplicate_clinic.ts
 FIRESTORE_INDEXES.md
+
+# Firebase Service Account Keys (NEVER commit these!)
+*-firebase-adminsdk-*.json
+healtmed-*.json
+serviceAccountKey.json
