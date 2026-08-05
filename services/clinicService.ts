@@ -1,4 +1,4 @@
-import { collection, collectionGroup, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Clinic, ClinicFormData } from '../types/clinic';
 import { getManagerIdForUser } from './accessControlService';
@@ -15,13 +15,13 @@ export const addClinic = async (clinicData: ClinicFormData): Promise<string | nu
 
         const managerId = await getManagerIdForUser(user.uid);
         if (!managerId) {
-            throw new Error('Manager ID not found');
+            throw new Error('Seu perfil de gestor ainda está sendo preparado. Aguarde alguns segundos e tente novamente.');
         }
 
-        // VALIDATION: Check if CNPJ already exists globally
+        // Validate duplicates only inside the authenticated tenant. A global
+        // collection-group query would require exposing other clinics' data.
         if (clinicData.cnpj) {
-            console.log('[CLINIC] Checking for duplicate CNPJ:', clinicData.cnpj);
-            const clinicsRef = collectionGroup(db, 'clinics');
+            const clinicsRef = collection(db, 'users', managerId, 'clinics');
             const cnpjQuery = query(
                 clinicsRef,
                 where('cnpj', '==', clinicData.cnpj),
@@ -31,8 +31,7 @@ export const addClinic = async (clinicData: ClinicFormData): Promise<string | nu
             const existingSnapshot = await getDocs(cnpjQuery);
 
             if (!existingSnapshot.empty) {
-                console.error('[CLINIC] CNPJ already registered!');
-                throw new Error('Este CNPJ já está cadastrado no sistema. Cada CNPJ pode ser cadastrado apenas uma vez.');
+                throw new Error('Este CNPJ já está cadastrado nesta empresa.');
             }
         }
 
@@ -63,22 +62,39 @@ export const getClinics = async (targetManagerId?: string): Promise<Clinic[]> =>
         const user = auth.currentUser;
         if (!user) return [];
 
-        let managerId = targetManagerId;
-        if (!managerId) {
-            managerId = await getManagerIdForUser(user.uid);
+        const resolvedManagerId = targetManagerId || await getManagerIdForUser(user.uid);
+        const candidates = new Set<string>();
+        if (resolvedManagerId) candidates.add(resolvedManagerId);
+        candidates.add(user.uid);
+
+        // Some older manager profiles kept the tenant owner in managerId. Read
+        // that explicit linkage as a safe fallback so changing the active unit
+        // never makes the tenant's clinics appear to disappear.
+        for (const rootCollection of ['system_users', 'user_profiles']) {
+            try {
+                const profile = await getDoc(doc(db, rootCollection, user.uid));
+                const linkedManagerId = profile.exists() ? profile.data().managerId : null;
+                if (linkedManagerId) candidates.add(linkedManagerId);
+            } catch {
+                // Continue with the tenant IDs already resolved.
+            }
         }
 
-        if (!managerId) return [];
+        for (const managerId of candidates) {
+            try {
+                // Do not require active == true in the query: legacy clinics may
+                // not have that field. Only explicitly inactive records are hidden.
+                const snapshot = await getDocs(collection(db, 'users', managerId, 'clinics'));
+                const clinics = snapshot.docs
+                    .map(item => ({ id: item.id, ...item.data() } as Clinic))
+                    .filter(clinic => clinic.active !== false);
+                if (clinics.length > 0) return clinics;
+            } catch (error) {
+                console.warn('[CLINIC] Tenant candidate unavailable:', managerId, error);
+            }
+        }
 
-        const clinicsRef = collection(db, 'users', managerId, 'clinics');
-        const q = query(clinicsRef, where('active', '==', true));
-
-        const snapshot = await getDocs(q);
-
-        return snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        } as Clinic));
+        return [];
     } catch (error) {
         console.error('Error getting clinics:', error);
         return [];

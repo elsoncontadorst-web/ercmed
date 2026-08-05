@@ -85,7 +85,7 @@ export const TIER_COLORS: Record<AccountTier, string> = {
 
 
 export const TIER_DESCRIPTIONS: Record<AccountTier, string> = {
-    [AccountTier.TRIAL]: 'Período de testes gratuito com acesso à Gestão de Saúde',
+    [AccountTier.TRIAL]: 'Período de testes gratuito com acesso à operação assistencial do ERP',
     [AccountTier.SILVER]: 'Organização e controle profissional',
     [AccountTier.GOLD]: 'Crescimento estruturado e escala',
     [AccountTier.ENTERPRISE]: 'Máxima performance e inteligência',

@@ -10,11 +10,16 @@ import {
     serverTimestamp,
     setDoc,
     updateDoc,
-    deleteDoc
+    deleteDoc,
+    DocumentData,
+    Query
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Professional, ConsultationBilling, RepasseStatement, RepasseDeductions, Contract } from '../types/finance';
 import { getContracts, getContractsByOwner } from './contractService';
+import { removeTransactionsByBilling } from './userDataService';
+import { getAllUsers } from './userManagementService';
+import { getUserRole } from './userRoleService';
 
 const MASTER_ADMIN_EMAIL = 'elsoncontador.st@gmail.com';
 
@@ -71,15 +76,102 @@ export const getProfessionalConfig = async (professionalId: string): Promise<Pro
     }
 };
 
-export const getAllProfessionals = async (managerId?: string): Promise<Professional[]> => {
+export const getAllProfessionals = async (managerId?: string, clinicId?: string): Promise<Professional[]> => {
     try {
+        const currentUserId = auth.currentUser?.uid;
+        if (currentUserId) {
+            const currentRole = await getUserRole(currentUserId);
+            if (
+                ['professional', 'health_professional', 'autonomous_provider'].includes(currentRole as string) &&
+                (!managerId || managerId !== currentUserId)
+            ) {
+                // A professional must never enumerate the clinic's full contract list.
+                return getProfessionalsByOwner(currentUserId);
+            }
+        }
+
         // Fetch from contracts
         const contracts = await getContracts(managerId);
 
         // Map to professionals
-        const professionals = contracts
+        let professionals = contracts
             .filter(c => c.status === 'active')
             .map(contractToProfessional);
+
+        // A clinic owner may not have a contract yet. Keep the production
+        // portal usable by including the owner's professional profile.
+        if (managerId && professionals.length === 0) {
+            professionals = await getProfessionalsByOwner(managerId);
+        }
+
+        if (managerId) {
+            const linkedUsers = await getAllUsers(managerId);
+
+            const professionalRoles = new Set(['professional', 'health_professional', 'autonomous_provider']);
+            const linkedProfessionals: Professional[] = linkedUsers
+                .filter(user => professionalRoles.has(user.role) && !['inactive', 'rejected'].includes(user.status))
+                .map(user => ({
+                    id: user.professionalId || user.id,
+                    userId: user.id,
+                    name: user.professionalName || user.name,
+                    email: user.email || '',
+                    specialty: user.specialty || 'Profissional de Saúde',
+                    role: user.role,
+                    repasseConfig: {
+                        taxRate: 0,
+                        splitPercentage: 70,
+                        clinicPercentage: 30,
+                        roomRentalAmount: 0,
+                        customDeductions: [],
+                        bankAccount: { bank: '', agency: '', account: '', accountType: 'checking' }
+                    },
+                    active: true,
+                    clinicId: user.clinicId,
+                    clinicIds: user.clinicIds,
+                    createdAt: user.createdAt,
+                    updatedAt: user.updatedAt
+                }));
+
+            for (const linkedProfessional of linkedProfessionals) {
+                const existingIndex = professionals.findIndex(professional =>
+                    professional.id === linkedProfessional.id ||
+                    professional.userId === linkedProfessional.userId ||
+                    (!!professional.email && professional.email.toLowerCase() === linkedProfessional.email.toLowerCase())
+                );
+                if (existingIndex >= 0) {
+                    professionals[existingIndex] = {
+                        ...professionals[existingIndex],
+                        userId: linkedProfessional.userId,
+                        email: linkedProfessional.email || professionals[existingIndex].email,
+                        name: linkedProfessional.name || professionals[existingIndex].name,
+                        specialty: linkedProfessional.specialty || professionals[existingIndex].specialty,
+                        clinicId: linkedProfessional.clinicId || professionals[existingIndex].clinicId,
+                        clinicIds: linkedProfessional.clinicIds || professionals[existingIndex].clinicIds
+                    };
+                } else {
+                    professionals.push(linkedProfessional);
+                }
+            }
+
+            if (clinicId) {
+            const allowedProfessionalIds = new Set(
+                linkedUsers
+                    .filter(user => {
+                        const explicitClinics = user.clinicIds || [];
+                        const singleClinic = user.clinicId ? [user.clinicId] : [];
+                        const assignedClinics = [...explicitClinics, ...singleClinic].filter(Boolean);
+                        return assignedClinics.length > 0 && assignedClinics.includes(clinicId);
+                    })
+                    .map(user => user.professionalId || user.id)
+            );
+
+            professionals = professionals.filter(professional =>
+                !professional.userId ||
+                allowedProfessionalIds.has(professional.userId) ||
+                allowedProfessionalIds.has(professional.id)
+            );
+            }
+        }
 
         return professionals.sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
@@ -181,6 +273,9 @@ export const processBilling = async (
     billing: Omit<ConsultationBilling, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string | null> => {
     try {
+        if (!billing.managerId) {
+            throw new Error('O faturamento precisa estar vinculado a uma clínica.');
+        }
         const billingRef = collection(db, 'consultation_billing');
         const docRef = await addDoc(billingRef, {
             ...billing,
@@ -202,7 +297,7 @@ export const getBillingRecords = async (
 ): Promise<ConsultationBilling[]> => {
     try {
         const billingRef = collection(db, 'consultation_billing');
-        let q;
+        let q: Query<DocumentData>;
         if (managerId) {
             q = query(
                 billingRef,
@@ -237,12 +332,12 @@ export const getAllBillingRecords = async (managerId?: string, professionalId?: 
         const isMasterAdmin = currentUserEmail === MASTER_ADMIN_EMAIL;
 
         const billingRef = collection(db, 'consultation_billing');
-        let q;
+        let q: Query<DocumentData>;
 
         if (managerId) {
             q = query(billingRef, where('managerId', '==', managerId), orderBy('consultationDate', 'desc'));
         } else if (professionalId) {
-            q = query(billingRef, where('professionalId', '==', professionalId), orderBy('consultationDate', 'desc'));
+            q = query(billingRef, where('professionalId', '==', professionalId));
         } else if (isMasterAdmin) {
             // Only Master Admin sees everything
             q = query(billingRef, orderBy('consultationDate', 'desc'));
@@ -252,7 +347,9 @@ export const getAllBillingRecords = async (managerId?: string, professionalId?: 
         }
 
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConsultationBilling));
+        return snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as ConsultationBilling))
+            .sort((a, b) => (b.consultationDate || '').localeCompare(a.consultationDate || ''));
     } catch (error) {
         console.error('Erro ao buscar faturamentos:', error);
         return [];
@@ -276,10 +373,26 @@ export const updateBillingRecord = async (
     }
 };
 
+export const updateBillingPaymentStatus = async (
+    billingId: string,
+    paymentStatus: ConsultationBilling['paymentStatus'],
+    paymentDate?: string
+): Promise<boolean> => {
+    return updateBillingRecord(billingId, {
+        paymentStatus,
+        paymentDate: paymentStatus === 'received' ? (paymentDate || new Date().toISOString().split('T')[0]) : undefined
+    });
+};
+
 export const deleteBillingRecord = async (billingId: string): Promise<boolean> => {
     try {
         const billingRef = doc(db, 'consultation_billing', billingId);
+        const billingSnapshot = await getDoc(billingRef);
+        const billing = billingSnapshot.exists() ? billingSnapshot.data() as ConsultationBilling : null;
         await deleteDoc(billingRef);
+        if (billing?.managerId) {
+            await removeTransactionsByBilling(billing.managerId, billingId);
+        }
         return true;
     } catch (error) {
         console.error('Erro ao deletar registro de faturamento:', error);
@@ -296,7 +409,8 @@ export const deleteBillingRecord = async (billingId: string): Promise<boolean> =
 export const calculateRepasse = async (
     professionalId: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    managerId?: string
 ): Promise<RepasseStatement | null> => {
     try {
         // 1. Get professional configuration
@@ -306,7 +420,7 @@ export const calculateRepasse = async (
         }
 
         // 2. Get all paid consultations in period
-        const billings = await getBillingRecords(professionalId, startDate, endDate);
+        const billings = await getBillingRecords(professionalId, startDate, endDate, managerId);
 
         // 3. Calculate total gross (Faturamento Total)
         const totalGross = billings.reduce((sum, billing) => sum + billing.grossAmount, 0);

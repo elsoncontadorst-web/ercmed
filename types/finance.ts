@@ -16,6 +16,8 @@ export interface Professional {
     specialty: string;
     email: string;
     phone?: string;
+    clinicId?: string;
+    clinicIds?: string[];
 
     // Role definition
     role: 'Médico' | 'Terapeuta Ocupacional' | 'Psicólogo' | 'Fonoaudiólogo' | 'Nutricionista' | string;
@@ -54,9 +56,21 @@ export interface ConsultationBilling {
     id: string;
     professionalId: string;
     professionalName: string;
-    managerId?: string; // ID of the manager who owns this record
+    professionalUserId?: string;
+    specialty?: string;
+    managerId: string; // ID of the clinic manager who owns this record
     patientName?: string;
     consultationDate: string;
+    serviceId?: string;
+    serviceName?: string;
+    serviceRuleName?: string;
+    contractName?: string;
+    unitName?: string;
+    clinicId?: string;
+    sourceAppointmentId?: string;
+    registeredBy?: string;
+    attendanceKind?: 'standard' | 'package' | 'return_free';
+    revenueUnit?: 'clinical' | 'laboratory';
 
     // Financial details
     grossAmount: number; // Total charged to patient/insurance (Faturamento)
@@ -73,6 +87,7 @@ export interface ConsultationBilling {
     paymentMethod: 'insurance' | 'private' | 'cash' | 'card';
     paymentStatus: 'pending' | 'received' | 'cancelled';
     paymentDate?: string;
+    financialTransactionId?: string;
 
     notes?: string;
     createdAt: any;
@@ -101,6 +116,7 @@ export interface RepasseStatement {
     professionalId: string;
     professionalName: string;
     managerId?: string; // ID of the manager who owns this record
+    clinicId?: string;
     periodStart: string;
     periodEnd: string;
 
@@ -124,6 +140,8 @@ export interface RepasseStatement {
 // Contract Management
 export interface Contract {
     id: string;
+    contractKind?: 'provider' | 'partner';
+    equityPercentage?: number;
     providerName: string;
     personType: 'PF' | 'PJ';
     cpf?: string;
@@ -138,6 +156,7 @@ export interface Contract {
     userId?: string; // Link to system user
     userType?: 'professional' | 'biller' | 'autonomous_provider'; // Type of user created for this contract
     managerId?: string; // ID of the manager who created/manages this contract
+    clinicId?: string;
 
     startDate: string;
     endDate: string;

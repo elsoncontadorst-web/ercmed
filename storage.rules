@@ -29,7 +29,7 @@ service firebase.storage {
       // Only Master can upload/delete
       allow write, delete: if isMasterAdmin();
     }
-    
+
     // ========================================
     // PROFILE IMAGES (Future use)
     // ========================================

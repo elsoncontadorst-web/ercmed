@@ -1,323 +1,249 @@
-import React, { useState, useEffect } from 'react';
-import { Crown, Users, Calculator, FileText, Stethoscope, Check, X, Sparkles, Infinity, Shield, Zap } from 'lucide-react';
-import { AccountTier, TIER_NAMES, TIER_DESCRIPTIONS, getProfessionalLimitText } from '../types/accountTiers';
+import React, { useEffect, useState } from 'react';
+import {
+    Building2, Check, ChevronDown, Crown, Headphones, Infinity,
+    Shield, Star, Zap
+} from 'lucide-react';
+import { AccountTier, TIER_NAMES } from '../types/accountTiers';
 import { auth } from '../services/firebase';
 import { getUserTierInfo } from '../services/accountTierService';
+import { openMercadoPagoCheckout, openSalesContact } from '../services/mercadoPagoCheckoutService';
+
+type Plan = {
+    tier: AccountTier;
+    name: string;
+    tagline: string;
+    description: string;
+    price?: number;
+    limit: string;
+    icon: React.ElementType;
+    tone: string;
+    features: string[];
+    recommended?: boolean;
+    ai?: boolean;
+};
+
+const plans: Plan[] = [
+    {
+        tier: AccountTier.TRIAL,
+        name: 'Start',
+        tagline: 'Para começar',
+        description: 'Ideal para profissionais que estão organizando seu consultório.',
+        price: 0,
+        limit: 'Até 3 profissionais e 10 pacientes',
+        icon: Star,
+        tone: 'emerald',
+        features: ['Agenda e cadastro de pacientes', 'Agendamento online', 'Prontuário eletrônico', 'Anamnese mista', '15 dias sem cartão']
+    },
+    {
+        tier: AccountTier.SILVER,
+        name: 'Professional',
+        tagline: 'Para a maioria das clínicas',
+        description: 'Controle a rotina de consultórios e clínicas com até 10 profissionais.',
+        price: 119,
+        limit: 'Até 10 profissionais',
+        icon: Shield,
+        tone: 'blue',
+        recommended: true,
+        features: ['Tudo do Start', 'Relatórios financeiros', 'Agenda avançada', 'Prontuário completo', 'Suporte por e-mail']
+    },
+    {
+        tier: AccountTier.GOLD,
+        name: 'Advanced',
+        tagline: 'Para clínicas em crescimento',
+        description: 'Gestão completa, indicadores e controle para uma operação em expansão.',
+        price: 190,
+        limit: 'Até 20 profissionais',
+        icon: Crown,
+        tone: 'indigo',
+        features: ['Tudo do Professional', 'Gestão financeira completa', 'Indicadores estratégicos', 'Simulações avançadas', 'Gestão de unidades']
+    },
+    {
+        tier: AccountTier.ENTERPRISE,
+        name: 'Enterprise AI',
+        tagline: 'Inteligência e automação',
+        description: 'Para clínicas que querem automatizar e decidir melhor com apoio de IA.',
+        price: 390,
+        limit: 'Até 20 profissionais',
+        icon: Zap,
+        tone: 'purple',
+        ai: true,
+        features: ['Tudo do Advanced', 'Consultor clínico com IA', 'Apoio à decisão estratégica', 'Análise preditiva', 'Suporte prioritário']
+    },
+    {
+        tier: AccountTier.UNLIMITED,
+        name: 'Unlimited',
+        tagline: 'Redes e franquias',
+        description: 'Solução personalizada para redes, franquias e grandes operações.',
+        limit: 'Profissionais ilimitados',
+        icon: Building2,
+        tone: 'slate',
+        features: ['Recursos personalizados', 'Integrações avançadas', 'Operação sem limite de profissionais', 'SLA e onboarding dedicados']
+    }
+];
+
+const toneClasses: Record<string, {border: string; icon: string; soft: string; button: string}> = {
+    emerald: {border: 'border-emerald-200', icon: 'text-emerald-600', soft: 'bg-emerald-50', button: 'bg-emerald-600 hover:bg-emerald-700'},
+    blue: {border: 'border-blue-500', icon: 'text-blue-600', soft: 'bg-blue-50', button: 'bg-blue-600 hover:bg-blue-700'},
+    indigo: {border: 'border-indigo-200', icon: 'text-indigo-600', soft: 'bg-indigo-50', button: 'bg-indigo-600 hover:bg-indigo-700'},
+    purple: {border: 'border-purple-200', icon: 'text-purple-600', soft: 'bg-purple-50', button: 'bg-purple-600 hover:bg-purple-700'},
+    slate: {border: 'border-slate-300', icon: 'text-slate-700', soft: 'bg-slate-50', button: 'bg-slate-800 hover:bg-slate-900'}
+};
+
+const comparison = [
+    ['Profissionais', 'Até 3', 'Até 10', 'Até 20', 'Até 20', 'Ilimitados'],
+    ['Pacientes', 'Até 10', 'Ilimitados', 'Ilimitados', 'Ilimitados', 'Ilimitados'],
+    ['Agenda avançada', 'Básica', 'Incluída', 'Incluída', 'Incluída', 'Incluída'],
+    ['Prontuário eletrônico', 'Incluído', 'Completo', 'Completo', 'Completo', 'Completo'],
+    ['Gestão financeira', 'Essencial', 'Relatórios', 'Completa', 'Completa', 'Personalizada'],
+    ['Indicadores estratégicos', '—', '—', 'Incluídos', 'Incluídos', 'Incluídos'],
+    ['Consultor com IA', '—', '—', '—', 'Incluído', 'Sob medida'],
+    ['Suporte', 'E-mail', 'E-mail', 'Chat', 'Prioritário', 'Dedicado']
+];
+
+const faqs = [
+    ['Posso trocar de plano?', 'Sim. O gestor pode contratar outro plano quando precisar.'],
+    ['O teste precisa de cartão?', 'Não. Os 15 dias de avaliação não exigem cartão.'],
+    ['Posso cancelar quando quiser?', 'Sim. A assinatura não possui fidelidade.'],
+    ['Meus dados ficam seguros?', 'Os controles de acesso separam gestores, profissionais e unidades da clínica.'],
+    ['Como funciona o suporte?', 'O canal e a prioridade dependem do plano contratado.']
+];
 
 const AccountPlansView: React.FC = () => {
     const [currentTier, setCurrentTier] = useState<AccountTier | null>(null);
     const [isManager, setIsManager] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [processing, setProcessing] = useState<AccountTier | null>(null);
+    const [openFaq, setOpenFaq] = useState<number | null>(null);
 
     useEffect(() => {
-        loadUserTier();
+        const load = async () => {
+            const user = auth.currentUser;
+            if (!user) {
+                setLoading(false);
+                return;
+            }
+            try {
+                const tierInfo = await getUserTierInfo(user.uid);
+                setCurrentTier(tierInfo.tier);
+                setIsManager(tierInfo.isManager);
+            } catch (error) {
+                console.error('Erro ao carregar o plano:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
     }, []);
 
-    const loadUserTier = async () => {
-        const user = auth.currentUser;
-        if (!user) return;
-
+    const handlePlanAction = async (tier: AccountTier) => {
+        if (tier === AccountTier.TRIAL || tier === currentTier) return;
+        if (tier === AccountTier.UNLIMITED) {
+            openSalesContact();
+            return;
+        }
+        setProcessing(tier);
         try {
-            const tierInfo = await getUserTierInfo(user.uid);
-            setCurrentTier(tierInfo.tier);
-            setIsManager(tierInfo.isManager);
-        } catch (error) {
-            console.error('Error loading tier:', error);
+            await openMercadoPagoCheckout(tier);
         } finally {
-            setLoading(false);
+            setProcessing(null);
         }
-    };
-
-    const tiers = [
-        {
-            tier: AccountTier.TRIAL,
-            name: 'Start Free',
-            description: 'Experiência completa por 15 dias.',
-            price: 'R$ 0,00',
-            period: '/15 dias',
-            icon: Sparkles,
-            color: 'from-emerald-400 to-emerald-600',
-            borderColor: 'border-emerald-500',
-            features: [
-                { text: 'Acesso completo por 15 dias', included: true },
-                { text: 'Até 3 profissionais', included: true },
-                { text: 'Até 10 pacientes', included: true },
-                { text: 'Agendamento Online', included: true },
-                { text: 'Prontuário Eletrônico', included: true },
-                { text: 'Anamnese Mista Avançada', included: true },
-                { text: 'Sem necessidade de cartão', included: true }
-            ]
-        },
-        {
-            tier: AccountTier.SILVER,
-            name: 'Professional',
-            description: 'Para organização e controle profissional.',
-            price: 'R$ 119,00',
-            period: '/mês',
-            icon: Shield,
-            color: 'from-blue-400 to-blue-600',
-            borderColor: 'border-blue-500',
-            popular: true,
-            features: [
-                { text: 'Até 10 profissionais', included: true },
-                { text: 'Tudo do Start Free +:', included: true },
-                { text: 'Relatórios Financeiros', included: true },
-                { text: 'Gestão de Agenda Avançada', included: true }
-            ]
-        },
-        {
-            tier: AccountTier.GOLD,
-            name: 'Advanced',
-            description: 'Para crescimento estruturado e escala.',
-            price: 'R$ 190,00',
-            period: '/mês',
-            icon: Crown,
-            color: 'from-indigo-400 to-indigo-600',
-            borderColor: 'border-indigo-500',
-            features: [
-                { text: 'Até 20 profissionais', included: true },
-                { text: 'Tudo do Professional +:', included: true },
-                { text: 'Gestão Financeira Completa', included: true },
-                { text: 'Indicadores estratégicos', included: true },
-                { text: 'Simulações avançadas', included: true }
-            ]
-        },
-        {
-            tier: AccountTier.ENTERPRISE,
-            name: 'Enterprise AI',
-            description: 'Máxima performance e inteligência.',
-            price: 'R$ 390,00',
-            period: '/mês',
-            icon: Zap,
-            color: 'from-purple-400 to-purple-600',
-            borderColor: 'border-purple-500',
-            features: [
-                { text: 'Até 20 profissionais', included: true },
-                { text: 'Tudo do Advanced +:', included: true },
-                { text: 'Consultor Clínico com IA', included: true },
-                { text: 'Suporte Prioritário', included: true },
-                { text: 'Apoio à decisão estratégica', included: true }
-            ]
-        }
-    ];
-
-    const handleContactSales = () => {
-        window.open('https://wa.me/5511999999999?text=Olá! Gostaria de fazer upgrade do meu plano ERCMed', '_blank');
     };
 
     if (loading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600"></div>
-            </div>
-        );
+        return <div className="flex h-full items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-b-2 border-brand-600" /></div>;
     }
 
     return (
-        <div className="max-w-7xl mx-auto p-6 space-y-8">
-            {/* Header */}
-            <div className="text-center space-y-4">
-                <h1 className="text-4xl font-bold text-slate-800">
-                    Planos e Preços
-                </h1>
-                <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                    Escolha o plano ideal para sua clínica. Todos os planos incluem gestão completa de saúde e agendamento online.
-                </p>
-                {currentTier && (
-                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-brand-50 border border-brand-200 rounded-lg">
-                        <Crown className="w-5 h-5 text-brand-600" />
-                        <span className="text-sm font-medium text-brand-700">
-                            Plano Atual: <strong>{TIER_NAMES[currentTier]}</strong>
-                        </span>
-                    </div>
-                )}
-            </div>
+        <div className="mx-auto max-w-[1540px] space-y-8 px-4 py-6 sm:px-6 lg:px-8">
+            <section className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h1 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+                        Escolha o <span className="bg-gradient-to-r from-emerald-500 to-blue-600 bg-clip-text text-transparent">plano ideal</span> para sua clínica
+                    </h1>
+                    <p className="mt-2 text-slate-600">Todos os planos incluem 15 dias para testar sem compromisso.</p>
+                    {currentTier && <p className="mt-3 inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">Plano atual: {TIER_NAMES[currentTier]}</p>}
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="flex items-center gap-3 rounded-xl border bg-white px-4 py-3"><Shield className="text-emerald-600" /><div><b className="block text-sm">Sem fidelidade</b><span className="text-xs text-slate-500">Cancele quando quiser</span></div></div>
+                    <div className="flex items-center gap-3 rounded-xl border bg-white px-4 py-3"><Headphones className="text-purple-600" /><div><b className="block text-sm">Suporte humanizado</b><span className="text-xs text-slate-500">Especialistas em saúde</span></div></div>
+                </div>
+            </section>
 
-            {/* Pricing Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {tiers.map((plan) => {
+            {!isManager && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Apenas o gestor da clínica pode contratar ou alterar a assinatura.</div>}
+
+            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+                {plans.map((plan) => {
                     const Icon = plan.icon;
+                    const colors = toneClasses[plan.tone];
                     const isCurrent = currentTier === plan.tier;
-
+                    const daily = plan.price ? (plan.price / 30).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'}) : null;
                     return (
-                        <div
-                            key={plan.tier}
-                            className={`relative bg-white rounded-2xl shadow-lg border-2 transition-all hover:shadow-xl ${plan.popular ? 'border-brand-500 scale-105' : plan.borderColor
-                                } ${isCurrent ? 'ring-4 ring-green-200' : ''}`}
-                        >
-                            {/* Popular Badge */}
-                            {plan.popular && (
-                                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                                    <div className="bg-brand-600 text-white px-4 py-1 rounded-full text-xs font-bold shadow-lg">
-                                        MAIS POPULAR
-                                    </div>
+                        <article key={plan.tier} className={`relative flex min-h-[540px] flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${colors.border} ${plan.recommended ? 'xl:-mt-3 xl:mb-3' : ''}`}>
+                            {plan.recommended && <div className="bg-blue-600 py-1.5 text-center text-xs font-bold text-white">★ RECOMENDADO</div>}
+                            {plan.ai && <span className="absolute right-3 top-3 rounded-full bg-purple-100 px-2 py-1 text-[10px] font-bold text-purple-700">IA EXCLUSIVA</span>}
+                            <div className={`${colors.soft} border-b p-5`}>
+                                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm"><Icon className={`h-7 w-7 ${colors.icon}`} /></div>
+                                <h2 className="text-xl font-black text-slate-900">{plan.name}</h2>
+                                <p className="text-xs font-semibold text-slate-600">{plan.tagline}</p>
+                                <p className="mt-4 min-h-[60px] text-sm leading-5 text-slate-600">{plan.description}</p>
+                            </div>
+                            <div className="flex flex-1 flex-col p-5">
+                                <div className="min-h-[104px] text-center">
+                                    {plan.price !== undefined ? (
+                                        <>
+                                            <p><span className="text-sm font-semibold">R$</span> <span className="text-3xl font-black">{plan.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span> <span className="text-sm text-slate-500">/mês</span></p>
+                                            <p className="mt-2 text-xs font-semibold text-slate-600">{plan.limit}</p>
+                                            {daily && plan.price > 0 && <p className="mt-2 text-xs text-slate-400">≈ {daily} por dia</p>}
+                                        </>
+                                    ) : (
+                                        <><p className="text-xl font-black">Vamos montar um plano para você</p><p className="mt-3 text-xs text-slate-500">{plan.limit}</p></>
+                                    )}
                                 </div>
-                            )}
-
-                            {/* Current Plan Badge */}
-                            {isCurrent && (
-                                <div className="absolute -top-4 right-4">
-                                    <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg flex items-center gap-1">
-                                        <Check className="w-3 h-3" />
-                                        SEU PLANO
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="p-6 space-y-6">
-                                {/* Header */}
-                                <div className="text-center space-y-3">
-                                    <div className={`w-16 h-16 mx-auto rounded-full bg-gradient-to-br ${plan.color} flex items-center justify-center shadow-lg`}>
-                                        <Icon className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h3 className="text-2xl font-bold text-slate-800">{plan.name}</h3>
-                                    <p className="text-sm text-slate-500">{plan.description}</p>
-                                </div>
-
-                                {/* Price */}
-                                <div className="text-center py-4 border-y border-slate-200">
-                                    <div className="flex items-baseline justify-center gap-1">
-                                        <span className="text-4xl font-bold text-slate-800">{plan.price}</span>
-                                        <span className="text-slate-500">{plan.period}</span>
-                                    </div>
-                                    <p className="text-xs text-slate-400 mt-1">por clínica</p>
-                                </div>
-
-                                {/* Features */}
-                                <ul className="space-y-3">
-                                    {plan.features.map((feature, idx) => (
-                                        <li key={idx} className="flex items-start gap-2">
-                                            {feature.included ? (
-                                                <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                            ) : (
-                                                <X className="w-5 h-5 text-slate-300 flex-shrink-0 mt-0.5" />
-                                            )}
-                                            <span className={`text-sm ${feature.included ? 'text-slate-700' : 'text-slate-400'}`}>
-                                                {feature.text}
-                                            </span>
-                                        </li>
-                                    ))}
+                                <ul className="my-5 flex-1 space-y-3">
+                                    {plan.features.map(feature => <li key={feature} className="flex gap-2 text-sm text-slate-700"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${colors.soft}`}><Check className={`h-3.5 w-3.5 ${colors.icon}`} /></span>{feature}</li>)}
                                 </ul>
-
-                                {/* CTA Button */}
                                 <button
-                                    onClick={handleContactSales}
-                                    disabled={isCurrent}
-                                    className={`w-full py-3 rounded-lg font-bold transition-all ${isCurrent
-                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                        : plan.popular
-                                            ? 'bg-brand-600 text-white hover:bg-brand-700 shadow-lg shadow-brand-500/30'
-                                            : 'bg-slate-800 text-white hover:bg-slate-900'
-                                        }`}
+                                    onClick={() => handlePlanAction(plan.tier)}
+                                    disabled={isCurrent || plan.tier === AccountTier.TRIAL || processing === plan.tier || !isManager}
+                                    className={`w-full rounded-xl py-3 text-sm font-bold transition ${isCurrent ? 'cursor-not-allowed bg-slate-100 text-slate-500' : `${colors.button} text-white disabled:cursor-not-allowed disabled:opacity-50`}`}
                                 >
-                                    {isCurrent ? 'Plano Atual' : 'Contratar Agora'}
+                                    {isCurrent ? 'Plano atual' : plan.tier === AccountTier.TRIAL ? 'Teste incluído no cadastro' : processing === plan.tier ? 'Abrindo pagamento…' : plan.tier === AccountTier.UNLIMITED ? 'Solicitar proposta' : 'Contratar agora'}
                                 </button>
                             </div>
-                        </div>
+                        </article>
                     );
                 })}
-            </div>
+            </section>
 
-            {/* Comparison Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-6 bg-slate-50 border-b border-slate-200">
-                    <h2 className="text-2xl font-bold text-slate-800">Comparação Detalhada</h2>
-                    <p className="text-slate-600 mt-1">Veja todos os recursos disponíveis em cada plano</p>
-                </div>
-
+            <section className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                <div className="border-b px-5 py-4"><h2 className="text-xl font-black text-slate-900">Compare os principais recursos</h2></div>
                 <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-slate-50">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Recurso</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Start Free</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Professional</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700">Advanced</th>
-                                <th className="px-6 py-4 text-center text-sm font-semibold text-purple-600">Enterprise AI</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200">
-                            <tr>
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Limite de Profissionais</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">3</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">10</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">20</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600 font-bold text-brand-600">Ilimitado</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Gestão de Pacientes</td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-purple-600 mx-auto" /></td>
-                            </tr>
-                            <tr>
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Prontuário Eletrônico</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">Básico</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">Básico</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600 font-bold">Avançado</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600 font-bold">Avançado</td>
-                                <td className="px-6 py-4 text-center text-sm font-bold text-purple-600">Completo</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Anamnese Mista</td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-purple-600 mx-auto" /></td>
-                            </tr>
-                            <tr>
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Módulo IRPF</td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-purple-600 mx-auto" /></td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Simulador Empresa</td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-green-600 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-purple-600 mx-auto" /></td>
-                            </tr>
-                            <tr>
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Suporte</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">Email</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">Email</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600">Email</td>
-                                <td className="px-6 py-4 text-center text-sm text-slate-600 font-bold text-brand-600">Prioritário</td>
-                                <td className="px-6 py-4 text-center text-sm font-bold text-purple-600">Dedicado MVP</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                                <td className="px-6 py-4 text-sm text-slate-700 font-medium">Exclusão de Registros</td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><X className="w-5 h-5 text-slate-300 mx-auto" /></td>
-                                <td className="px-6 py-4 text-center"><Check className="w-5 h-5 text-purple-600 mx-auto" /></td>
-                            </tr>
-                        </tbody>
+                    <table className="min-w-[900px] w-full text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Recursos', 'Start', 'Professional', 'Advanced', 'Enterprise AI', 'Unlimited'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}</tr></thead>
+                        <tbody className="divide-y">{comparison.map(row => <tr key={row[0]}>{row.map((cell, index) => <td key={`${row[0]}-${index}`} className={`px-4 py-3 ${index === 0 ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>{cell}</td>)}</tr>)}</tbody>
                     </table>
                 </div>
-            </div>
+            </section>
 
-            {/* FAQ or Contact */}
-            <div className="bg-gradient-to-br from-brand-600 to-brand-700 rounded-xl p-8 text-center text-white">
-                <h3 className="text-2xl font-bold mb-2">Precisa de ajuda para escolher?</h3>
-                <p className="mb-6 opacity-90">
-                    Entre em contato conosco e nossa equipe te ajudará a encontrar o plano ideal para sua clínica
-                </p>
-                <button
-                    onClick={handleContactSales}
-                    className="bg-white text-brand-600 px-8 py-3 rounded-lg font-bold hover:bg-slate-50 transition-colors shadow-lg"
-                >
-                    Falar com Vendas
-                </button>
-            </div>
+            <section className="grid gap-6 lg:grid-cols-[1fr_340px]">
+                <div className="rounded-2xl border bg-white p-5 shadow-sm">
+                    <h2 className="mb-3 text-xl font-black">Dúvidas frequentes</h2>
+                    <div className="divide-y">
+                        {faqs.map(([question, answer], index) => (
+                            <button key={question} onClick={() => setOpenFaq(openFaq === index ? null : index)} className="w-full py-4 text-left">
+                                <span className="flex items-center justify-between gap-4 font-semibold text-slate-800">{question}<ChevronDown className={`h-4 w-4 transition ${openFaq === index ? 'rotate-180' : ''}`} /></span>
+                                {openFaq === index && <span className="mt-2 block text-sm text-slate-600">{answer}</span>}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <aside className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white shadow-sm">
+                    <Infinity className="h-8 w-8 text-emerald-400" />
+                    <h2 className="mt-4 text-xl font-black">Ainda está em dúvida?</h2>
+                    <p className="mt-2 text-sm text-slate-300">Converse com nosso time para escolher o plano adequado ao tamanho e à rotina da sua clínica.</p>
+                    <button onClick={openSalesContact} className="mt-6 w-full rounded-xl bg-emerald-500 py-3 font-bold text-slate-950 hover:bg-emerald-400">Falar com um consultor</button>
+                </aside>
+            </section>
         </div>
     );
 };

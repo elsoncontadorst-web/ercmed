@@ -19,7 +19,8 @@ import {
   Brain,
   Globe,
   Database,
-  Users
+  Users,
+  Activity
 } from 'lucide-react';
 import { auth, db } from '../services/firebase';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -42,7 +43,14 @@ interface ResearchResource {
   suggestedDosage?: string;
 }
 
-import { analyzeTherapeuticIdea, TherapeuticAnalysis } from '../services/therapeuticService';
+import { 
+  analyzeTherapeuticIdea, 
+  TherapeuticAnalysis, 
+  crossReferencePatientWithTherapy, 
+  PatientCrossAnalysis 
+} from '../services/therapeuticService';
+import { getAllPatients, getMedications } from '../services/healthService';
+import { Patient, Medication } from '../types/health';
 
 const TherapeuticIntelligenceView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,6 +63,14 @@ const TherapeuticIntelligenceView: React.FC = () => {
 
   const [resources, setResources] = useState<ResearchResource[]>([]);
   const [loadingResources, setLoadingResources] = useState(true);
+
+  // Patient Crossing States
+  const [availablePatients, setAvailablePatients] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [isSelectingPatient, setIsSelectingPatient] = useState(false);
+  const [patientMedications, setPatientMedications] = useState<Medication[]>([]);
+  const [isCrossAnalyzing, setIsCrossAnalyzing] = useState(false);
+  const [crossAnalysisResult, setCrossAnalysisResult] = useState<PatientCrossAnalysis | null>(null);
 
   // Load resources from Firestore
   useEffect(() => {
@@ -153,6 +169,54 @@ const TherapeuticIntelligenceView: React.FC = () => {
       alert("Erro ao realizar descoberta científica.");
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const loadPatients = async () => {
+    setIsSelectingPatient(true);
+    try {
+      const patients = await getAllPatients();
+      setAvailablePatients(patients);
+    } catch (error) {
+      console.error("Error loading patients:", error);
+    } finally {
+      setIsSelectingPatient(false);
+    }
+  };
+
+  const handleSelectPatient = async (patient: Patient) => {
+    setSelectedPatient(patient);
+    setAvailablePatients([]);
+    setCrossAnalysisResult(null);
+    
+    // Load patient medications for context
+    try {
+      const meds = await getMedications(patient.id);
+      setPatientMedications(meds);
+    } catch (error) {
+      console.error("Error loading medications:", error);
+    }
+  };
+
+  const handlePatientCrossAnalysis = async () => {
+    if (!selectedPatient || !researchPrompt) return;
+    setIsCrossAnalyzing(true);
+    
+    try {
+      const result = await crossReferencePatientWithTherapy(researchPrompt, {
+        name: selectedPatient.name,
+        age: selectedPatient.birthdate ? new Date().getFullYear() - new Date(selectedPatient.birthdate).getFullYear() : undefined,
+        chronicConditions: selectedPatient.chronicConditions,
+        allergies: selectedPatient.allergies,
+        currentMedications: patientMedications.map(m => `${m.name} (${m.dosage})`),
+        bloodType: selectedPatient.bloodType
+      });
+      setCrossAnalysisResult(result);
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao realizar cruzamento clínico.");
+    } finally {
+      setIsCrossAnalyzing(false);
     }
   };
 
@@ -428,18 +492,226 @@ const TherapeuticIntelligenceView: React.FC = () => {
           )}
 
           {activeTab === 'PATIENT_CROSS' && (
-            <div className="max-w-4xl mx-auto flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mb-6">
-                <Users className="w-10 h-10 text-purple-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">Cruzamento Clínico Inteligente</h2>
-              <p className="text-slate-500 max-w-md">
-                Selecione um paciente do seu prontuário para cruzar automaticamente seu histórico, exames e biomarcadores com as novas descobertas terapêuticas.
-              </p>
-              <button className="mt-8 px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all flex items-center gap-2 mx-auto">
-                Selecionar Paciente para Análise
-                <ArrowRight className="w-5 h-5" />
-              </button>
+            <div className="max-w-4xl mx-auto space-y-8">
+              {!selectedPatient ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
+                  <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mb-6">
+                    <Users className="w-10 h-10 text-purple-600" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Cruzamento Clínico Inteligente</h2>
+                  <p className="text-slate-500 max-w-md mb-8">
+                    Selecione um paciente do seu prontuário para cruzar automaticamente seu histórico, exames e biomarcadores com as novas descobertas terapêuticas.
+                  </p>
+                  
+                  {availablePatients.length > 0 ? (
+                    <div className="w-full max-w-md space-y-2 text-left px-8">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Selecione o Paciente:</h4>
+                      <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                        {availablePatients.map(p => (
+                          <button 
+                            key={p.id}
+                            onClick={() => handleSelectPatient(p)}
+                            className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-purple-50 hover:border-purple-200 border border-slate-200 rounded-xl transition-all group"
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-700 group-hover:text-purple-700">{p.name}</span>
+                              <span className="text-xs text-slate-500">CPF: {p.cpf || 'Não informado'}</span>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-purple-500" />
+                          </button>
+                        ))}
+                      </div>
+                      <button 
+                        onClick={() => setAvailablePatients([])}
+                        className="text-sm text-slate-400 hover:text-slate-600 font-medium py-2 w-full text-center"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={loadPatients}
+                      disabled={isSelectingPatient}
+                      className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center gap-2 mx-auto shadow-lg shadow-slate-200"
+                    >
+                      {isSelectingPatient ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Carregando Pacientes...
+                        </>
+                      ) : (
+                        <>
+                          Selecionar Paciente para Análise
+                          <ArrowRight className="w-5 h-5" />
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Selected Patient Header */}
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-lg">{selectedPatient.name}</h3>
+                        <div className="flex gap-3 text-xs text-slate-500">
+                          <span>{selectedPatient.gender}</span>
+                          <span>•</span>
+                          <span>{selectedPatient.birthdate ? `${new Date().getFullYear() - new Date(selectedPatient.birthdate).getFullYear()} anos` : 'Idade N/I'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedPatient(null)}
+                      className="text-slate-400 hover:text-red-500 text-xs font-bold uppercase tracking-wider"
+                    >
+                      Alterar Paciente
+                    </button>
+                  </div>
+
+                  {/* Analysis Trigger Box */}
+                  <div className="bg-slate-900 p-8 rounded-3xl shadow-xl text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full -mr-32 -mt-32 blur-3xl" />
+                    
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Brain className="w-6 h-6 text-purple-400" />
+                      Cruzar com Hipótese Terapêutica
+                    </h2>
+                    <p className="text-slate-400 mb-6 text-sm">
+                      A IA analisará o prontuário deste paciente (medicamentos, alergias e condições) contra a hipótese de tratamento abaixo para detectar riscos e sinergias personalizadas.
+                    </p>
+                    
+                    <textarea 
+                      className="w-full p-4 bg-white/10 border border-white/10 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500/50 transition-all h-24 resize-none text-white placeholder:text-slate-500 mb-4"
+                      placeholder="Ex: Uso de Capim-Santo para controle de ansiedade..."
+                      value={researchPrompt}
+                      onChange={(e) => setResearchPrompt(e.target.value)}
+                    />
+                    
+                    <button 
+                      onClick={handlePatientCrossAnalysis}
+                      disabled={isCrossAnalyzing || !researchPrompt}
+                      className="w-full py-4 bg-white text-slate-900 rounded-2xl font-bold text-lg hover:bg-slate-50 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                      {isCrossAnalyzing ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
+                          Processando Cruzamento Clínico...
+                        </>
+                      ) : (
+                        <>
+                          <Microscope className="w-5 h-5" />
+                          Iniciar Análise de Compatibilidade
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {crossAnalysisResult && (
+                    <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                      {/* Score Header */}
+                      <div className="bg-slate-50 p-8 border-b border-slate-200 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-xs font-black px-2 py-0.5 rounded-md ${
+                              crossAnalysisResult.compatibilityLabel === 'ALTO RISCO' ? 'bg-red-100 text-red-700' :
+                              crossAnalysisResult.compatibilityLabel === 'ATENÇÃO' ? 'bg-amber-100 text-amber-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>
+                              {crossAnalysisResult.compatibilityLabel}
+                            </span>
+                            <h3 className="text-xl font-bold text-slate-800">Score de Compatibilidade</h3>
+                          </div>
+                          <p className="text-slate-500 text-sm">{crossAnalysisResult.summary}</p>
+                        </div>
+                        <div className="relative w-24 h-24 flex items-center justify-center">
+                          <svg className="w-full h-full transform -rotate-90">
+                            <circle cx="48" cy="48" r="40" fill="transparent" stroke="#f1f5f9" strokeWidth="8" />
+                            <circle 
+                              cx="48" cy="48" r="40" fill="transparent" 
+                              stroke={
+                                crossAnalysisResult.compatibilityScore < 40 ? '#ef4444' :
+                                crossAnalysisResult.compatibilityScore < 70 ? '#f59e0b' : '#10b981'
+                              } 
+                              strokeWidth="8" 
+                              strokeDasharray={251.2}
+                              strokeDashoffset={251.2 - (251.2 * crossAnalysisResult.compatibilityScore) / 100}
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <span className="absolute text-2xl font-black text-slate-800">{crossAnalysisResult.compatibilityScore}%</span>
+                        </div>
+                      </div>
+
+                      <div className="p-8 grid grid-cols-2 gap-8">
+                        <div className="space-y-6">
+                          <section>
+                            <h4 className="text-xs font-bold text-red-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4" /> Contraindicações & Riscos
+                            </h4>
+                            <div className="space-y-3">
+                              {crossAnalysisResult.contraindications.length > 0 ? crossAnalysisResult.contraindications.map((c, i) => (
+                                <div key={i} className="p-4 bg-red-50 border border-red-100 rounded-2xl">
+                                  <div className="flex justify-between items-start mb-1">
+                                    <span className="font-bold text-red-800 text-sm">{c.item}</span>
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-200 text-red-900 rounded">{c.severity}</span>
+                                  </div>
+                                  <p className="text-xs text-red-700 leading-relaxed">{c.reason}</p>
+                                </div>
+                              )) : (
+                                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-slate-400 text-xs italic">
+                                  Nenhuma contraindicação severa detectada.
+                                </div>
+                              )}
+                            </div>
+                          </section>
+
+                          <section>
+                            <h4 className="text-xs font-bold text-green-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                              <Sparkles className="w-4 h-4" /> Benefícios Potenciais
+                            </h4>
+                            <ul className="space-y-2">
+                              {crossAnalysisResult.potentialBenefits.map((b, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                                  <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                                  {b}
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        </div>
+
+                        <div className="space-y-6">
+                          <section className="bg-slate-900 p-6 rounded-3xl text-white">
+                            <h4 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4">Recomendações de Ajuste</h4>
+                            <p className="text-sm leading-relaxed text-slate-300 italic">
+                              "{crossAnalysisResult.suggestedAdjustments}"
+                            </p>
+                          </section>
+
+                          <section>
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                              <Activity className="w-4 h-4" /> Plano de Monitoramento
+                            </h4>
+                            <div className="space-y-2">
+                              {crossAnalysisResult.monitoringRecommendations.map((r, i) => (
+                                <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                  <div className="w-2 h-2 rounded-full bg-slate-300" />
+                                  <span className="text-xs font-medium text-slate-600">{r}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

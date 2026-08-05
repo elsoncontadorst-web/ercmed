@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { deleteApp, initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics"; // IMPORTADO: Necessário para a linha const analytics = getAnalytics(app);
 import {
   getAuth,
@@ -7,6 +7,11 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged as firebaseOnAuthStateChanged,
   sendPasswordResetEmail as firebaseSendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithPopup as firebaseSignInWithPopup,
+  linkWithCredential,
+  fetchSignInMethodsForEmail,
+  EmailAuthProvider,
   User
 } from "firebase/auth";
 import {
@@ -19,6 +24,9 @@ import {
   serverTimestamp
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
+import { getAI, GoogleAIBackend } from "firebase/ai";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
 // Agora apontando para o seu novo projeto easymed-1fb06
@@ -34,6 +42,14 @@ const firebaseConfig = {
 
 // Inicializa o Firebase
 const app = initializeApp(firebaseConfig);
+const recaptchaEnterpriseSiteKey = import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY;
+const appCheckEnabled = import.meta.env.VITE_ENABLE_APP_CHECK === 'true';
+if (appCheckEnabled && recaptchaEnterpriseSiteKey) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(recaptchaEnterpriseSiteKey),
+    isTokenAutoRefreshEnabled: true
+  });
+}
 // Inicializa o Analytics com tratamento de erro para IndexedDB
 try {
   const analytics = getAnalytics(app);
@@ -48,6 +64,11 @@ export const auth = getAuth(app);
 export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 // Inicializa o Firebase Storage
 export const storage = getStorage(app);
+// Functions is initialized only when a feature actually needs it. Initializing it
+// eagerly can prevent the entire application from rendering when the Functions
+// provider is unavailable during local dependency pre-bundling.
+export const getCloudFunctions = () => getFunctions(app, "us-central1");
+export const clinicalAI = getAI(app, { backend: new GoogleAIBackend() });
 
 // Exporta funções wrapper para facilitar o uso no React
 export const signInWithEmailAndPassword = firebaseSignIn;
@@ -55,6 +76,20 @@ export const createUserWithEmailAndPassword = firebaseCreateUser;
 export const signOut = firebaseSignOut;
 export const onAuthStateChanged = firebaseOnAuthStateChanged;
 export const sendPasswordResetEmail = firebaseSendPasswordResetEmail;
+
+// Create a managed account without replacing the administrator's session.
+export const createManagedAuthUser = async (email: string, password: string) => {
+  const secondaryApp = initializeApp(firebaseConfig, `managed-user-${Date.now()}`);
+  try {
+    return await firebaseCreateUser(getAuth(secondaryApp), email, password);
+  } finally {
+    await deleteApp(secondaryApp);
+  }
+};
+
+export const googleProvider = new GoogleAuthProvider();
+export const signInWithPopup = firebaseSignInWithPopup;
+export { linkWithCredential, fetchSignInMethodsForEmail, EmailAuthProvider, GoogleAuthProvider };
 
 // --- FUNÇÕES DE ASSINATURA (FIRESTORE) ---
 

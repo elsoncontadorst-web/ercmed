@@ -27,9 +27,13 @@ export enum AppView {
   HEALTH_DASHBOARD = 'health_dashboard',
   PATIENTS = 'patients',
   APPOINTMENTS = 'appointments',
+  ATTENDANCES = 'attendances',
+  PRODUCTION_ENTRY = 'production_entry',
   MEDICATIONS = 'medications',
   EMR = 'emr',
   INVENTORY = 'inventory',
+  CARE_PACKAGES = 'care_packages',
+  ASSETS = 'assets',
   MEDICAL_RECORDS = 'medical_records',
   RECEIPTS = 'receipts',
   CLINIC_HOURS = 'clinic_hours',
@@ -43,12 +47,51 @@ export enum AppView {
   BILLING_MANAGEMENT = 'billing_management',
   REPASSE_CALCULATION = 'repasse_calculation',
   PROFESSIONAL_CONFIG = 'professional_config',
+  ACCOUNTS_RECEIVABLE = 'accounts_receivable',
+  ACCOUNTS_PAYABLE = 'accounts_payable',
+  CASH_ACCOUNTS = 'cash_accounts',
+  BANKS = 'banks',
+  BANK_RECONCILIATION = 'bank_reconciliation',
+  COLLECTIONS = 'collections',
+  BILLING_PRODUCTION = 'billing_production',
+  BILLING_PRIVATE = 'billing_private',
+  BILLING_INSURANCE = 'billing_insurance',
+  BILLING_GUIDES = 'billing_guides',
+  BILLING_GLOSAS = 'billing_glosas',
+  BILLING_AUDIT = 'billing_audit',
+  PROFESSIONALS = 'professionals',
+  PROFESSIONAL_PRODUCTION = 'professional_production',
+  PROFESSIONAL_SCALES = 'professional_scales',
+  SERVICES_PROCEDURES = 'services_procedures',
+  PRICE_TABLES = 'price_tables',
+  INSURANCE_PLANS = 'insurance_plans',
+  SUPPLIERS = 'suppliers',
+  PURCHASES = 'purchases',
+  DRE_MANAGERIAL = 'dre_managerial',
+  MANAGERIAL_FLOW = 'managerial_flow',
+  COST_CENTERS = 'cost_centers',
+  RESULT_CENTERS = 'result_centers',
+  BUDGET = 'budget',
+  PROFITABILITY_INDICATORS = 'profitability_indicators',
+  CHART_OF_ACCOUNTS = 'chart_of_accounts',
+  ACCOUNTING_INTEGRATION = 'accounting_integration',
+  FISCAL_DOCUMENTS = 'fiscal_documents',
+  TAX_RETENTIONS = 'tax_retentions',
+  ADMIN_GENERAL_REGISTRATIONS = 'admin_general_registrations',
+  ADMIN_PARAMETERS = 'admin_parameters',
+  ADMIN_AUDIT = 'admin_audit',
+  ADMIN_INTEGRATIONS = 'admin_integrations',
+  ADMIN_LOGS = 'admin_logs',
+  SUPPORT_DOCUMENTATION = 'support_documentation',
+  SUPPORT_CHANGELOG = 'support_changelog',
 
   // Contracts Management
   CONTRACTS = 'contracts',
 
   // TISS Billing
   TISS_BILLING = 'tiss_billing',
+  SERVICE_CATALOG = 'service_catalog',
+  FISCAL_IMPORT = 'fiscal_import',
 
   // User Management
   USERS_MANAGEMENT = 'users_management',
@@ -99,6 +142,7 @@ export interface UserProfile {
   accountTier?: string; // AccountTier enum value
   isClinicManager?: boolean;
   managerId?: string; // ID of the manager if this user is a professional under a clinic
+  professionalId?: string; // Contract/professional record linked to this login
   customModuleAccess?: {
     IRPF?: boolean;
     SIMULATOR?: boolean;

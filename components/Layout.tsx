@@ -1,15 +1,63 @@
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Calculator, Users, TrendingUp, LogOut, Menu, X, ChevronDown, ChevronRight, BookOpen, Info, DollarSign, MessageSquare, Calendar, FileText, Sun, Moon, Cloud, CloudOff, ShoppingCart, Heart, Activity, Pill, Receipt, Settings, FileSignature, Home, Building2, Clock, Link as LinkIcon, Edit, User as UserIcon, Save, Lock, Shield, Check, Crown, UserPlus, Brain, Microscope } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BarChart3,
+  BookOpen,
+  Bot,
+  Briefcase,
+  Building2,
+  Calculator,
+  Calendar,
+  ChevronDown,
+  ClipboardList,
+  Cloud,
+  CloudOff,
+  Crown,
+  DollarSign,
+  FileBox,
+  FileSearch,
+  FileSignature,
+  FileSpreadsheet,
+  FileUp,
+  HandCoins,
+  Heart,
+  HelpCircle,
+  Landmark,
+  Layers3,
+  LayoutDashboard,
+  Library,
+  Link as LinkIcon,
+  Lock,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Moon,
+  Package,
+  Pill,
+  Receipt,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  ShoppingCart,
+  Sun,
+  Tags,
+  User as UserIcon,
+  Users,
+  Wallet,
+  Waypoints,
+  X,
+} from 'lucide-react';
 import SystemLogo from './SystemLogo';
 import { AppView, UserRole } from '../types';
-import { signOut, auth } from '../services/firebase';
+import { auth, signOut } from '../services/firebase';
 import { useSettings } from '../contexts/SettingsContext';
 import { useUser } from '../contexts/UserContext';
-import { saveUserProfile } from '../services/userRoleService';
-import { AccountTier, TIER_CONFIG, tierAllowsModule, TIER_NAMES } from '../types/accountTiers';
 import { TierBadge } from './TierBadge';
 import { getClinics } from '../services/clinicService';
-import { getTeamInvitations } from '../services/healthService';
+import { Clinic } from '../types/clinic';
+import { ACTIVE_CLINIC_CHANGED_EVENT, GROUP_CLINIC_ID, getStoredActiveClinicId, setStoredActiveClinicId } from '../services/activeClinicStorage';
+import { canAccessView, getDefaultViewForRole } from '../services/viewAccessPolicy';
+import { getAllowedClinicsForUser } from '../services/accessControlService';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -17,637 +65,637 @@ interface LayoutProps {
   setView: (view: AppView) => void;
 }
 
-// Persist scroll position across view changes
-let sidebarScrollPos = 0;
+type NavItem = {
+  view: AppView;
+  label: string;
+  icon: React.ElementType;
+  activeViews?: AppView[];
+  adminOnly?: boolean;
+  masterOnly?: boolean;
+};
 
-const NavButton = ({ 
-  view, 
-  icon: Icon, 
-  label, 
-  locked = false, 
-  moduleName, 
-  badgeCount,
-  userTier,
+const TrendingUpIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <path d="M3 17l6-6 4 4 7-7" />
+    <path d="M14 8h6v6" />
+  </svg>
+);
+
+const isItemActive = (currentView: AppView, item: NavItem) =>
+  currentView === item.view || item.activeViews?.includes(currentView) === true;
+
+const SIDEBAR_SCROLL_KEY = 'ercmed_sidebar_scroll_top';
+
+const NavButton = ({
+  item,
   currentView,
   setView,
-  setMobileMenuOpen
-}: { 
-  view: AppView; 
-  icon: any; 
-  label: string; 
-  locked?: boolean; 
-  moduleName?: string;
-  badgeCount?: number;
-  userTier?: AccountTier;
+  setMobileMenuOpen,
+  registerItemRef,
+  navScrollRef,
+}: {
+  item: NavItem;
   currentView: AppView;
   setView: (view: AppView) => void;
   setMobileMenuOpen: (open: boolean) => void;
+  registerItemRef: (view: AppView) => (element: HTMLButtonElement | null) => void;
+  navScrollRef: React.RefObject<HTMLElement | null>;
 }) => {
-  // Check if module is allowed for current tier
-  const isModuleAllowed = moduleName && userTier ? tierAllowsModule(userTier, moduleName) : true;
-  const isLocked = locked || !isModuleAllowed;
+  const Icon = item.icon;
+  const active = isItemActive(currentView, item);
 
   return (
     <button
+      ref={registerItemRef(item.view)}
       onClick={() => {
-        if (isLocked) {
-          // Redirect to Plans view instead of showing modal
-          setView(AppView.PLANS);
-          setMobileMenuOpen(false);
-          return;
+        const scrollTop = navScrollRef.current?.scrollTop;
+        if (typeof scrollTop === 'number') {
+          sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(scrollTop));
         }
-        setView(view);
+        setView(item.view);
         setMobileMenuOpen(false);
       }}
-      className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all ${currentView === view
-        ? 'bg-brand-600 text-white shadow-lg shadow-brand-900/20'
-        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-        } ${isLocked ? 'opacity-60' : ''}`}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${
+        active ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+      }`}
     >
-      <div className="flex items-center space-x-3">
-        <Icon className="w-5 h-5" />
-        <span className="font-medium">{label}</span>
-        {!isLocked && badgeCount !== undefined && badgeCount > 0 && (
-          <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
-            {badgeCount}
-          </span>
-        )}
-      </div>
-      {isLocked && <Lock className="w-4 h-4 text-slate-500" />}
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="truncate font-medium">{item.label}</span>
     </button>
   );
 };
 
-const ModuleGroup = ({
-  title,
-  icon: Icon,
-  isOpen,
-  setIsOpen,
-  currentView: _currentView,
-  views,
-  children
-}: {
-  title: string;
-  icon: any;
-  isOpen: boolean;
-  setIsOpen: (val: boolean) => void;
-  currentView: AppView;
-  views: AppView[];
-  children: React.ReactNode;
-}) => {
-  const isActive = views.includes(_currentView);
-
-  return (
-    <div className="space-y-1">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all ${
-          isOpen 
-            ? 'bg-slate-800/60 text-white shadow-inner border border-slate-700/50' 
-            : isActive 
-              ? 'text-white bg-slate-800/30' 
-              : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-        }`}
-      >
-        <div className="flex items-center space-x-3">
-          <Icon className="w-5 h-5" />
-          <span className="font-medium">{title}</span>
-        </div>
-        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-      </button>
-
-      {isOpen && (
-        <div className="pl-4 space-y-1 animate-fade-in">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
-  const sidebarRef = React.useRef<HTMLElement>(null);
   const { theme, toggleTheme, cloudSaveEnabled, toggleCloudSave } = useSettings();
-  const { userRole, isAdmin, userProfile, userTier, refreshUserData, modulePermissions, isTrialExpired, trialDaysRemaining } = useUser();
+  const { userRole, isAdmin, userProfile, permissions, loading: userLoading, isTrialExpired, trialDaysRemaining } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [checkedOnboarding, setCheckedOnboarding] = useState(false);
-  const [isCalculatorsOpen, setIsCalculatorsOpen] = useState(false); // Closed by default
-  const [professionalSettings, setProfessionalSettings] = useState<{ name: string, profession: string, logoUrl?: string } | null>(null);
+  const [activeClinic, setActiveClinic] = useState<Clinic | null>(null);
+  const [selectedClinicId, setSelectedClinicId] = useState('');
+  const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const desktopNavRef = useRef<HTMLElement | null>(null);
+  const mobileNavRef = useRef<HTMLElement | null>(null);
+  const itemRefs = useRef<Partial<Record<AppView, HTMLButtonElement | null>>>({});
 
-  // Profile Edit State
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [profileForm, setProfileForm] = useState({
-    displayName: '',
-    jobTitle: '',
-    function: ''
-  });
-  const [savingProfile, setSavingProfile] = useState(false);
-
-  // Module expansion states - ERCMed
-  const [isSaudeOpen, setIsSaudeOpen] = useState(false);
-  const [isRepasseOpen, setIsRepasseOpen] = useState(false);
-
-  // Upgrade Modal State
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [blockedFeature, setBlockedFeature] = useState('');
-
-  // Legacy module expansion states
-  const [isTributarioOpen, setIsTributarioOpen] = useState(false);
-  const [isContratosOpen, setIsContratosOpen] = useState(false);
-  const [isFinanceiroOpen, setIsFinanceiroOpen] = useState(false);
-  const [isApoioOpen, setIsApoioOpen] = useState(false);
-  const [invitationCount, setInvitationCount] = useState(0);
-
-  // Define allowed views based on user role
-  const HEALTH_PROFESSIONAL_VIEWS = [
-    AppView.HEALTH_DASHBOARD,
-    AppView.PATIENTS,
-    AppView.APPOINTMENTS,
-    AppView.EMR,
-    AppView.RECEIPTS,
-    AppView.CLINIC_HOURS,
-    AppView.BOOKING_SETTINGS,
-    AppView.MEDICATIONS,
-    AppView.USER_PROFILE,
-    AppView.FEEDBACK,
-    AppView.TEAM_INVITATIONS
-  ];
-
-  // Helper function to check if view is allowed for current user
-  const isViewAllowed = (view: AppView): boolean => {
-    // Admin (master or gestor) has access to all views
-    if (isAdmin) return true;
-
-    // Health professionals only have access to health management views
-    return HEALTH_PROFESSIONAL_VIEWS.includes(view) || view === AppView.ONBOARDING;
+  const registerItemRef = (view: AppView) => (element: HTMLButtonElement | null) => {
+    itemRefs.current[view] = element;
   };
 
-  React.useEffect(() => {
-    const loadSettings = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        try {
-          const { getProfessionalSettings } = await import('../services/userDataService');
-          const settings = await getProfessionalSettings(user.uid);
-          if (settings) {
-            setProfessionalSettings({
-              name: settings.professionalName,
-              profession: settings.profession,
-              logoUrl: settings.logoUrl
-            });
-          }
-        } catch (error) {
-          console.error("Error loading professional settings", error);
-        }
-      }
-    };
-    loadSettings();
-  }, [userProfile]); // Reload when userProfile changes
+  const restoreSidebarScroll = (navElement: HTMLElement | null) => {
+    if (!navElement) return;
 
-  // Check for onboarding (Trial with 0 clinics)
-  useEffect(() => {
-    const checkOnboarding = async () => {
-      const user = auth.currentUser;
-      if (user && userProfile?.accountTier === AccountTier.TRIAL && userProfile?.isClinicManager === true && !checkedOnboarding && currentView !== AppView.ONBOARDING) {
-        try {
-          const clinics = await getClinics(user.uid);
-          if (clinics.length === 0) {
-            setView(AppView.ONBOARDING);
-          }
-          setCheckedOnboarding(true);
-        } catch (error) {
-          console.error("Error checking onboarding status", error);
-          setCheckedOnboarding(true); // Don't block if service fails
-        }
-      }
-    };
-    checkOnboarding();
-  }, [userProfile, checkedOnboarding, currentView]);
+    const storedScroll = Number(sessionStorage.getItem(SIDEBAR_SCROLL_KEY) || '0');
+    navElement.scrollTop = Number.isFinite(storedScroll) ? storedScroll : 0;
 
-  // Check for team invitations
-  useEffect(() => {
-    const checkInvitations = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        try {
-          const invitations = await getTeamInvitations(user.uid, user.email || undefined);
-          const pending = invitations.filter(inv => inv.status === 'pending').length;
-          setInvitationCount(pending);
-        } catch (error) {
-          console.error("Error checking invitations", error);
-        }
-      }
-    };
-    
-    checkInvitations();
-    // Refresh every 5 minutes
-    const interval = setInterval(checkInvitations, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [userProfile]);
+    const activeElement = itemRefs.current[currentView];
+    if (!activeElement) return;
 
-  // Initialize profile form when modal opens
-  useEffect(() => {
-    if (isProfileModalOpen && userProfile) {
-      setProfileForm({
-        displayName: userProfile.displayName || auth.currentUser?.displayName || '',
-        jobTitle: userProfile.jobTitle || '',
-        function: userProfile.function || ''
-      });
+    const navRect = navElement.getBoundingClientRect();
+    const itemRect = activeElement.getBoundingClientRect();
+    const isAbove = itemRect.top < navRect.top + 12;
+    const isBelow = itemRect.bottom > navRect.bottom - 12;
+
+    if (isAbove || isBelow) {
+      activeElement.scrollIntoView({ block: 'nearest' });
+      sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(navElement.scrollTop));
     }
-  }, [isProfileModalOpen, userProfile]);
+  };
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [currentView]);
+
+  useEffect(() => {
+    const syncStoredScroll = (element: HTMLElement | null) => {
+      if (!element) return () => undefined;
+
+      const handleScroll = () => {
+        sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(element.scrollTop));
+      };
+
+      element.addEventListener('scroll', handleScroll, { passive: true });
+      return () => element.removeEventListener('scroll', handleScroll);
+    };
+
+    const cleanupDesktop = syncStoredScroll(desktopNavRef.current);
+    const cleanupMobile = syncStoredScroll(mobileNavRef.current);
+
+    return () => {
+      cleanupDesktop();
+      cleanupMobile();
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      restoreSidebarScroll(desktopNavRef.current);
+      restoreSidebarScroll(mobileNavRef.current);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [currentView, mobileMenuOpen]);
+
+  useEffect(() => {
+    const loadClinicsHeader = async () => {
+      try {
+        const clinics = await getClinics();
+        const currentUserId = auth.currentUser?.uid;
+        const managerCanConsolidate = isAdmin || userProfile?.isClinicManager === true || ['admin', 'manager', 'admin_gestor', 'admin_master'].includes(userRole as string);
+        const allowedIds = currentUserId ? await getAllowedClinicsForUser(currentUserId) : [];
+        const visibleClinics = managerCanConsolidate ? clinics : clinics.filter(clinic => allowedIds.includes(clinic.id));
+        setAvailableClinics(visibleClinics);
+        const storedClinicId = getStoredActiveClinicId();
+        const nextClinicId = managerCanConsolidate
+          ? (storedClinicId === GROUP_CLINIC_ID || visibleClinics.some(clinic => clinic.id === storedClinicId) ? storedClinicId : GROUP_CLINIC_ID)
+          : (visibleClinics.some(clinic => clinic.id === storedClinicId) ? storedClinicId : visibleClinics[0]?.id || '');
+        setSelectedClinicId(nextClinicId || '');
+        setActiveClinic(visibleClinics.find(clinic => clinic.id === nextClinicId) || null);
+        if (nextClinicId && nextClinicId !== storedClinicId) setStoredActiveClinicId(nextClinicId);
+      } catch (error) {
+        console.error('Erro ao carregar clínica ativa:', error);
+      }
+    };
+
+    loadClinicsHeader();
+
+    const refreshActiveClinic = () => {
+      loadClinicsHeader();
+    };
+
+    window.addEventListener(ACTIVE_CLINIC_CHANGED_EVENT, refreshActiveClinic);
+    return () => window.removeEventListener(ACTIVE_CLINIC_CHANGED_EVENT, refreshActiveClinic);
+  }, [isAdmin, userRole, userProfile?.displayName, userProfile?.nomeFantasia, userProfile?.razaoSocial]);
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
     } catch (error) {
-      console.error("Erro ao sair:", error);
+      console.error('Erro ao sair:', error);
     }
   };
 
-  const handleWhatsAppClick = () => {
-    window.open('https://wa.me/5511999999999', '_blank'); // Replace with actual number
-  };
+  const isMaster = userRole === UserRole.ADMIN_MASTER;
+  const canAccessCurrentView = canAccessView(currentView, userRole, permissions, isAdmin);
 
-  const handleSaveProfile = async () => {
-    if (!auth.currentUser) return;
-    setSavingProfile(true);
-    try {
-      await saveUserProfile(auth.currentUser.uid, {
-        uid: auth.currentUser.uid,
-        email: auth.currentUser.email || '',
-        role: userRole || UserRole.HEALTH_PROFESSIONAL,
-        displayName: profileForm.displayName,
-        jobTitle: profileForm.jobTitle,
-        function: profileForm.function
-      });
-      await refreshUserData();
-      setIsProfileModalOpen(false);
-    } catch (error) {
-      console.error("Error saving profile:", error);
-      alert("Erro ao salvar perfil.");
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  // Restore sidebar scroll position on view change
   useEffect(() => {
-    if (sidebarRef.current) {
-      sidebarRef.current.scrollTop = sidebarScrollPos;
+    if (!userLoading && !canAccessCurrentView) {
+      setView(getDefaultViewForRole(userRole, isAdmin));
     }
-  }, [currentView]);
+  }, [canAccessCurrentView, isAdmin, setView, userLoading, userRole]);
 
-  const handleSidebarScroll = (e: React.UIEvent<HTMLElement>) => {
-    sidebarScrollPos = e.currentTarget.scrollTop;
-  };  return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar Desktop */}
-      <aside 
-        ref={sidebarRef}
-        onScroll={handleSidebarScroll}
-        className="hidden md:flex flex-col w-72 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto border-r border-slate-800 z-50"
-      >
-        <div className="p-8 flex flex-col items-center border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm">
-          <SystemLogo variant="white" className="h-14" />
-          
-          {professionalSettings?.logoUrl && (
-            <div className="mt-4 w-12 h-12 rounded-xl overflow-hidden border border-slate-700 shadow-2xl ring-2 ring-teal-500/20">
-              <img src={professionalSettings.logoUrl} alt="Clínica" className="w-full h-full object-cover" />
-            </div>
-          )}
-        </div>
-        <div className="text-center mt-2">
-          <span className="block text-[10px] text-brand-400 font-medium uppercase tracking-wider">
-            {userProfile?.nomeFantasia || userProfile?.razaoSocial || professionalSettings?.name || 'Sistema de Gestão'}
-          </span>
-        </div>
+  const mainSections: Array<{ title: string; items: NavItem[] }> = useMemo(
+    () => [
+      {
+        title: 'Operação',
+        items: [
+          { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
+          { view: AppView.PATIENTS, label: 'Cadastro de Pacientes', icon: Users },
+          { view: AppView.ATTENDANCES, label: 'Controle de Atendimentos', icon: ClipboardList },
+          { view: AppView.PRODUCTION_ENTRY, label: 'Portal de Produção Profissional', icon: Briefcase },
+        ],
+      },
+      {
+        title: 'Financeiro',
+        items: [
+          { view: AppView.ACCOUNTS_RECEIVABLE, label: 'Contas a Receber', icon: DollarSign },
+          { view: AppView.ACCOUNTS_PAYABLE, label: 'Contas a Pagar', icon: Receipt },
+          { view: AppView.CASH_ACCOUNTS, label: 'Caixa', icon: Wallet },
+          { view: AppView.BANKS, label: 'Bancos', icon: Landmark },
+          { view: AppView.CASH_FLOW, label: 'Fluxo de Caixa', icon: BarChart3 },
+          { view: AppView.BANK_RECONCILIATION, label: 'Conciliação', icon: RefreshCw },
+          { view: AppView.COLLECTIONS, label: 'Cobranças e Inadimplência', icon: HandCoins },
+        ],
+      },
+      {
+        title: 'Faturamento',
+        items: [
+          { view: AppView.BILLING_MANAGEMENT, label: 'Produção', icon: ClipboardList, activeViews: [AppView.BILLING_PRODUCTION] },
+          { view: AppView.BILLING_MANAGEMENT, label: 'Particular', icon: Receipt, activeViews: [AppView.BILLING_PRIVATE] },
+          { view: AppView.BILLING_INSURANCE, label: 'Convênios', icon: Building2 },
+          { view: AppView.BILLING_GUIDES, label: 'Guias e Lotes', icon: FileSpreadsheet },
+          { view: AppView.TISS_BILLING, label: 'TISS', icon: FileBox },
+          { view: AppView.BILLING_GLOSAS, label: 'Glosas e Recursos', icon: FileSearch, activeViews: [AppView.BILLING_AUDIT] },
+        ],
+      },
+      {
+        title: 'Profissionais',
+        items: [
+          { view: AppView.CLINIC_TEAMS, label: 'Equipes por Paciente', icon: Users, activeViews: [AppView.PROFESSIONALS] },
+          { view: AppView.PRODUCTION_ENTRY, label: 'Produção', icon: BarChart3, activeViews: [AppView.PROFESSIONAL_PRODUCTION] },
+          { view: AppView.REPASSE_CALCULATION, label: 'Repasses', icon: Calculator },
+          { view: AppView.CONTRACTS, label: 'Contratos', icon: FileSignature },
+          { view: AppView.CLINIC_HOURS, label: 'Escalas', icon: Calendar, activeViews: [AppView.PROFESSIONAL_SCALES] },
+        ],
+      },
+      {
+        title: 'Recursos',
+        items: [
+          { view: AppView.SERVICE_CATALOG, label: 'Serviços e Procedimentos', icon: Tags, activeViews: [AppView.SERVICES_PROCEDURES] },
+          { view: AppView.SERVICE_CATALOG, label: 'Tabelas de Preços', icon: DollarSign, activeViews: [AppView.PRICE_TABLES] },
+          { view: AppView.INSURANCE_PLANS, label: 'Convênios e Planos', icon: LinkIcon },
+          { view: AppView.CARE_PACKAGES, label: 'Pacotes e Recorrência', icon: Layers3 },
+          { view: AppView.SUPPLIERS, label: 'Fornecedores', icon: Building2 },
+          { view: AppView.PURCHASES, label: 'Compras', icon: ShoppingCart },
+          { view: AppView.FISCAL_IMPORT, label: 'Documentos Fiscais', icon: FileUp },
+          { view: AppView.INVENTORY, label: 'Estoque', icon: Pill },
+          { view: AppView.ASSETS, label: 'Patrimônio', icon: Package },
+        ],
+      },
+      {
+        title: 'Controladoria',
+        items: [
+          { view: AppView.DRE_MANAGERIAL, label: 'DRE Gerencial', icon: BarChart3 },
+          { view: AppView.MANAGERIAL_FLOW, label: 'Fluxo Gerencial', icon: Waypoints },
+          { view: AppView.COST_CENTERS, label: 'Centros de Custo', icon: Building2 },
+          { view: AppView.RESULT_CENTERS, label: 'Centros de Resultado', icon: LayoutDashboard },
+          { view: AppView.BUDGET, label: 'Orçamento', icon: Calculator },
+          { view: AppView.PROFITABILITY_INDICATORS, label: 'Indicadores de Rentabilidade', icon: TrendingUpIcon },
+        ],
+      },
+      {
+        title: 'Contábil e Fiscal',
+        items: [
+          { view: AppView.ACCOUNTANT_MODULE, label: 'Fator R e Painel Fiscal', icon: Calculator },
+          { view: AppView.CHART_OF_ACCOUNTS, label: 'Plano de Contas', icon: BookOpen },
+          { view: AppView.ACCOUNTING_INTEGRATION, label: 'Integração Contábil', icon: Landmark },
+          { view: AppView.FISCAL_DOCUMENTS, label: 'Documentos Fiscais', icon: FileBox },
+          { view: AppView.TAX_RETENTIONS, label: 'Tributos e Retenções', icon: Calculator },
+        ],
+      },
+      {
+        title: 'Administração',
+        items: [
+          { view: AppView.CLINICS, label: 'Empresas e Unidades', icon: Building2, adminOnly: true },
+          { view: AppView.USERS_MANAGEMENT, label: 'Usuários', icon: Users, adminOnly: true },
+          { view: AppView.PERMISSIONS_MANAGEMENT, label: 'Perfis e Permissões', icon: Shield, masterOnly: true },
+          { view: AppView.ADMIN_GENERAL_REGISTRATIONS, label: 'Cadastros Gerais', icon: Library, adminOnly: true },
+          { view: AppView.ADMIN_PARAMETERS, label: 'Parâmetros', icon: Settings, adminOnly: true },
+          { view: AppView.PLANS, label: 'Planos e Assinatura', icon: Crown, adminOnly: true },
+          { view: AppView.ADMIN_AUDIT, label: 'Auditoria', icon: Search, adminOnly: true },
+          { view: AppView.ADMIN_INTEGRATIONS, label: 'Integrações', icon: Bot, adminOnly: true },
+        ],
+      },
+      {
+        title: 'Suporte',
+        items: [
+          { view: AppView.HOW_TO_USE, label: 'Central de Ajuda', icon: HelpCircle },
+          { view: AppView.SUPPORT_DOCUMENTATION, label: 'Documentação', icon: BookOpen },
+          { view: AppView.FEEDBACK, label: 'Feedback', icon: MessageSquare },
+        ],
+      },
+    ],
+    []
+  );
 
-          {/* User Profile Section */}
-          <div className="mt-6 w-full bg-slate-800/50 rounded-xl p-3 border border-slate-700/50 relative group">
-            <button
-              onClick={() => setView(AppView.USER_PROFILE)}
-              className="absolute top-2 right-2 p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-              title="Editar Perfil Completo"
-            >
-              <Settings className="w-3 h-3" />
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-brand-400 font-bold text-lg">
-                {userProfile?.displayName?.charAt(0) || auth.currentUser?.email?.charAt(0).toUpperCase() || <UserIcon className="w-5 h-5" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white truncate">
-                  {userProfile?.displayName || auth.currentUser?.email?.split('@')[0] || 'Usuário'}
-                </p>
-                <div className="mt-1">
-                  <TierBadge tier={userProfile?.accountTier} size="sm" />
-                </div>
-              </div>
+  const visibleSections = mainSections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (item.masterOnly) return isMaster;
+        if (item.adminOnly) return isAdmin;
+        return canAccessView(item.view, userRole, permissions, isAdmin);
+      }),
+    }))
+    .filter(section => section.items.length > 0);
+
+  useEffect(() => {
+    const activeSection = visibleSections.find(section => section.items.some(item => isItemActive(currentView, item)));
+    if (activeSection) {
+      setOpenSections(current => current.has(activeSection.title) ? current : new Set([...current, activeSection.title]));
+    }
+  }, [currentView, visibleSections]);
+
+  const toggleSection = (title: string) => {
+    setOpenSections(current => {
+      const next = new Set(current);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  };
+
+  const searchableItems = useMemo(() => {
+    const dashboard = canAccessView(AppView.HEALTH_DASHBOARD, userRole, permissions, isAdmin)
+      ? [{ view: AppView.HEALTH_DASHBOARD, label: isAdmin ? 'Dashboard Executivo' : 'Dashboard Pessoal', section: 'Início' }]
+      : [];
+
+    return dashboard.concat(
+      visibleSections.flatMap(section =>
+        section.items.map(item => ({ view: item.view, label: item.label, section: section.title }))
+      )
+    );
+  }, [visibleSections, userRole, permissions, isAdmin]);
+
+  const searchResults = useMemo(() => {
+    const term = globalSearch.trim().toLocaleLowerCase('pt-BR');
+    if (!term) return [];
+    return searchableItems
+      .filter(item => `${item.label} ${item.section}`.toLocaleLowerCase('pt-BR').includes(term))
+      .slice(0, 8);
+  }, [globalSearch, searchableItems]);
+
+  const openSearchResult = (view: AppView) => {
+    setView(view);
+    setGlobalSearch('');
+    setSearchOpen(false);
+  };
+
+  const greetingCompanyName =
+    userProfile?.nomeFantasia ||
+    userProfile?.razaoSocial ||
+    activeClinic?.name ||
+    availableClinics[0]?.name ||
+    userProfile?.displayName ||
+    'sua empresa';
+
+  const SidebarContent = () => (
+    <>
+      <div className="flex flex-col items-center border-b border-slate-800 bg-slate-900/50 p-4 backdrop-blur-sm">
+        <SystemLogo variant="white" className="h-10" />
+      </div>
+
+      <div className="mt-1 text-center">
+        <span className="block text-[10px] font-medium uppercase tracking-wider text-brand-400">
+          {userProfile?.nomeFantasia || userProfile?.razaoSocial || 'Sistema de Gestão'}
+        </span>
+      </div>
+
+      <div className="mx-3 mt-3 rounded-lg border border-slate-700/50 bg-slate-800/50 p-2">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-sm font-bold text-brand-400">
+            {userProfile?.displayName?.charAt(0) || auth.currentUser?.email?.charAt(0).toUpperCase() || <UserIcon className="h-5 w-5" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-bold text-white">
+              Olá, {greetingCompanyName}
+            </p>
+            <div className="mt-1">
+              <TierBadge tier={userProfile?.accountTier} size="sm" />
             </div>
           </div>
+        </div>
+      </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2">
-          {/* 1. DASHBOARD */}
-          <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" moduleName="healthManagement" />
-
-          {/* 2. OPERAÇÃO CLÍNICA */}
-          <ModuleGroup
-            title="Operação Clínica"
-            icon={Heart}
-            isOpen={isSaudeOpen}
-            setIsOpen={setIsSaudeOpen}
+      <nav ref={registerNavRef => {
+        desktopNavRef.current = registerNavRef;
+      }} className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+        {canAccessView(AppView.HEALTH_DASHBOARD, userRole, permissions, isAdmin) && (
+          <NavButton
+            item={{ view: AppView.HEALTH_DASHBOARD, label: isAdmin ? 'Dashboard Executivo' : 'Dashboard Pessoal', icon: LayoutDashboard }}
             currentView={currentView}
-            views={[AppView.PATIENTS, AppView.EMR, AppView.RECEIPTS, AppView.TEAM_INVITATIONS]}
-          >
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PATIENTS} icon={Users} label="Pacientes" moduleName="patients" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.EMR} icon={FileText} label="Prontuário (Clínica)" moduleName="emr" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.RECEIPTS} icon={Receipt} label="Recibos Médicos" moduleName="receipts" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
-          </ModuleGroup>
+            setView={setView}
+            setMobileMenuOpen={setMobileMenuOpen}
+            registerItemRef={registerItemRef}
+            navScrollRef={desktopNavRef}
+          />
+        )}
 
-          {/* 3. AGENDA */}
-          <ModuleGroup
-            title="Agenda"
-            icon={Calendar}
-            isOpen={true}
-            setIsOpen={() => {}}
-            currentView={currentView}
-            views={[AppView.APPOINTMENTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS]}
-          >
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.APPOINTMENTS} icon={Calendar} label="Meus Atendimentos" moduleName="appointments" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_HOURS} icon={Clock} label="Horários da Clínica" moduleName="clinicHours" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" moduleName="bookingSettings" />
-          </ModuleGroup>
-
-          {/* 4. FINANCEIRO & FATURAMENTO */}
-          {(isAdmin || userProfile?.isClinicManager || userRole === UserRole.BILLER) && (
-            <ModuleGroup
-              title="Financeiro & Faturamento"
-              icon={DollarSign}
-              isOpen={isFinanceiroOpen || isRepasseOpen}
-              setIsOpen={(val) => { setIsFinanceiroOpen(val); setIsRepasseOpen(val); }}
-              currentView={currentView}
-              views={[
-                AppView.FINANCIAL_CONTROL,
-                AppView.SALES_MANAGEMENT,
-                AppView.CASH_FLOW,
-                AppView.REPASSE_DASHBOARD,
-                AppView.BILLING_MANAGEMENT,
-                AppView.REPASSE_CALCULATION,
-                AppView.TISS_BILLING
-              ]}
-            >
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" moduleName="financial" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" moduleName="financial" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" moduleName="financial" />
-              <div className="h-px bg-slate-800 my-1"></div>
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" moduleName="repasse" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" moduleName="repasse" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" moduleName="repasse" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TISS_BILLING} icon={Building2} label="Faturamento TISS" moduleName="tiss" />
-            </ModuleGroup>
-          )}
-
-          {/* 5. INTELIGÊNCIA AVANÇADA */}
-          <ModuleGroup
-            title="Inteligência Avançada"
-            icon={Brain}
-            isOpen={true}
-            setIsOpen={() => {}}
-            currentView={currentView}
-            views={[AppView.THERAPEUTIC_INTELLIGENCE]}
-          >
-            <NavButton 
-              currentView={currentView} 
-              setView={setView} 
-              setMobileMenuOpen={setMobileMenuOpen} 
-              userTier={userTier} 
-              view={AppView.THERAPEUTIC_INTELLIGENCE} 
-              icon={Microscope} 
-              label="Pesquisa & Terapêutica" 
-              moduleName="therapeuticIntelligence" 
-            />
-          </ModuleGroup>
-
-          {/* 6. ADMINISTRAÇÃO */}
-          <ModuleGroup
-            title="Administração"
-            icon={Settings}
-            isOpen={isContratosOpen}
-            setIsOpen={setIsContratosOpen}
-            currentView={currentView}
-            views={[AppView.CLINICS, AppView.CLINIC_TEAMS, AppView.TEAM_INVITATIONS, AppView.CONTRACTS, AppView.USERS_MANAGEMENT, AppView.PERMISSIONS_MANAGEMENT, AppView.DEBUG, AppView.PLANS]}
-          >
-            {(isAdmin || userProfile?.isClinicManager) && (
-              <>
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINICS} icon={Building2} label="Consultórios" moduleName="clinics" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_TEAMS} icon={Shield} label="Equipes da Clínica" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" moduleName="contracts" />
-              </>
-            )}
-            {isAdmin && (
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.USERS_MANAGEMENT} icon={Users} label="Gerenciar Usuários" />
-            )}
-            {userRole === UserRole.ADMIN_MASTER && (
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PERMISSIONS_MANAGEMENT} icon={Shield} label="Permissões Master" />
-            )}
-            {(isAdmin || userProfile?.isClinicManager) && (
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.DEBUG} icon={Activity} label="Diagnóstico" />
-            )}
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PLANS} icon={Crown} label="Planos e Preços" />
-          </ModuleGroup>
-
-          {/* 6. APOIO & SUPORTE */}
-          <ModuleGroup
-            title="Apoio & Suporte"
-            icon={Info}
-            isOpen={isApoioOpen}
-            setIsOpen={setIsApoioOpen}
-            currentView={currentView}
-            views={[AppView.AI_CONSULTANT, AppView.USER_PROFILE, AppView.HOW_TO_USE, AppView.ABOUT_APP, AppView.FEEDBACK]}
-          >
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.AI_CONSULTANT} icon={MessageSquare} label="Consultor IA" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.USER_PROFILE} icon={UserIcon} label="Meu Perfil" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HOW_TO_USE} icon={BookOpen} label="Como Usar" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.ABOUT_APP} icon={Info} label="Sobre" />
-            <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FEEDBACK} icon={MessageSquare} label="Feedback" />
-          </ModuleGroup>
-        </nav>
-
-        <div className="p-4 border-t border-slate-700 bg-slate-900/50">
-          <p className="text-[10px] text-slate-500 text-center leading-tight mb-4 italic">
-            (Este material não substitui orientação médica/profissional)
-          </p>
-          <div className="flex items-center justify-between px-2 mb-4">
+        {visibleSections.map(section => (
+          <div key={section.title}>
             <button
-              onClick={toggleTheme}
-              className="p-2 text-slate-400 hover:text-yellow-400 hover:bg-slate-800 rounded-lg transition-colors"
-              title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+              type="button"
+              onClick={() => toggleSection(section.title)}
+              className="mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-teal-400 hover:bg-slate-800/70 hover:text-teal-300"
+              aria-expanded={openSections.has(section.title)}
             >
-              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              <span>{section.title}</span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openSections.has(section.title) ? 'rotate-180' : ''}`} />
             </button>
-            <button
-              onClick={toggleCloudSave}
-              className={`p-2 rounded-lg transition-colors ${cloudSaveEnabled ? 'text-green-400 hover:bg-slate-800' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}
-              title={cloudSaveEnabled ? 'Salvamento na Nuvem Ativo' : 'Salvamento na Nuvem Pausado'}
-            >
-              {cloudSaveEnabled ? <Cloud className="w-5 h-5" /> : <CloudOff className="w-5 h-5" />}
-            </button>
+            {openSections.has(section.title) && section.items.map((item, index) => (
+              <NavButton
+                key={`${section.title}-${item.label}-${index}`}
+                item={item}
+                currentView={currentView}
+                setView={setView}
+                setMobileMenuOpen={setMobileMenuOpen}
+                registerItemRef={registerItemRef}
+                navScrollRef={desktopNavRef}
+              />
+            ))}
           </div>
+        ))}
+      </nav>
+
+      <div className="border-t border-slate-700 bg-slate-900/50 p-2">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleTheme}
+            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-yellow-400"
+            title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={toggleCloudSave}
+            className={`rounded-lg p-2 transition-colors ${cloudSaveEnabled ? 'text-green-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'}`}
+            title={cloudSaveEnabled ? 'Salvamento na nuvem ativo' : 'Salvamento na nuvem pausado'}
+            aria-label={cloudSaveEnabled ? 'Salvamento na nuvem ativo' : 'Salvamento na nuvem pausado'}
+          >
+            {cloudSaveEnabled ? <Cloud className="h-4 w-4" /> : <CloudOff className="h-4 w-4" />}
+          </button>
+          <div className="mx-1 h-5 w-px bg-slate-700" aria-hidden="true" />
           <button
             onClick={handleLogout}
-            className="w-full flex items-center space-x-2 px-4 py-2 rounded-lg text-slate-400 hover:bg-red-900/30 hover:text-red-400 transition-colors text-sm"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-400 transition-colors hover:bg-red-900/30 hover:text-red-400"
           >
-            <LogOut className="w-4 h-4" />
-            <span>Sair do Sistema</span>
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">Sair do Sistema</span>
           </button>
         </div>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-slate-800 bg-[#031b31] text-white md:flex">
+        <SidebarContent />
       </aside>
 
-      {/* Mobile Header */}
       <div
-        className="md:hidden fixed top-0 left-0 right-0 bg-slate-900 text-white z-50 flex justify-center items-center shadow-lg transition-all"
-        style={{
-          paddingTop: 'max(35px, env(safe-area-inset-top))',
-          paddingBottom: '10px'
-        }}
+        className="fixed left-0 right-0 top-0 z-50 flex items-center justify-center bg-slate-900 text-white shadow-lg md:hidden"
+        style={{ paddingTop: 'max(35px, env(safe-area-inset-top))', paddingBottom: '10px' }}
       >
-        <div className="flex flex-col items-center text-center px-4 relative w-full">
-          <div className="flex flex-col items-center gap-0.5 mb-1">
+        <div className="relative w-full px-4 text-center">
+          <div className="mb-1 flex flex-col items-center gap-0.5">
             <div className="flex items-center justify-center gap-2">
-              <Heart className="w-5 h-5 text-brand-400 flex-shrink-0" />
-              <span className="font-bold leading-tight text-xl whitespace-normal">ERCMed</span>
+              <Heart className="h-5 w-5 flex-shrink-0 text-brand-400" />
+              <span className="whitespace-normal text-xl font-bold leading-tight">ERCMed</span>
             </div>
-            <span className="text-[10px] text-brand-400 uppercase font-bold tracking-wider leading-tight max-w-[280px]">
-              Gestão de Saúde e Repasse Clínico
+            <span className="max-w-[280px] text-[10px] font-bold uppercase leading-tight tracking-wider text-brand-400">
+              ERP inteligente para empresas de saúde
             </span>
           </div>
         </div>
-
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="absolute right-4 bottom-3 p-1"
-        >
-          {mobileMenuOpen ? <X className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
+        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="absolute bottom-3 right-4 p-1">
+          {mobileMenuOpen ? <X className="h-7 w-7" /> : <Menu className="h-7 w-7" />}
         </button>
       </div>
 
-      {/* Mobile Menu Overlay */}
-      {
-        mobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 bg-slate-900 z-40 pt-32 px-4 flex flex-col h-full pb-6">
-            <div className="space-y-4 flex-1 overflow-auto overscroll-contain">
-              <button
-                onClick={handleWhatsAppClick}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-slate-300 hover:bg-slate-800 hover:text-green-400"
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-40 flex flex-col bg-slate-900 px-4 pb-6 pt-32 md:hidden">
+          <div className="flex-1 overflow-auto space-y-4">
+            <div className="rounded-xl border border-slate-700 bg-slate-800 p-3">
+              <label htmlFor="mobile-active-clinic-selector" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-teal-300">Empresa ou unidade ativa</label>
+              <select
+                id="mobile-active-clinic-selector"
+                value={selectedClinicId}
+                disabled={!availableClinics.length && !isAdmin}
+                onChange={event => {
+                  if (event.target.value === GROUP_CLINIC_ID) {
+                    setSelectedClinicId(GROUP_CLINIC_ID);
+                    setActiveClinic(null);
+                    setStoredActiveClinicId(GROUP_CLINIC_ID);
+                    return;
+                  }
+                  const clinic = availableClinics.find(item => item.id === event.target.value);
+                  if (!clinic) return;
+                  setSelectedClinicId(clinic.id);
+                  setActiveClinic(clinic);
+                  setStoredActiveClinicId(clinic.id);
+                }}
+                className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-3 text-sm font-semibold text-white outline-none focus:border-teal-400"
               >
-                <MessageSquare className="w-5 h-5" />
-                <span className="font-medium">Falar com Contador (WhatsApp)</span>
-              </button>
-              <div className="h-px bg-slate-700 my-2"></div>
-
-              {/* Dashboard Geral */}
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HEALTH_DASHBOARD} icon={LayoutDashboard} label="Dashboard Geral" />
-
-              {/* Operação Clínica (Previously Gestão de Saúde) */}
-              <ModuleGroup
-                title="Operação Clínica"
-                icon={Heart}
-                isOpen={isSaudeOpen}
-                setIsOpen={setIsSaudeOpen}
-                currentView={currentView}
-                views={[AppView.PATIENTS, AppView.APPOINTMENTS, AppView.EMR, AppView.RECEIPTS, AppView.CLINIC_HOURS, AppView.BOOKING_SETTINGS, AppView.TEAM_INVITATIONS]}
-              >
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.PATIENTS} icon={Users} label="Pacientes" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.APPOINTMENTS} icon={Calendar} label="Meus Atendimentos" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.EMR} icon={FileText} label="Clínica" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.RECEIPTS} icon={Receipt} label="Recibos" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CLINIC_HOURS} icon={Clock} label="Horários" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BOOKING_SETTINGS} icon={LinkIcon} label="Agendamento Online" />
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.TEAM_INVITATIONS} icon={UserPlus} label="Convites de Equipe" badgeCount={invitationCount} />
-              </ModuleGroup>
-
-              {/* Gestão de Repasse Clínico - Admin Only */}
-              {(isAdmin || userProfile?.isClinicManager || userRole === UserRole.BILLER) && (
-                <ModuleGroup
-                  title="Gestão de Repasse"
-                  icon={DollarSign}
-                  isOpen={isRepasseOpen}
-                  setIsOpen={setIsRepasseOpen}
-                  currentView={currentView}
-                  views={[AppView.REPASSE_DASHBOARD, AppView.BILLING_MANAGEMENT, AppView.REPASSE_CALCULATION]}
-                >
-                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_DASHBOARD} icon={LayoutDashboard} label="Dashboard Financeiro" />
-                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.BILLING_MANAGEMENT} icon={Receipt} label="Faturamento" />
-                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.REPASSE_CALCULATION} icon={Calculator} label="Cálculo de Repasse" />
-                </ModuleGroup>
-              )}
-
-              <div className="h-px bg-slate-700 my-2"></div>
-
-              {/* Contratos - Admin only */}
-              {(isAdmin || userProfile?.isClinicManager || userRole === UserRole.BILLER) && (
-                <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CONTRACTS} icon={FileSignature} label="Contratos" />
-              )}
-
-              {/* Módulo Financeiro - Admin only */}
-              {(isAdmin || userProfile?.isClinicManager) && (
-                <ModuleGroup
-                  title="Módulo Financeiro"
-                  icon={DollarSign}
-                  isOpen={isFinanceiroOpen}
-                  setIsOpen={setIsFinanceiroOpen}
-                  currentView={currentView}
-                  views={[
-                    AppView.FINANCIAL_CONTROL,
-                    AppView.SALES_MANAGEMENT,
-                    AppView.CASH_FLOW
-                  ]}
-                >
-                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FINANCIAL_CONTROL} icon={DollarSign} label="Controle Financeiro" />
-                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.SALES_MANAGEMENT} icon={ShoppingCart} label="Gestão de Vendas" />
-                  <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.CASH_FLOW} icon={TrendingUp} label="Fluxo de Caixa" />
-                </ModuleGroup>
-              )}
-
-              <div className="h-px bg-slate-700 my-2"></div>
-
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.AI_CONSULTANT} icon={MessageSquare} label="Consultor IA" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.USER_PROFILE} icon={UserIcon} label="Meu Perfil" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.HOW_TO_USE} icon={BookOpen} label="Como Usar" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.ABOUT_APP} icon={Info} label="Sobre" />
-              <NavButton currentView={currentView} setView={setView} setMobileMenuOpen={setMobileMenuOpen} userTier={userTier} view={AppView.FEEDBACK} icon={MessageSquare} label="Feedback" />
+                {(isAdmin || userProfile?.isClinicManager === true || ['admin', 'manager', 'admin_gestor', 'admin_master'].includes(userRole as string)) && (
+                  <option value={GROUP_CLINIC_ID}>Grupo consolidado — todas as unidades</option>
+                )}
+                {availableClinics.map(clinic => <option key={clinic.id} value={clinic.id}>{clinic.name}{clinic.specialty ? ` — ${clinic.specialty}` : ''}</option>)}
+              </select>
             </div>
+            <button
+              onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
+              className="flex w-full items-center space-x-3 rounded-lg px-4 py-3 text-slate-300 transition-all hover:bg-slate-800 hover:text-green-400"
+            >
+              <MessageSquare className="h-5 w-5" />
+              <span className="font-medium">Falar com suporte</span>
+            </button>
+          </div>
+          <div ref={registerNavRef => {
+            mobileNavRef.current = registerNavRef;
+          }} className="max-h-[70vh] overflow-y-auto rounded-xl border border-slate-700/50 bg-slate-900/50">
+            <SidebarContent />
+          </div>
+        </div>
+      )}
 
-            <div className="mt-auto border-t border-slate-700 pt-4 pb-4 space-y-4">
-              <p className="text-[10px] text-slate-500 text-center italic px-4">
-                (Este material não substitui orientação médica/profissional)
-              </p>
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-red-400 bg-red-900/20 hover:bg-red-900/30 transition-colors text-sm font-medium"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sair do Sistema</span>
-              </button>
-              <p className="text-xs text-center text-slate-500">Versão 2.3 - Autenticado</p>
+      <main className="ml-0 flex flex-1 flex-col overflow-y-auto pt-32 md:relative md:ml-72 md:overflow-hidden md:pt-0">
+        <header className="hidden h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 md:flex">
+          <div className="flex items-center gap-4">
+            <Menu className="h-5 w-5 text-slate-600" />
+            <div className="relative w-[28rem]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={globalSearch}
+                onChange={event => {
+                  setGlobalSearch(event.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && searchResults[0]) openSearchResult(searchResults[0].view);
+                  if (event.key === 'Escape') setSearchOpen(false);
+                }}
+                placeholder="Buscar e abrir módulo ou recurso..."
+                className="w-full rounded-lg border border-transparent bg-slate-50 py-2 pl-10 pr-3 text-sm text-slate-700 outline-none transition focus:border-brand-300 focus:bg-white focus:ring-2 focus:ring-brand-100"
+                aria-label="Buscar e abrir módulo ou recurso"
+              />
+              {searchOpen && globalSearch.trim() && (
+                <div className="absolute left-0 right-0 top-11 z-[70] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                  {searchResults.length ? searchResults.map((result, index) => (
+                    <button
+                      key={`${result.section}-${result.label}-${index}`}
+                      type="button"
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => openSearchResult(result.view)}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-brand-50"
+                    >
+                      <span className="text-sm font-medium text-slate-800">{result.label}</span>
+                      <span className="text-xs text-slate-400">{result.section}</span>
+                    </button>
+                  )) : (
+                    <p className="px-4 py-3 text-sm text-slate-500">Nenhum módulo ou recurso encontrado.</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        )
-      }
+          <div className="flex items-center gap-4">
+            <div className="relative min-w-[13rem] rounded-lg border border-slate-200 bg-white transition hover:bg-slate-50">
+              <label htmlFor="active-clinic-selector" className="sr-only">Trocar empresa ou unidade</label>
+              <select
+                id="active-clinic-selector"
+                aria-label="Trocar empresa ou unidade"
+                value={selectedClinicId}
+                disabled={!availableClinics.length && !isAdmin}
+                onChange={event => {
+                  if (event.target.value === GROUP_CLINIC_ID) {
+                    setSelectedClinicId(GROUP_CLINIC_ID);
+                    setActiveClinic(null);
+                    setStoredActiveClinicId(GROUP_CLINIC_ID);
+                    return;
+                  }
+                  const clinic = availableClinics.find(item => item.id === event.target.value);
+                  if (!clinic) return;
+                  setSelectedClinicId(clinic.id);
+                  setActiveClinic(clinic);
+                  setStoredActiveClinicId(clinic.id);
+                }}
+                className="w-full appearance-none bg-transparent py-2 pl-4 pr-10 text-xs font-semibold text-slate-800 outline-none disabled:cursor-default"
+              >
+                {!availableClinics.length && <option value="">Minha Empresa de Saúde</option>}
+                {isAdmin && <option value={GROUP_CLINIC_ID}>Grupo consolidado — todas as unidades</option>}
+                {availableClinics.map(clinic => (
+                  <option key={clinic.id} value={clinic.id}>{clinic.name} — {clinic.specialty || 'Unidade'}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </div>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setView(AppView.PLANS)}
+                className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-teal-700"
+                title="Ver planos e assinatura"
+                aria-label="Ver planos e assinatura"
+              >
+                <Crown className="h-5 w-5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setView(AppView.HOW_TO_USE)}
+              className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-teal-700"
+              title="Central de ajuda"
+              aria-label="Abrir central de ajuda"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setView(AppView.ADMIN_PARAMETERS)}
+                className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-teal-700"
+                title="Configurações"
+                aria-label="Abrir configurações"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+        </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col md:relative pt-32 md:pt-0 overflow-y-auto md:overflow-hidden ml-0 md:ml-72">
-        {/* Trial Warning Banner */}
         {!isTrialExpired && trialDaysRemaining !== undefined && trialDaysRemaining <= 3 && trialDaysRemaining > 0 && (
-          <div className="bg-amber-100 border-b border-amber-200 px-6 py-2 flex items-center justify-between animate-fade-in z-40">
-            <div className="flex items-center gap-2 text-amber-800 text-sm font-medium">
-              <Clock className="w-4 h-4" />
+          <div className="z-40 flex items-center justify-between border-b border-amber-200 bg-amber-100 px-6 py-2 animate-fade-in">
+            <div className="flex items-center gap-2 text-sm font-medium text-amber-800">
+              <RefreshCw className="h-4 w-4" />
               Seu período de teste termina em {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia' : 'dias'}.
             </div>
             <button
               onClick={() => setView(AppView.PLANS)}
-              className="text-xs bg-amber-600 text-white px-3 py-1 rounded-full font-bold hover:bg-amber-700 transition-colors"
+              className="rounded-full bg-amber-600 px-3 py-1 text-xs font-bold text-white transition-colors hover:bg-amber-700"
             >
               Fazer Upgrade
             </button>
@@ -655,175 +703,41 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         )}
 
         {isTrialExpired ? (
-          <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 relative">
-            <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 text-center border-t-8 border-brand-600 animate-fade-in">
-              <div className="w-20 h-20 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Lock className="w-10 h-10 text-brand-600" />
+          <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">
+            <div className="max-w-md w-full rounded-2xl border-t-8 border-brand-600 bg-white p-8 text-center shadow-2xl animate-fade-in">
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-brand-100">
+                <Lock className="h-10 w-10 text-brand-600" />
               </div>
-              <h2 className="text-3xl font-bold text-slate-900 mb-4">Teste Expirado</h2>
-              <p className="text-slate-600 mb-8 leading-relaxed">
-                Seu período de teste de 15 dias chegou ao fim. Para continuar transformando a gestão da sua clínica com o ERCMed, escolha um dos nossos planos.
+              <h2 className="mb-4 text-3xl font-bold text-slate-900">Teste Expirado</h2>
+              <p className="mb-8 leading-relaxed text-slate-600">
+                Seu período de teste chegou ao fim. Para continuar usando o ERCMed, escolha um dos nossos planos.
               </p>
-              
               <div className="space-y-4">
                 <button
                   onClick={() => setView(AppView.PLANS)}
-                  className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold text-lg hover:bg-brand-700 transition-all shadow-lg shadow-brand-900/20 flex items-center justify-center gap-2"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-4 text-lg font-bold text-white transition-all hover:bg-brand-700"
                 >
-                  <Crown className="w-5 h-5" />
+                  <Crown className="h-5 w-5" />
                   Ver Planos de Assinatura
                 </button>
                 <button
-                  onClick={handleWhatsAppClick}
-                  className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                  onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 py-3 font-medium text-slate-700 transition-all hover:bg-slate-200"
                 >
-                  <MessageSquare className="w-5 h-5 text-brand-600" />
+                  <MessageSquare className="h-5 w-5 text-brand-600" />
                   Falar com Consultor
                 </button>
               </div>
-              <div className="mt-8 pt-6 border-t border-slate-100">
-                <button
-                   onClick={handleLogout}
-                   className="text-slate-400 hover:text-red-500 text-sm flex items-center justify-center gap-2 mx-auto"
-                >
-                  <LogOut className="w-4 h-4" /> Sair da conta
-                </button>
-              </div>
             </div>
+          </div>
+        ) : userLoading || !canAccessCurrentView ? (
+          <div className="flex flex-1 items-center justify-center bg-slate-50 text-sm text-slate-500">
+            Verificando permissões...
           </div>
         ) : (
-          children
+          <React.Fragment key={selectedClinicId || 'no-clinic'}>{children}</React.Fragment>
         )}
       </main>
-
-      {/* Edit Profile Modal */}
-      {isProfileModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
-            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
-              <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                <Edit className="w-5 h-5 text-brand-400" />
-                Editar Perfil
-              </h3>
-              <button onClick={() => setIsProfileModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nome de Exibição</label>
-                <input
-                  type="text"
-                  value={profileForm.displayName}
-                  onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })}
-                  className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="Seu nome"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Cargo</label>
-                <input
-                  type="text"
-                  value={profileForm.jobTitle}
-                  onChange={(e) => setProfileForm({ ...profileForm, jobTitle: e.target.value })}
-                  className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="Ex: Médico, Enfermeiro, Recepcionista"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Função / Especialidade</label>
-                <input
-                  type="text"
-                  value={profileForm.function}
-                  onChange={(e) => setProfileForm({ ...profileForm, function: e.target.value })}
-                  className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="Ex: Cardiologista, Gerente"
-                />
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3">
-                <button
-                  onClick={() => setIsProfileModalOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveProfile}
-                  disabled={savingProfile}
-                  className="px-6 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-medium flex items-center gap-2 disabled:opacity-50"
-                >
-                  {savingProfile ? <Clock className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Salvar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Upgrade Modal */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in relative">
-            <button
-              onClick={() => setShowUpgradeModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-6 h-6" />
-            </button>
-
-            <div className="p-8 text-center">
-              <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Lock className="w-8 h-8 text-brand-600" />
-              </div>
-
-              <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                Recurso Bloqueado
-              </h3>
-
-              <p className="text-slate-600 mb-6">
-                O módulo <span className="font-semibold text-brand-700">{blockedFeature}</span> não está disponível no seu plano atual ({TIER_NAMES[userProfile?.accountTier || AccountTier.TRIAL]}).
-              </p>
-
-              <div className="bg-slate-50 rounded-xl p-4 mb-8 border border-slate-100">
-                <p className="text-sm text-slate-600 mb-3">Faça upgrade para desbloquear:</p>
-                <ul className="text-left space-y-2 text-sm text-slate-700">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Acesso a todos os módulos</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Sem limite de pacientes</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Suporte prioritário</span>
-                  </li>
-                </ul>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowUpgradeModal(false);
-                  // Redirect to upgrade page or open contact
-                  window.open('https://wa.me/5511999999999', '_blank');
-                }}
-                className="w-full py-3 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-900/20"
-              >
-                Fazer Upgrade Agora
-              </button>
-
-              <button
-                onClick={() => setShowUpgradeModal(false)}
-                className="mt-4 text-slate-500 hover:text-slate-700 text-sm font-medium"
-              >
-                Continuar com plano atual
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

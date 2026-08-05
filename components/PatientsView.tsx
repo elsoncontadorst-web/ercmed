@@ -10,6 +10,7 @@ import { useUser } from '../contexts/UserContext';
 import { AccountTier, TIER_CONFIG } from '../types/accountTiers';
 import { Lock } from 'lucide-react';
 import { formatCPF, formatPhone } from '../utils/formatters';
+import { ACTIVE_CLINIC_CHANGED_EVENT, getActiveClinicScopeId } from '../services/activeClinicStorage';
 
 import { AppView } from '../types';
 
@@ -27,6 +28,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
     const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
     const { userProfile } = useUser();
+    const [activeClinicId, setActiveClinicId] = useState<string | null>(getActiveClinicScopeId());
 
     // Trial Limit Check
     const canAddMorePatients = () => {
@@ -64,6 +66,15 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
         loadData();
     }, []);
 
+    useEffect(() => {
+        const syncClinic = () => {
+            setActiveClinicId(getActiveClinicScopeId());
+        };
+
+        window.addEventListener(ACTIVE_CLINIC_CHANGED_EVENT, syncClinic);
+        return () => window.removeEventListener(ACTIVE_CLINIC_CHANGED_EVENT, syncClinic);
+    }, []);
+
     const loadData = async () => {
         setLoading(true);
         try {
@@ -71,8 +82,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             if (user) {
                 // Load Patients
                 const allPatients = await getAllPatients();
-                setPatients(allPatients);
-                setFilteredPatients(allPatients);
+                const clinicScopedPatients = activeClinicId
+                    ? allPatients.filter(patient => patient.clinicId === activeClinicId)
+                    : allPatients;
+                setPatients(clinicScopedPatients);
+                setFilteredPatients(clinicScopedPatients);
 
                 // Load Clinics
                 const allClinics = await getClinics();
@@ -87,6 +101,13 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                 // getClinics returns actual Clinic objects.
                 const filteredClinics = allClinics.filter(c => allowedIds.includes(c.id));
                 setClinics(filteredClinics);
+                const preferredClinicId =
+                    (activeClinicId && filteredClinics.some(clinic => clinic.id === activeClinicId) ? activeClinicId : null) ||
+                    filteredClinics[0]?.id ||
+                    '';
+                setFormData(current => current.clinicId
+                    ? current
+                    : { ...current, clinicId: preferredClinicId });
             }
         } catch (error) {
             console.error("Error loading data", error);
@@ -94,6 +115,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        loadData();
+    }, [activeClinicId]);
 
     const handleSearch = async (query: string) => {
         setSearchQuery(query);
@@ -108,9 +133,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
         }
     };
 
-    const calculateAge = (birthdate: string) => {
+    const calculateAge = (birthdate?: string): number | null => {
+        if (!birthdate) return null;
         const today = new Date();
-        const birth = new Date(birthdate);
+        const birth = new Date(`${birthdate}T12:00:00`);
+        if (Number.isNaN(birth.getTime()) || birth > today) return null;
         let age = today.getFullYear() - birth.getFullYear();
         const monthDiff = today.getMonth() - birth.getMonth();
         if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
@@ -158,6 +185,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             }
 
             const age = calculateAge(formData.birthdate);
+            if (age === null) {
+                setNotification({ type: 'error', message: 'Informe uma data de nascimento válida.' });
+                setLoading(false);
+                return;
+            }
             const isMinor = age < 18;
 
             const patientData: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -374,7 +406,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                             )}
                                         </td>
                                         <td className="p-4 text-slate-600">
-                                            {patientAge} anos
+                                            {patientAge === null ? 'Não informada' : `${patientAge} anos`}
                                             {patient.isMinor && <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Menor</span>}
                                         </td>
                                         <td className="p-4 text-slate-600">
@@ -408,7 +440,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                             >
                                                 <Edit2 className="w-4 h-4" />
                                             </button>
-                                            {userProfile?.accountTier === AccountTier.UNLIMITED && (
+                                            {(userProfile?.isClinicManager === true || userProfile?.accountTier === AccountTier.UNLIMITED) && (
                                                 <button
                                                     onClick={() => handleDelete(patient.id)}
                                                     className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 ml-2"
@@ -417,26 +449,6 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
                                             )}
-                                            <button
-                                                onClick={() => {
-                                                    // Dynamic import to avoid changing top level if not needed, or just assume it's available?
-                                                    // Better to just add the function call check.
-                                                    // I need to update the import at top of file first.
-                                                    // For now I'll just put the button code here and update import in next step or use same tool.
-                                                    // Wait, I can't use dynamic import for a named export effectively without whole module.
-                                                    // I will update import in a separate chunk.
-                                                    console.log('Fetching team for:', patient.name);
-                                                    import('../services/healthService').then(async (mod) => {
-                                                        const members = await mod.getTeamMembers(patient.id);
-                                                        console.log('[DEBUG_TEAM_MEMBERS]', JSON.stringify(members, null, 2));
-                                                        alert('Team components logged to console');
-                                                    });
-                                                }}
-                                                className="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-50 ml-2"
-                                                title="Debug Team"
-                                            >
-                                                <AlertCircle className="w-4 h-4" />
-                                            </button>
                                         </td>
                                     </tr>
                                 );
@@ -467,7 +479,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                     <select
                                         value={formData.clinicId}
                                         onChange={(e) => setFormData({ ...formData, clinicId: e.target.value })}
-                                        className="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                                        disabled={clinics.length === 1}
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white disabled:bg-slate-50 disabled:text-slate-700"
                                         required
                                     >
                                         <option value="">Selecione a Clínica...</option>
@@ -477,6 +490,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                             </option>
                                         ))}
                                     </select>
+                                    {clinics.length === 1 && (
+                                        <p className="mt-1 text-xs text-emerald-600">
+                                            Clínica vinculada automaticamente ao seu perfil.
+                                        </p>
+                                    )}
                                     {clinics.length === 0 && (
                                         <p className="text-xs text-red-500 mt-1">
                                             Nenhuma clínica disponível. Crie uma clínica primeiro.

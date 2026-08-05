@@ -4,7 +4,8 @@ import { auth } from '../services/firebase';
 import { getAllBillingRecords, getAllProfessionals } from '../services/repasseService';
 import { ConsultationBilling, Professional } from '../types/finance';
 import { useUser } from '../contexts/UserContext';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
+import { getManagerIdForUser } from '../services/accessControlService';
 
 const RepasseCalculationView: React.FC = () => {
     const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -17,7 +18,7 @@ const RepasseCalculationView: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [calculation, setCalculation] = useState<any>(null);
     const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
-    const { userProfile, isAdmin: isSystemAdmin } = useUser();
+    const { userProfile, isAdminMaster } = useUser();
 
     // Editable fields for manual adjustments
     // Allow string to handle empty input (deleting the zero)
@@ -71,10 +72,8 @@ const RepasseCalculationView: React.FC = () => {
             const user = auth.currentUser;
             if (!user) return;
 
-            const isClinicManager = userProfile?.isClinicManager === true;
-            
             // Only Master Admin can bypass the managerId filter
-            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+            const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
 
             const [allProfs, allBillings] = await Promise.all([
                 getAllProfessionals(managerId),
@@ -100,12 +99,21 @@ const RepasseCalculationView: React.FC = () => {
         if (!professional) return;
 
         // Filter billings for selected professional and date range
-        const filteredBillings = billings.filter(b =>
-            b.professionalId === selectedProfessional &&
-            b.consultationDate >= dateRange.start &&
-            b.consultationDate <= dateRange.end &&
-            b.paymentStatus === 'received'
-        );
+        const filteredBillings = billings.filter(b => {
+            const sameProfessional =
+                b.professionalId === professional.id ||
+                (!!professional.userId && (
+                    b.professionalId === professional.userId ||
+                    b.professionalUserId === professional.userId ||
+                    b.registeredBy === professional.userId
+                ));
+
+            return sameProfessional &&
+                b.consultationDate >= dateRange.start &&
+                b.consultationDate <= dateRange.end &&
+                b.paymentStatus !== 'cancelled';
+        });
+        const receivedBillings = filteredBillings.filter(b => b.paymentStatus === 'received');
 
         // Parse inputs (handle empty strings as 0)
         const taxPct = adjustments.taxPercentage === '' ? 0 : Number(adjustments.taxPercentage);
@@ -146,6 +154,8 @@ const RepasseCalculationView: React.FC = () => {
                 end: dateRange.end
             },
             consultations: totalConsultations,
+            receivedConsultations: receivedBillings.length,
+            receivedRevenue: receivedBillings.reduce((sum, b) => sum + b.grossAmount, 0),
             grossRevenue, // Only from consultations
             totalRevenue, // Consultations + Additional
             taxAmount,
@@ -181,7 +191,7 @@ const RepasseCalculationView: React.FC = () => {
 
         // Period
         doc.setFontSize(11);
-        doc.text(`Período: ${new Date(calculation.period.start).toLocaleDateString('pt-BR')} a ${new Date(calculation.period.end).toLocaleDateString('pt-BR')}`, 20, 60);
+        doc.text(`Período: ${new Date(`${calculation.period.start}T12:00:00`).toLocaleDateString('pt-BR')} a ${new Date(`${calculation.period.end}T12:00:00`).toLocaleDateString('pt-BR')}`, 20, 60);
 
         // Summary Box
         doc.setFillColor(240, 240, 240);
@@ -227,7 +237,7 @@ const RepasseCalculationView: React.FC = () => {
                 y = 20;
             }
             doc.text(
-                `${index + 1}. ${new Date(billing.consultationDate).toLocaleDateString('pt-BR')} - ${billing.patientName} - ${formatMoney(billing.grossAmount)}`,
+                `${index + 1}. ${new Date(`${billing.consultationDate}T12:00:00`).toLocaleDateString('pt-BR')} - ${billing.patientName} - ${formatMoney(billing.grossAmount)}`,
                 25,
                 y
             );
@@ -330,7 +340,7 @@ const RepasseCalculationView: React.FC = () => {
                             <option value="">Selecione...</option>
                             {professionals.map(p => (
                                 <option key={p.id} value={p.id}>
-                                    {p.name} - {p.specialty}
+                                    {p.name} - {p.specialty}{p.email ? ` · ${p.email}` : ''}
                                 </option>
                             ))}
                         </select>
@@ -467,7 +477,7 @@ const RepasseCalculationView: React.FC = () => {
                                 Resultado do Cálculo
                             </h3>
                             <p className="text-sm text-slate-500 mt-1">
-                                {calculation.professional.name} - {new Date(calculation.period.start).toLocaleDateString('pt-BR')} a {new Date(calculation.period.end).toLocaleDateString('pt-BR')}
+                                {calculation.professional.name} - {new Date(`${calculation.period.start}T12:00:00`).toLocaleDateString('pt-BR')} a {new Date(`${calculation.period.end}T12:00:00`).toLocaleDateString('pt-BR')}
                             </p>
                         </div>
                         <button
@@ -547,7 +557,7 @@ const RepasseCalculationView: React.FC = () => {
                                     {calculation.billings.map((billing: ConsultationBilling, index: number) => (
                                         <tr key={index} className="border-t border-gray-100">
                                             <td className="p-3 text-slate-600">
-                                                {new Date(billing.consultationDate).toLocaleDateString('pt-BR')}
+                                                {new Date(`${billing.consultationDate}T12:00:00`).toLocaleDateString('pt-BR')}
                                             </td>
                                             <td className="p-3 text-slate-800">{billing.patientName}</td>
                                             <td className="p-3 text-right font-medium text-teal-600">

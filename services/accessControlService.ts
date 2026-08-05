@@ -40,7 +40,10 @@ let managerIdCache: { [userId: string]: { managerId: string | null; timestamp: n
 
 export const getManagerIdForUser = async (userId: string): Promise<string | null> => {
     // Check cache
-    if (managerIdCache[userId] && Date.now() - managerIdCache[userId].timestamp < CACHE_TTL) {
+    // Never cache a missing tenant link. During first registration Auth becomes
+    // available a moment before user_profiles is written; caching null here
+    // would block clinic creation for five minutes.
+    if (managerIdCache[userId]?.managerId && Date.now() - managerIdCache[userId].timestamp < CACHE_TTL) {
         return managerIdCache[userId].managerId;
     }
 
@@ -52,10 +55,10 @@ export const getManagerIdForUser = async (userId: string): Promise<string | null
         if (userSnap.exists()) {
             const userData = userSnap.data() as SystemUser;
             // If user is a manager/admin, they are their own manager
-            if (['admin', 'manager'].includes(userData.role) || userData.email === 'elsoncontador.st@gmail.com') {
+            if (['admin', 'manager', 'admin_gestor', 'admin_master'].includes(userData.role) || userData.isClinicManager || userData.email === 'elsoncontador.st@gmail.com') {
                 managerId = userId;
             } else {
-                managerId = userData.managerId || userId;
+                managerId = userData.managerId || null;
             }
         } else {
             // Check user_profiles as fallback
@@ -63,19 +66,27 @@ export const getManagerIdForUser = async (userId: string): Promise<string | null
             const profileSnap = await getDoc(profileRef);
             if (profileSnap.exists()) {
                 const profileData = profileSnap.data();
-                if (profileData.isClinicManager || profileData.email === 'elsoncontador.st@gmail.com') {
+                if (
+                    profileData.isClinicManager ||
+                    ['admin', 'manager', 'admin_gestor', 'admin_master'].includes(profileData.role) ||
+                    profileData.email === 'elsoncontador.st@gmail.com'
+                ) {
                     managerId = userId;
                 } else {
-                    managerId = profileData.managerId || userId;
+                    managerId = profileData.managerId || null;
                 }
             } else {
-                // Return userId as final fallback to allow any authenticated user to create clinics
-                managerId = userId;
+                // Missing tenant linkage must fail closed.
+                managerId = null;
             }
         }
 
         // Update cache
-        managerIdCache[userId] = { managerId, timestamp: Date.now() };
+        if (managerId) {
+            managerIdCache[userId] = { managerId, timestamp: Date.now() };
+        } else {
+            delete managerIdCache[userId];
+        }
         return managerId;
     } catch (error) {
         console.error('Error fetching manager ID:', error);
@@ -100,11 +111,10 @@ export const getAllowedClinicsForUser = async (userId: string): Promise<string[]
         if (role === 'admin' || role === 'manager' || isClinicManager || managerId === userId) {
             const targetId = managerId || userId;
             const clinicsRef = collection(db, 'users', targetId, 'clinics');
-            const q = query(clinicsRef, where('active', '==', true));
-            const snapshot = await getDocs(q);
-            const clinicIds = snapshot.docs.map(doc => doc.id);
-            // Also include their own ID if they are using the default tenant context
-            return [...clinicIds, targetId];
+            const snapshot = await getDocs(clinicsRef);
+            return snapshot.docs
+                .filter(clinic => clinic.data().active !== false)
+                .map(clinic => clinic.id);
         }
 
         // If Professional/Staff, check explicit clinicIds, then fallback to single clinicId
@@ -114,9 +124,8 @@ export const getAllowedClinicsForUser = async (userId: string): Promise<string[]
         const singleLink = userData?.clinicId || profileData?.clinicId;
         if (singleLink) return [singleLink];
 
-        // Fallback: If no clinic linked, verify manager.
-        // If linked to a manager, they might see everything from that manager (Legacy behavior) OR nothing.
-        // Current requirement: "Linked to a specific Main Clinic". So if no clinicId, they see NOTHING.
+        // Fail closed: a professional without an explicit unit assignment must
+        // not inherit every clinic in the group.
         return [];
     } catch (error) {
         console.error('Error fetching allowed clinics:', error);
@@ -132,7 +141,7 @@ export const getUserAccessSettings = async (userId: string): Promise<{ restrictT
         if (userSnap.exists()) {
             const data = userSnap.data() as SystemUser;
             return {
-                restrictToOwnPatients: data.restrictToOwnPatients || false,
+                restrictToOwnPatients: data.restrictToOwnPatients === true,
                 blockedModules: data.blockedModules || []
             };
         }

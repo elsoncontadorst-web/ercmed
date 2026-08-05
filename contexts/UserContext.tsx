@@ -4,6 +4,8 @@ import { auth } from '../services/firebase';
 import { UserRole, UserProfile } from '../types';
 import { getUserRole, getUserProfile } from '../services/userRoleService';
 import { AccountTier, TIER_CONFIG, migrateTierName } from '../types/accountTiers';
+import { DEFAULT_PERMISSIONS, UserPermissions } from '../types/users';
+import { getUserPermissions } from '../services/accessControlService';
 
 interface ModulePermissions {
     ADVANCED_EMR: boolean;
@@ -18,6 +20,7 @@ interface UserContextType {
     isAdminMaster: boolean;
     loading: boolean;
     modulePermissions: ModulePermissions;
+    permissions: UserPermissions;
     refreshUserData: () => Promise<void>;
     trialDaysRemaining?: number;
     isTrialExpired: boolean;
@@ -35,6 +38,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [modulePermissions, setModulePermissions] = useState<ModulePermissions>({
         ADVANCED_EMR: true
     });
+    const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_PERMISSIONS.user);
 
     // Calculate module permissions based on tier and custom overrides
     const calculateModulePermissions = (profile: UserProfile | null, effectiveTier: AccountTier | undefined): ModulePermissions => {
@@ -109,6 +113,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             try {
                 const role = await getUserRole(currentUser.uid);
                 const profile = await getUserProfile(currentUser.uid);
+                const accessPermissions = await getUserPermissions(currentUser.uid);
 
                 // Master Admin Override (Profile level)
                 if (currentUser.email === 'elsoncontador.st@gmail.com' && profile) {
@@ -117,6 +122,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                 setUserRole(role);
                 setUserProfile(profile);
+                setPermissions(accessPermissions);
 
                 const { tier, daysRemaining, isExpired } = processUserTier(profile, currentUser);
 
@@ -143,6 +149,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 try {
                     const role = await getUserRole(currentUser.uid);
                     const profile = await getUserProfile(currentUser.uid);
+                    const accessPermissions = await getUserPermissions(currentUser.uid);
 
                     if (currentUser.email === 'elsoncontador.st@gmail.com' && profile) {
                         profile.isClinicManager = true;
@@ -150,6 +157,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                     setUserRole(role);
                     setUserProfile(profile);
+                    setPermissions(accessPermissions);
 
                     const { tier, daysRemaining, isExpired } = processUserTier(profile, currentUser);
                     setTrialDaysRemaining(daysRemaining);
@@ -161,6 +169,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             } else {
                 setUserRole(null);
                 setUserProfile(null);
+                setPermissions(DEFAULT_PERMISSIONS.user);
                 setTrialDaysRemaining(undefined);
                 setModulePermissions({
                     ADVANCED_EMR: true
@@ -173,9 +182,20 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return () => unsubscribe();
     }, []);
 
+    useEffect(() => {
+        const handleProfileUpdated = () => {
+            refreshUserData();
+        };
+        window.addEventListener('ercmed:user-profile-updated', handleProfileUpdated);
+        return () => window.removeEventListener('ercmed:user-profile-updated', handleProfileUpdated);
+    }, []);
+
     // Master admin email always has full access, regardless of database role
     const isMasterAdminEmail = user?.email === 'elsoncontador.st@gmail.com';
-    const isAdmin = isMasterAdminEmail || userRole === UserRole.ADMIN_MASTER || userRole === UserRole.ADMIN_GESTOR;
+    // Missing tenant data must never grant administrative access by itself.
+    // Clinic ownership has to be explicit in the profile or role.
+    const isClinicOwner = userProfile?.isClinicManager === true;
+    const isAdmin = isMasterAdminEmail || isClinicOwner || userRole === UserRole.ADMIN_MASTER || userRole === UserRole.ADMIN_GESTOR;
     const isAdminMaster = isMasterAdminEmail || userRole === UserRole.ADMIN_MASTER;
 
     return (
@@ -188,6 +208,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             isAdminMaster,
             loading,
             modulePermissions,
+            permissions,
             refreshUserData,
             trialDaysRemaining,
             isTrialExpired

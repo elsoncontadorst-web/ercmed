@@ -17,9 +17,11 @@ import {
 } from '../services/userManagementService';
 import { getClinics } from '../services/clinicService';
 import { Clinic } from '../types/clinic';
+import { ensureProfessionalRegistryValue, getSpecialtyOptions } from '../services/professionalRegistryService';
 // ATENÇÃO: Certifique-se que SystemUser agora possui os campos Tier/Acesso/ClinicIds
 import { SystemUser, UserCreationByAdmin, CustomModuleAccess } from '../types/users';
 import { useUser } from '../contexts/UserContext';
+import { GROUP_CLINIC_ID, getStoredActiveClinicId } from '../services/activeClinicStorage';
 
 // Define TIER_COLORS
 const TIER_COLORS: Record<string, string> = {
@@ -56,6 +58,8 @@ const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) =>
 
     // Estados para Clínicas
     const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
+    const [specialtyOptions, setSpecialtyOptions] = useState<string[]>([]);
+    const [customSpecialty, setCustomSpecialty] = useState('');
 
     // Estados para Criação de Novo Usuário
     const [newUser, setNewUser] = useState<UserCreationByAdmin>({
@@ -89,6 +93,16 @@ const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) =>
         }
     };
 
+    const loadSpecialties = async () => {
+        if (!user) return;
+        try {
+            const options = await getSpecialtyOptions(user.uid);
+            setSpecialtyOptions(options);
+        } catch (error) {
+            console.error('Erro ao carregar especialidades compartilhadas:', error);
+        }
+    };
+
     const loadData = async () => {
         setLoading(true);
         try {
@@ -116,6 +130,14 @@ const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) =>
     useEffect(() => {
         loadData();
     }, [activeTab]);
+
+    useEffect(() => {
+        loadSpecialties();
+    }, [user?.uid]);
+
+    useEffect(() => {
+        if (isAdmin) loadClinics();
+    }, [isAdmin, user?.uid]);
 
     useEffect(() => {
         if (showTierModal && isAdmin) {
@@ -157,14 +179,33 @@ const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) =>
                 }
             }
 
-            const result = await createUserByAdmin(currentUser.uid, newUser);
+            const normalizedSpecialty = newUser.specialty === '__custom__'
+                ? customSpecialty.trim()
+                : (newUser.specialty || '').trim();
+
+            if (newUser.role === 'professional' && !normalizedSpecialty) {
+                alert('Informe a especialidade do profissional.');
+                setLoading(false);
+                return;
+            }
+
+            const result = await createUserByAdmin(currentUser.uid, {
+                ...newUser,
+                specialty: normalizedSpecialty,
+                clinicId: newUser.clinicId || (getStoredActiveClinicId() !== GROUP_CLINIC_ID ? getStoredActiveClinicId() || undefined : undefined) || availableClinics[0]?.id
+            });
 
             if (result.success) {
+                if (normalizedSpecialty) {
+                    await ensureProfessionalRegistryValue('specialties', normalizedSpecialty, currentUser.uid);
+                    await loadSpecialties();
+                }
                 alert('Usuário criado com sucesso!');
                 setNewUser({
                     email: '', password: '', name: '', role: 'user', phone: '', specialty: '', crm: '',
                     isClinicManager: false, accountTier: AccountTier.TRIAL
                 });
+                setCustomSpecialty('');
                 loadData();
             } else {
                 alert(result.error || 'Erro ao criar usuário');
@@ -559,6 +600,15 @@ const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) =>
                                                     )}
 
                                                     {/* Access Restriction Toggle */}
+                                                    {['professional', 'health_professional', 'autonomous_provider'].includes(user.role) ? (
+                                                        <span
+                                                            className="flex items-center gap-1 rounded bg-orange-100 px-3 py-1 text-sm text-orange-700"
+                                                            title="Profissionais acessam apenas pacientes próprios ou vinculados à equipe"
+                                                        >
+                                                            <Lock className="h-3 w-3" />
+                                                            Acesso próprio
+                                                        </span>
+                                                    ) : (
                                                     <button
                                                         onClick={async () => {
                                                             if (confirm(`Alterar restrição de acesso a pacientes para ${user.name}?`)) {
@@ -580,6 +630,7 @@ const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) =>
                                                         {user.restrictToOwnPatients ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                                                         {user.restrictToOwnPatients ? 'Restrito' : 'Acesso Total'}
                                                     </button>
+                                                    )}
                                                 </>
                                             )}
                                         </div>
@@ -717,13 +768,28 @@ const UsersManagementView: React.FC<UsersManagementViewProps> = ({ setView }) =>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Especialidade (se profissional)</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Cardiologista, etc."
-                                        value={newUser.specialty}
+                                    <select
+                                        value={newUser.specialty || ''}
                                         onChange={(e) => setNewUser({ ...newUser, specialty: e.target.value })}
                                         className="w-full p-2 border border-gray-300 rounded-lg"
-                                    />
+                                    >
+                                        <option value="">Selecione a especialidade</option>
+                                        {specialtyOptions.map((specialty) => (
+                                            <option key={specialty} value={specialty}>
+                                                {specialty}
+                                            </option>
+                                        ))}
+                                        <option value="__custom__">+ Adicionar nova especialidade</option>
+                                    </select>
+                                    {newUser.specialty === '__custom__' && (
+                                        <input
+                                            type="text"
+                                            placeholder="Digite a nova especialidade"
+                                            value={customSpecialty}
+                                            onChange={(e) => setCustomSpecialty(e.target.value)}
+                                            className="mt-2 w-full p-2 border border-gray-300 rounded-lg"
+                                        />
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">CRM/Registro</label>

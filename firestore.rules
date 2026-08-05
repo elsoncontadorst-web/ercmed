@@ -30,11 +30,56 @@ service cloud.firestore {
       );
     }
 
+    function isClinicManager() {
+      let profile = get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data;
+      return isAuthenticated() && (
+        profile.get('isClinicManager', false) == true ||
+        profile.get('role', 'user') in ['admin', 'manager', 'admin_gestor', 'admin_master']
+      );
+    }
+
+    function currentProfile() {
+      return get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data;
+    }
+
+    function canAccessClinic(managerId, clinicId) {
+      let profile = currentProfile();
+      return isAuthenticated() && (
+        request.auth.uid == managerId ||
+        (profile.get('managerId', '') == managerId && clinicId != '' && (
+          profile.get('clinicId', '') == clinicId ||
+          clinicId in profile.get('clinicIds', [])
+        ))
+      );
+    }
+
+    function isReceptionistFor(managerId) {
+      return isAuthenticated() &&
+        currentProfile().get('role', 'user') == 'receptionist' &&
+        currentProfile().get('managerId', '') == managerId;
+    }
+
+    function isAssignedProfessional(professionalId) {
+      return isAuthenticated() && (
+        request.auth.uid == professionalId ||
+        currentProfile().get('professionalId', '') == professionalId
+      );
+    }
+
     // Is the requester a verified member of the patient's multidisciplinar team?
     // Requires predictable ID: patientId_professionalId
     function isTeamMember(patientId) {
       return isAuthenticated() && 
              exists(/databases/$(database)/documents/patient_teams/$(patientId + "_" + request.auth.uid));
+    }
+
+    function canAccessPatient(patientId) {
+      let patient = get(/databases/$(database)/documents/patients/$(patientId)).data;
+      return isAuthenticated() && (
+        (isClinicManager() && request.auth.uid == patient.managerId) ||
+        isAssignedProfessional(patient.professionalId) ||
+        isTeamMember(patientId)
+      );
     }
 
     // =============================================
@@ -47,11 +92,18 @@ service cloud.firestore {
     // =============================================
     // USER PROFILES
     // =============================================
-    // Public read needed for booking (to get clinic name/manager)
     match /user_profiles/{userId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update, delete: if isOwner(userId) || isMasterAdmin();
+      allow update: if isMasterAdmin() ||
+        (isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'isClinicManager', 'managerId', 'permissions'])) ||
+        (isClinicManager() &&
+          resource.data.managerId == request.auth.uid &&
+          request.resource.data.managerId == request.auth.uid);
+      allow delete: if isMasterAdmin() ||
+        (isClinicManager() && resource.data.managerId == request.auth.uid);
     }
 
     // =============================================
@@ -60,66 +112,93 @@ service cloud.firestore {
     match /system_users/{userId} {
       allow read: if isAuthenticated() && (
         isOwner(userId) || 
+        request.auth.uid == resource.data.managerId ||
         get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == resource.data.managerId ||
         isMasterAdmin()
       );
-      allow write: if isAuthenticated() && (
-        isOwner(userId) || 
-        isMasterAdmin()
+      allow create: if isMasterAdmin() ||
+        (isClinicManager() &&
+          request.resource.data.managerId == request.auth.uid &&
+          request.resource.data.isClinicManager == false &&
+          request.resource.data.role in ['health_professional', 'professional', 'receptionist', 'biller', 'user', 'autonomous_provider']);
+      allow update: if isMasterAdmin() ||
+        (isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'isClinicManager', 'managerId', 'permissions', 'status'])) ||
+        (isClinicManager() &&
+          resource.data.managerId == request.auth.uid &&
+          request.resource.data.managerId == request.auth.uid &&
+          request.resource.data.isClinicManager == resource.data.isClinicManager);
+      allow delete: if isMasterAdmin() ||
+        (isClinicManager() && resource.data.managerId == request.auth.uid);
+    }
+
+    // =============================================
+    // BILLING (written only by trusted Cloud Functions)
+    // =============================================
+    match /billing_subscriptions/{subscriptionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid || isMasterAdmin()
       );
+      allow write: if false;
     }
 
     // =============================================
     // PATIENTS (Sensitive PHI - Clinic-scoped)
     // =============================================
     match /patients/{patientId} {
-      allow read, write: if isAuthenticated() && (
-        // Owner of the clinic (Manager)
-        request.auth.uid == resource.data.managerId ||
-        // Professional who created the record
-        request.auth.uid == resource.data.professionalId ||
-        // Legacy/fallback manager check
-        request.auth.uid == resource.data.managerId ||
-        request.auth.uid == resource.data.professionalId ||
-        // Members of the same clinic
-        get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == resource.data.managerId ||
-        // Verified Team Members (multidisciplinary)
+      // Use resource fields directly for list queries. Calling get() for the
+      // document being listed prevents Firestore from proving the query is safe.
+      allow read: if isAuthenticated() && (
+        canAccessClinic(resource.data.managerId, resource.data.get('clinicId', '')) ||
         isTeamMember(patientId)
       );
-      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        (isClinicManager() && request.auth.uid == resource.data.managerId) ||
+        isReceptionistFor(resource.data.managerId) ||
+        isAssignedProfessional(resource.data.professionalId) ||
+        isTeamMember(patientId)
+      );
+      allow delete: if isAuthenticated() && (
+        (isClinicManager() && request.auth.uid == resource.data.managerId) ||
+        isMasterAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.professionalId == request.auth.uid &&
+        canAccessClinic(request.resource.data.managerId, request.resource.data.get('clinicId', ''));
     }
 
     // Mixed anamnesis (subcollection under patients)
     match /patients/{patientId}/mixed_anamnesis/{docId} {
-      allow read, write: if isAuthenticated() && (
-        isTeamMember(patientId) || 
-        request.auth.uid == get(/databases/$(database)/documents/patients/$(patientId)).data.professionalId ||
-        get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == 
-        get(/databases/$(database)/documents/patients/$(patientId)).data.managerId
-      );
+      allow read, write: if canAccessPatient(patientId);
     }
 
     // =============================================
     // CLINICAL DATA (EMR - PHI, auth required)
     // =============================================
     match /clinical_notes/{noteId} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if canAccessPatient(resource.data.patientId);
+      allow create: if canAccessPatient(request.resource.data.patientId);
     }
 
     match /prescriptions/{prescriptionId} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if canAccessPatient(resource.data.patientId);
+      allow create: if canAccessPatient(request.resource.data.patientId);
     }
 
     match /exam_requests/{requestId} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if canAccessPatient(resource.data.patientId);
+      allow create: if canAccessPatient(request.resource.data.patientId);
     }
 
     match /patient_evolutions/{evolutionId} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if canAccessPatient(resource.data.patientId);
+      allow create: if canAccessPatient(request.resource.data.patientId);
     }
 
     match /anamneses/{anamnesisId} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if canAccessPatient(resource.data.patientId);
+      allow create: if canAccessPatient(request.resource.data.patientId);
     }
 
     // =============================================
@@ -150,9 +229,20 @@ service cloud.firestore {
       
       // Subcollections under users/{userId}
       match /appointments/{appointmentId} {
-        allow read: if isAuthenticated();
-        allow create: if request.auth != null || request.resource.data.bookedOnline == true;
-        allow update, delete: if isAuthenticated();
+        allow read: if isOwner(userId) ||
+          (isClinicManager() && request.auth.uid == resource.data.managerId) ||
+          isReceptionistFor(resource.data.managerId) ||
+          isAssignedProfessional(resource.data.professionalId);
+        allow create: if (isAuthenticated() && (
+          (isClinicManager() && request.auth.uid == request.resource.data.managerId) ||
+          isReceptionistFor(request.resource.data.managerId) ||
+          isAssignedProfessional(request.resource.data.professionalId)
+        )) ||
+          request.resource.data.bookedOnline == true;
+        allow update, delete: if isOwner(userId) ||
+          (isClinicManager() && request.auth.uid == resource.data.managerId) ||
+          isReceptionistFor(resource.data.managerId) ||
+          isAssignedProfessional(resource.data.professionalId);
       }
       
       match /settings/booking {
@@ -169,6 +259,10 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isClinicMember(userId);
         allow write: if isOwner(userId);
       }
+
+      match /erp_settings/{document} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
       
       match /company_data/{docId} {
         allow read, write: if isOwner(userId);
@@ -183,7 +277,8 @@ service cloud.firestore {
       }
       
       match /financial_control/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isClinicMember(userId);
+        allow write: if isOwner(userId) || isClinicMember(userId);
       }
       
       match /sales_management/{docId} {
@@ -214,6 +309,55 @@ service cloud.firestore {
       match /receipts/{docId} {
         allow read, write: if isAuthenticated() && isClinicMember(userId);
       }
+
+      match /service_catalog/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
+      match /fiscal_documents/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
+      match /fiscal_counterparties/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
+      match /fiscal_files/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+
+        match /chunks/{chunkId} {
+          allow read, write: if isAuthenticated() && isClinicMember(userId);
+        }
+      }
+
+      match /inventory_items/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
+      match /care_packages/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
+      match /asset_items/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
+      match /stock_movements/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
+      match /audit_logs/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+    }
+
+    // Collection-group reads need an explicit recursive match. Access remains
+    // restricted to the appointment owner or a member of its clinic.
+    match /{path=**}/appointments/{appointmentId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId ||
+        isClinicMember(resource.data.managerId)
+      );
     }
 
     // =============================================
@@ -265,26 +409,30 @@ service cloud.firestore {
     // =============================================
     match /repasse_statements/{statementId} {
       allow read: if isAuthenticated() && (
-        resource.data.managerId == request.auth.uid || 
-        resource.data.professionalId == request.auth.uid ||
+        (isClinicManager() && resource.data.managerId == request.auth.uid) ||
+        isAssignedProfessional(resource.data.professionalId) ||
         isMasterAdmin()
       );
       allow write: if isAuthenticated() && (
-        request.resource.data.managerId == request.auth.uid ||
-        resource.data.managerId == request.auth.uid ||
+        (isClinicManager() && request.resource.data.managerId == request.auth.uid) ||
+        (isClinicManager() && resource.data.managerId == request.auth.uid) ||
         isMasterAdmin()
       );
     }
 
     match /consultation_billing/{billingId} {
       allow read: if isAuthenticated() && (
-        resource.data.managerId == request.auth.uid || 
-        resource.data.professionalId == request.auth.uid ||
+        (isClinicManager() && resource.data.managerId == request.auth.uid) ||
+        isAssignedProfessional(resource.data.professionalId) ||
         isMasterAdmin()
       );
-      allow write: if isAuthenticated() && (
-        request.resource.data.managerId == request.auth.uid ||
-        resource.data.managerId == request.auth.uid ||
+      allow create: if isAuthenticated() && (
+        (isClinicManager() && request.resource.data.managerId == request.auth.uid) ||
+        isAssignedProfessional(request.resource.data.professionalId) ||
+        isMasterAdmin()
+      );
+      allow update, delete: if isAuthenticated() && (
+        (isClinicManager() && resource.data.managerId == request.auth.uid) ||
         isMasterAdmin()
       );
     }

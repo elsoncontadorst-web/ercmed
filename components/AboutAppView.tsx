@@ -29,11 +29,11 @@ const AboutAppView: React.FC = () => {
                             <div className="p-3 bg-brand-100 rounded-xl">
                                 <Target className="w-6 h-6 text-brand-600" />
                             </div>
-                            <h3 className="text-xl font-bold text-slate-800">ERCMed - Gestão de Clínica e Repasse Financeiro</h3>
+                            <h3 className="text-xl font-bold text-slate-800">ERCMed — ERP para Empresas de Saúde</h3>
                         </div>
 
                         <p className="text-slate-600 leading-relaxed mb-6">
-                            O <strong>ERCMed - Gestão de Clínica e Repasse Financeiro</strong> foi desenvolvido para ser a solução completa de gestão para clínicas e profissionais de saúde, integrando consultório eletrônico, agendamento, controle financeiro e cálculo automatizado de repasses.
+                            O <strong>ERCMed</strong> é um ERP especializado em empresas de saúde. Ele integra operação assistencial, agenda, prontuário, serviços e preços, financeiro, faturamento, repasses, controladoria, estoque, fiscal e inteligência gerencial em uma única plataforma.
                             <br /><br />
                             Nossa missão é simplificar a gestão clínica e financeira, permitindo que você foque no que realmente importa: o cuidado com seus pacientes.
                         </p>
@@ -44,7 +44,7 @@ const AboutAppView: React.FC = () => {
                             <div className="flex gap-3 p-4 bg-teal-50 rounded-xl hover:bg-white hover:shadow-md transition-all border border-teal-100">
                                 <Heart className="w-5 h-5 text-teal-600 flex-shrink-0 mt-1" />
                                 <div>
-                                    <p className="font-bold text-slate-800">Gestão de Saúde Completa</p>
+                                    <p className="font-bold text-slate-800">Operação Assistencial Integrada</p>
                                     <p className="text-sm text-slate-500">Consultório Eletrônico (PEP), Agendamento Online, Prescrição Digital e Controle de Pacientes.</p>
                                 </div>
                             </div>

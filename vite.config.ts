@@ -16,13 +16,15 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       chunkSizeWarningLimit: 1000,
+      reportCompressedSize: false,
       rollupOptions: {
         output: {
           manualChunks: {
             vendor: ['react', 'react-dom', 'react-router-dom'],
             firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
             ui: ['lucide-react', 'canvas-confetti'],
-            pdf: ['jspdf', 'html2canvas', 'pdfjs-dist']
+            'pdf-generator': ['jspdf', 'html2canvas'],
+            'pdf-reader': ['pdfjs-dist']
           }
         }
       }

@@ -14,7 +14,7 @@ import { checkModuleAccess } from '../services/accountTierService';
 import { AccountTier } from '../types/accountTiers';
 import { getProfessionalSettings } from '../services/userDataService';
 import { ProfessionalSettings } from '../types';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import ProfessionalAnamnesisView from './ProfessionalAnamnesisView';
 import { EXAM_DATABASE } from '../services/examDatabase';
 import { parseExamDocument } from '../services/gemini';

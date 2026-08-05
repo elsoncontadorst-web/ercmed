@@ -130,7 +130,7 @@ const AppointmentsView: React.FC = () => {
             unsubscribeAppointments();
             unsubscribePatients();
         };
-    }, []);
+    }, [user?.uid, userProfile?.isClinicManager, isAdminMaster]);
 
     useEffect(() => {
         if (formData.professionalId && formData.date) {

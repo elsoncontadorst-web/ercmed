@@ -33,7 +33,7 @@ export const UpgradePrompt: React.FC<UpgradePromptProps> = ({
     return (
         <div className="relative">
             {/* Overlay with blur effect */}
-            <div className="relative">
+            <div className={children ? 'relative' : 'relative min-h-[360px] rounded-xl border border-slate-200 bg-white shadow-sm'}>
                 {children && (
                     <div className="pointer-events-none opacity-50 blur-sm">
                         {children}

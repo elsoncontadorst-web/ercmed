@@ -67,6 +67,19 @@ export interface Appointment {
   notes?: string;
   location?: string;
   amount?: number; // Consultation value for receipts
+  serviceId?: string;
+  serviceName?: string;
+  payer?: 'private' | 'insurance' | 'contract';
+  billingId?: string;
+  packageBalanceId?: string;
+  registeredBy?: string;
+  attendanceKind?: 'standard' | 'package' | 'return_free';
+  packageSessionUsed?: boolean;
+  materialsUsed?: Array<{
+    itemId: string;
+    itemName: string;
+    quantity: number;
+  }>;
   bookedOnline?: boolean; // Flag for online bookings
   createdAt: any;
   updatedAt: any;

@@ -9,7 +9,8 @@ import {
     addDoc,
     orderBy,
     where,
-    deleteDoc
+    deleteDoc,
+    runTransaction
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { CnpjData, SalesOrder } from "../types";
@@ -31,11 +32,34 @@ export interface SavedSimulationRecord {
 export interface SavedTransaction {
     id: string;
     date: string;
+    dueDate?: string;
+    receivedAt?: string;
     description: string;
     category: string;
+    costCenter?: string;
+    resultCenter?: string;
+    revenueUnit?: 'clinical' | 'laboratory';
     amount: number;
     type: 'income' | 'expense';
     status: 'paid' | 'pending';
+    paymentMethod?: 'pix' | 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'boleto' | 'other';
+    sourceBillingId?: string;
+    sourceFiscalDocumentId?: string;
+    sourceType?: 'billing' | 'fiscal_import' | 'manual' | 'production_entry' | 'simples_forecast';
+    sourceAppointmentId?: string;
+    sourceAccessKey?: string;
+    sourceFingerprint?: string;
+    professionalId?: string;
+    professionalName?: string;
+    sourceFiscalFileId?: string;
+    fiscalIssuedAt?: string;
+    competence?: string;
+    recurrenceSeriesId?: string;
+    recurrenceIndex?: number;
+    recurrenceTotal?: number;
+    attendanceKind?: 'standard' | 'package' | 'return_free';
+    clinicId?: string;
+    unitName?: string;
     updatedAt?: any;
 }
 
@@ -176,25 +200,178 @@ export const getTransactions = async (uid: string): Promise<SavedTransaction[]> 
 // Add a single transaction
 export const addTransaction = async (uid: string, transaction: Omit<SavedTransaction, 'id'>): Promise<string | null> => {
     try {
-        // Get existing transactions
-        const existing = await getTransactions(uid);
-
-        // Generate new ID
         const newId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-        // Add new transaction
         const newTransaction: SavedTransaction = {
             ...transaction,
             id: newId
         };
 
-        // Save updated list
-        await saveTransactions(uid, [...existing, newTransaction]);
+        const docRef = doc(db, "users", uid, "financial_control", "transactions");
+        await runTransaction(db, async (firestoreTransaction) => {
+            const snapshot = await firestoreTransaction.get(docRef);
+            const existing = snapshot.exists() && Array.isArray(snapshot.data().items)
+                ? snapshot.data().items as SavedTransaction[]
+                : [];
+            firestoreTransaction.set(docRef, {
+                items: [...existing, newTransaction],
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        });
 
         return newId;
     } catch (error) {
         console.error("Erro ao adicionar transação:", error);
         return null;
+    }
+};
+
+export const upsertSimplesForecastTransaction = async (
+    uid: string,
+    forecast: {
+        competence: string;
+        amount: number;
+        dueDate: string;
+        clinicId?: string;
+        unitName?: string;
+        annex?: string;
+        effectiveRate?: number;
+    }
+): Promise<SavedTransaction | null> => {
+    try {
+        const scopeKey = forecast.clinicId || 'consolidated';
+        const fingerprint = `simples-das:${scopeKey}:${forecast.competence}`;
+        const docRef = doc(db, "users", uid, "financial_control", "transactions");
+        let saved: SavedTransaction | null = null;
+
+        await runTransaction(db, async (firestoreTransaction) => {
+            const snapshot = await firestoreTransaction.get(docRef);
+            const existing = snapshot.exists() && Array.isArray(snapshot.data().items)
+                ? snapshot.data().items as SavedTransaction[]
+                : [];
+            const current = existing.find(item => item.sourceFingerprint === fingerprint);
+            saved = {
+                ...(current || {}),
+                id: current?.id || `simples-${scopeKey}-${forecast.competence}`,
+                date: forecast.dueDate,
+                dueDate: forecast.dueDate,
+                description: `DAS Simples Nacional - ${forecast.competence}`,
+                category: 'Impostos e Tributos',
+                costCenter: 'Administrativo',
+                resultCenter: 'Operação',
+                amount: Math.max(0, Math.round(forecast.amount * 100) / 100),
+                type: 'expense',
+                status: current?.status || 'pending',
+                sourceType: 'simples_forecast',
+                sourceFingerprint: fingerprint,
+                competence: forecast.competence,
+                clinicId: forecast.clinicId,
+                unitName: forecast.unitName,
+                simplesAnnex: forecast.annex,
+                simplesEffectiveRate: forecast.effectiveRate,
+            } as SavedTransaction;
+
+            const updated = current
+                ? existing.map(item => item.sourceFingerprint === fingerprint ? saved! : item)
+                : [saved!, ...existing];
+            firestoreTransaction.set(docRef, { items: updated, updatedAt: serverTimestamp() }, { merge: true });
+        });
+        return saved;
+    } catch (error) {
+        console.error('Erro ao gerar previsão do Simples Nacional:', error);
+        return null;
+    }
+};
+
+export const removeTransactionsByBilling = async (uid: string, billingId: string): Promise<void> => {
+    const docRef = doc(db, "users", uid, "financial_control", "transactions");
+    await runTransaction(db, async (firestoreTransaction) => {
+        const snapshot = await firestoreTransaction.get(docRef);
+        if (!snapshot.exists()) return;
+
+        const existing = Array.isArray(snapshot.data().items)
+            ? snapshot.data().items as SavedTransaction[]
+            : [];
+        firestoreTransaction.update(docRef, {
+            items: existing.filter(transaction => transaction.sourceBillingId !== billingId),
+            updatedAt: serverTimestamp()
+        });
+    });
+};
+
+export const updateTransactionStatus = async (
+    uid: string,
+    transactionId: string,
+    status: 'paid' | 'pending',
+    receivedAt?: string
+): Promise<boolean> => {
+    try {
+        const docRef = doc(db, "users", uid, "financial_control", "transactions");
+        const updated = await runTransaction(db, async (firestoreTransaction) => {
+            const snapshot = await firestoreTransaction.get(docRef);
+            if (!snapshot.exists()) return false;
+
+            const existing = Array.isArray(snapshot.data().items)
+                ? snapshot.data().items as SavedTransaction[]
+                : [];
+
+            if (!existing.some(transaction => transaction.id === transactionId)) return false;
+
+            const updatedItems = existing.map(transaction =>
+                transaction.id === transactionId
+                    ? {
+                        ...transaction,
+                        status,
+                        receivedAt: status === 'paid' ? (receivedAt || new Date().toISOString().split('T')[0]) : undefined
+                    }
+                    : transaction
+            );
+
+            firestoreTransaction.update(docRef, {
+                items: updatedItems,
+                updatedAt: serverTimestamp()
+            });
+            return true;
+        });
+        return updated;
+    } catch (error) {
+        console.error("Erro ao atualizar status da transação:", error);
+        return false;
+    }
+};
+
+export const updateTransactionStatusByBilling = async (
+    uid: string,
+    billingId: string,
+    status: 'paid' | 'pending',
+    receivedAt?: string
+): Promise<boolean> => {
+    try {
+        const docRef = doc(db, "users", uid, "financial_control", "transactions");
+        await runTransaction(db, async (firestoreTransaction) => {
+            const snapshot = await firestoreTransaction.get(docRef);
+            if (!snapshot.exists()) return;
+            const existing = Array.isArray(snapshot.data().items)
+                ? snapshot.data().items as SavedTransaction[]
+                : [];
+            firestoreTransaction.update(docRef, {
+                items: existing.map(transaction =>
+                    transaction.sourceBillingId === billingId
+                        ? {
+                            ...transaction,
+                            status,
+                            receivedAt: status === 'paid'
+                                ? (receivedAt || new Date().toISOString().split('T')[0])
+                                : undefined
+                        }
+                        : transaction
+                ),
+                updatedAt: serverTimestamp()
+            });
+        });
+        return true;
+    } catch (error) {
+        console.error("Erro ao sincronizar status financeiro do faturamento:", error);
+        return false;
     }
 };
 

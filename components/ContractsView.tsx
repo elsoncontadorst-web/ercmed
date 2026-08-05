@@ -7,16 +7,20 @@ import { auth } from '../services/firebase';
 import { canAddProfessional, getUserTierInfo } from '../services/accountTierService';
 import { AccountTier, TIER_NAMES, getProfessionalLimitText } from '../types/accountTiers';
 import { UserRole } from '../types';
-import { createUserByAdmin, linkUserToManager, getUserByEmail } from '../services/userManagementService';
+import { SystemUser } from '../types/users';
+import { createUserByAdmin, linkUserToManager, getUserByEmail, getAllUsers } from '../services/userManagementService';
 import { Lock, Copy, Check } from 'lucide-react';
 import { getPendingRequestsForManager, approveLinkRequest, rejectLinkRequest } from '../services/clinicLinkService';
 import { ClinicLinkRequest } from '../types/clinic_link_requests';
 import { useUser } from '../contexts/UserContext';
 import { RefreshCw } from 'lucide-react';
+import { ensureProfessionalRegistryValue, getProfessionalRegistry } from '../services/professionalRegistryService';
 
 const ContractsView: React.FC = () => {
     const { user } = useUser();
     const [contracts, setContracts] = useState<Contract[]>([]);
+    const [clinicProfessionals, setClinicProfessionals] = useState<SystemUser[]>([]);
+    const [linkedUserId, setLinkedUserId] = useState<string | undefined>();
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
@@ -36,6 +40,8 @@ const ContractsView: React.FC = () => {
 
     // Form State
     const [formData, setFormData] = useState({
+        contractKind: 'provider' as 'provider' | 'partner',
+        equityPercentage: 0,
         providerName: '',
         personType: 'PJ' as 'PF' | 'PJ',
         cpf: '',
@@ -70,7 +76,11 @@ const ContractsView: React.FC = () => {
     });
 
     const [activeTab, setActiveTab] = useState<'general' | 'financial' | 'bank' | 'credentials'>('general');
-    const [activeView, setActiveView] = useState<'contracts' | 'requests'>('contracts');
+    const [activeView, setActiveView] = useState<'contracts' | 'partners' | 'professionals' | 'requests'>('contracts');
+    const [registryProfessionalTypes, setRegistryProfessionalTypes] = useState<string[]>([]);
+    const [registrySpecialties, setRegistrySpecialties] = useState<string[]>([]);
+    const [customProfessionalType, setCustomProfessionalType] = useState('');
+    const [customSpecialty, setCustomSpecialty] = useState('');
 
     const professionalTypes = [
         'Médico',
@@ -101,15 +111,31 @@ const ContractsView: React.FC = () => {
         if (user) {
             loadContracts();
             loadLinkRequests();
+            loadRegistryOptions();
         }
     }, [user]);
+
+    const loadRegistryOptions = async () => {
+        if (!user) return;
+        try {
+            const registry = await getProfessionalRegistry(user.uid);
+            setRegistryProfessionalTypes(registry.types);
+            setRegistrySpecialties(registry.specialties);
+        } catch (error) {
+            console.error('Erro ao carregar base compartilhada de tipos e especialidades:', error);
+        }
+    };
 
     const loadContracts = async () => {
         if (!user) return;
         setLoading(true);
         try {
-            const data = await getContracts(user.uid);
+            const [data, managedUsers] = await Promise.all([getContracts(user.uid), getAllUsers(user.uid)]);
             setContracts(data);
+            setClinicProfessionals(managedUsers.filter(managedUser =>
+                ['professional', 'health_professional', 'autonomous_provider'].includes(managedUser.role) &&
+                managedUser.status !== 'inactive' && managedUser.status !== 'rejected'
+            ));
 
             // Load tier info
             const info = await getUserTierInfo(user.uid);
@@ -187,6 +213,8 @@ const ContractsView: React.FC = () => {
 
     const resetForm = () => {
         setFormData({
+            contractKind: 'provider',
+            equityPercentage: 0,
             providerName: '',
             personType: 'PJ',
             cpf: '',
@@ -221,13 +249,16 @@ const ContractsView: React.FC = () => {
         });
         setActiveTab('general');
         setEditingContract(null);
+        setLinkedUserId(undefined);
+        setCustomProfessionalType('');
+        setCustomSpecialty('');
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         // Check professional limit if adding new contract
-        if (!editingContract) {
+        if (!editingContract && formData.contractKind !== 'partner') {
             const user = auth.currentUser;
             if (user) {
                 const limitCheck = await canAddProfessional(user.uid);
@@ -241,6 +272,39 @@ const ContractsView: React.FC = () => {
         setLoading(true);
 
         try {
+            const normalizedProfessionalType = formData.contractKind === 'partner' ? 'Sócio' : formData.professionalType === '__custom__'
+                ? customProfessionalType.trim()
+                : formData.professionalType.trim();
+            const normalizedServiceType = formData.contractKind === 'partner' && !formData.serviceType
+                ? 'Sócio'
+                : formData.serviceType === '__custom__'
+                ? customSpecialty.trim()
+                : formData.serviceType.trim();
+
+            if (!normalizedProfessionalType) {
+                alert('Informe o tipo do profissional.');
+                setLoading(false);
+                return;
+            }
+
+            if (!normalizedServiceType) {
+                alert('Informe a especialidade do profissional.');
+                setLoading(false);
+                return;
+            }
+
+            if (formData.personType === 'PF' && !formData.cpf.trim()) {
+                alert('Informe o CPF do prestador.');
+                setLoading(false);
+                return;
+            }
+
+            if (formData.personType === 'PJ' && !formData.cnpj.trim()) {
+                alert('Informe o CNPJ do prestador.');
+                setLoading(false);
+                return;
+            }
+
             let createdUserId: string | undefined;
 
             // Handle User Creation
@@ -270,7 +334,7 @@ const ContractsView: React.FC = () => {
                     name: formData.providerName,
                     role: roleMap[formData.userCreation.userType] || UserRole.HEALTH_PROFESSIONAL,
                     phone: formData.phone,
-                    specialty: formData.serviceType,
+                    specialty: normalizedServiceType,
                     crm: formData.councilNumber,
                     accountTier: AccountTier.TRIAL, // Always assign Trial plan to contract users
                     isClinicManager: false,
@@ -325,13 +389,15 @@ const ContractsView: React.FC = () => {
             }
 
             const contractData: Omit<Contract, 'id' | 'createdAt' | 'updatedAt'> = {
+                contractKind: formData.contractKind,
+                equityPercentage: formData.contractKind === 'partner' ? Number(formData.equityPercentage) : undefined,
                 providerName: formData.providerName,
                 personType: formData.personType,
                 cpf: formData.personType === 'PF' ? formData.cpf : undefined,
                 cnpj: formData.personType === 'PJ' ? formData.cnpj : undefined,
                 councilNumber: formData.councilNumber,
-                professionalType: formData.professionalType,
-                serviceType: formData.serviceType,
+                professionalType: normalizedProfessionalType,
+                serviceType: normalizedServiceType,
                 email: formData.email,
                 phone: formData.phone,
                 startDate: formData.startDate,
@@ -345,11 +411,18 @@ const ContractsView: React.FC = () => {
                 status: formData.status,
                 description: formData.description,
                 managerId: auth.currentUser?.uid, // Add manager ID
-                userId: createdUserId,
+                userId: createdUserId || linkedUserId || editingContract?.userId,
                 userType: formData.userCreation.createUser ?
                     (formData.userCreation.userType === 'health_professional' ? 'professional' : formData.userCreation.userType)
                     : undefined
             };
+
+            if (auth.currentUser?.uid) {
+                await Promise.all([
+                    ensureProfessionalRegistryValue('types', normalizedProfessionalType, auth.currentUser.uid),
+                    ensureProfessionalRegistryValue('specialties', normalizedServiceType, auth.currentUser.uid)
+                ]);
+            }
 
             if (editingContract) {
                 await updateContract(editingContract.id, contractData);
@@ -365,6 +438,7 @@ const ContractsView: React.FC = () => {
             setShowModal(false);
             resetForm();
             loadContracts();
+            loadRegistryOptions();
         } catch (error) {
             console.error("Error saving contract", error);
         } finally {
@@ -400,7 +474,10 @@ const ContractsView: React.FC = () => {
 
     const handleEdit = (contract: Contract) => {
         setEditingContract(contract);
+        setLinkedUserId(contract.userId);
         setFormData({
+            contractKind: contract.contractKind || 'provider',
+            equityPercentage: contract.equityPercentage || 0,
             providerName: contract.providerName,
             personType: contract.personType || 'PJ',
             cpf: contract.cpf || '',
@@ -433,14 +510,66 @@ const ContractsView: React.FC = () => {
                 userType: 'health_professional'
             }
         });
+        setCustomProfessionalType('');
+        setCustomSpecialty('');
+        if (contract.professionalType && !professionalTypes.includes(contract.professionalType)) {
+            setCustomProfessionalType(contract.professionalType);
+            setFormData(current => ({ ...current, professionalType: '__custom__' }));
+        }
+        if (contract.serviceType && !specialties.includes(contract.serviceType)) {
+            setCustomSpecialty(contract.serviceType);
+            setFormData(current => ({ ...current, serviceType: '__custom__' }));
+        }
         setActiveTab('general');
         setShowModal(true);
     };
 
-    const filteredContracts = contracts.filter(c =>
-        c.providerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.serviceType.toLowerCase().includes(searchTerm.toLowerCase())
+    const handleCreateContractForUser = (professional: SystemUser) => {
+        resetForm();
+        setLinkedUserId(professional.id);
+        setFormData(current => ({
+            ...current,
+            providerName: professional.professionalName || professional.name,
+            personType: 'PF',
+            email: professional.email,
+            phone: professional.phone || '',
+            councilNumber: professional.crm || '',
+            professionalType: professional.specialty || 'Outro',
+            serviceType: professional.specialty || 'Outro',
+            paymentModel: 'commission',
+            commissionPercentage: 70,
+            userCreation: { ...current.userCreation, createUser: false, email: professional.email }
+        }));
+        setShowModal(true);
+    };
+
+    const handleCreatePartner = () => {
+        resetForm();
+        setFormData(current => ({
+            ...current,
+            contractKind: 'partner',
+            professionalType: 'Sócio',
+            serviceType: 'Sócio',
+            startDate: new Date().toISOString().slice(0, 10),
+            endDate: '2099-12-31',
+            paymentModel: 'commission',
+            commissionPercentage: 0,
+            status: 'active'
+        }));
+        setActiveView('partners');
+        setShowModal(true);
+    };
+
+    const hasContract = (professional: SystemUser) => contracts.some(contract =>
+        contract.userId === professional.id ||
+        (!!contract.email && contract.email.toLowerCase() === professional.email.toLowerCase())
     );
+
+    const filteredContracts = contracts.filter(c => {
+        const matchesKind = activeView === 'partners' ? c.contractKind === 'partner' : c.contractKind !== 'partner';
+        return matchesKind && (c.providerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            c.serviceType.toLowerCase().includes(searchTerm.toLowerCase()));
+    });
 
     const totalValue = contracts.reduce((sum, c) => sum + (c.status === 'active' ? c.value : 0), 0);
     const expiringContracts = contracts.filter(c => {
@@ -460,9 +589,9 @@ const ContractsView: React.FC = () => {
                     <div>
                         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
                             <FileSignature className="w-8 h-8 text-blue-600" />
-                            Contratos de Prestadores
+                            Contratos e Sócios
                         </h1>
-                        <p className="text-slate-600 mt-1">Gerencie contratos de prestadores de serviço</p>
+                        <p className="text-slate-600 mt-1">Gerencie prestadores de serviço e o quadro societário</p>
                     </div>
                     <div className="flex gap-2 items-center">
                         {/* Tier Usage Indicator */}
@@ -491,6 +620,13 @@ const ContractsView: React.FC = () => {
                             </button>
                         )}
                         <button
+                            onClick={handleCreatePartner}
+                            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors shadow-lg"
+                        >
+                            <Crown className="w-5 h-5" />
+                            Adicionar Sócio
+                        </button>
+                        <button
                             onClick={() => { resetForm(); setShowModal(true); }}
                             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
                         >
@@ -507,7 +643,7 @@ const ContractsView: React.FC = () => {
                             <div>
                                 <p className="text-sm text-slate-600 font-medium">Contratos Ativos</p>
                                 <p className="text-3xl font-bold text-slate-900 mt-1">
-                                    {contracts.filter(c => c.status === 'active').length}
+                                    {contracts.filter(c => c.status === 'active' && c.contractKind !== 'partner').length}
                                 </p>
                             </div>
                             <FileSignature className="w-10 h-10 text-blue-500 opacity-20" />
@@ -518,7 +654,7 @@ const ContractsView: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm text-slate-600 font-medium">Prestadores</p>
-                                <p className="text-3xl font-bold text-slate-900 mt-1">{contracts.length}</p>
+                                <p className="text-3xl font-bold text-slate-900 mt-1">{contracts.filter(c => c.contractKind !== 'partner').length}</p>
                             </div>
                             <User className="w-10 h-10 text-green-500 opacity-20" />
                         </div>
@@ -562,6 +698,29 @@ const ContractsView: React.FC = () => {
                         )}
                     </button>
                     <button
+                        onClick={() => setActiveView('partners')}
+                        className={`px-6 py-3 font-medium text-sm transition-colors relative flex items-center gap-2 ${activeView === 'partners' ? 'text-amber-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Sócios
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-bold">{contracts.filter(contract => contract.contractKind === 'partner').length}</span>
+                        {activeView === 'partners' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-amber-500 rounded-t-full" />}
+                    </button>
+                    <button
+                        onClick={() => setActiveView('professionals')}
+                        className={`px-6 py-3 font-medium text-sm transition-colors relative flex items-center gap-2 ${activeView === 'professionals'
+                            ? 'text-blue-600'
+                            : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                    >
+                        Profissionais da Clínica
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded-full font-bold">
+                            {clinicProfessionals.length}
+                        </span>
+                        {activeView === 'professionals' && (
+                            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full" />
+                        )}
+                    </button>
+                    <button
                         onClick={() => setActiveView('requests')}
                         className={`px-6 py-3 font-medium text-sm transition-colors relative flex items-center gap-2 ${activeView === 'requests'
                             ? 'text-blue-600'
@@ -581,7 +740,54 @@ const ContractsView: React.FC = () => {
                 </div>
 
                 {/* Content based on Active View */}
-                {activeView === 'requests' ? (
+                {activeView === 'professionals' ? (
+                    <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
+                        <div className="p-4 border-b border-slate-200 bg-slate-50">
+                            <h3 className="font-bold text-slate-800">Profissionais cadastrados em Gerenciamento de Usuários</h3>
+                            <p className="mt-1 text-sm text-slate-500">O cadastro profissional é compartilhado. O contrato financeiro só é criado após informar vigência, documento e regra de pagamento.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50/50">
+                                    <tr>
+                                        <th className="p-4 font-semibold text-slate-700">Profissional</th>
+                                        <th className="p-4 font-semibold text-slate-700">Especialidade</th>
+                                        <th className="p-4 font-semibold text-slate-700">Situação contratual</th>
+                                        <th className="p-4 font-semibold text-slate-700 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {clinicProfessionals.length === 0 ? (
+                                        <tr><td colSpan={4} className="p-8 text-center text-slate-500">Nenhum profissional vinculado à clínica.</td></tr>
+                                    ) : clinicProfessionals.map(professional => {
+                                        const contracted = hasContract(professional);
+                                        return (
+                                            <tr key={professional.id} className="hover:bg-slate-50">
+                                                <td className="p-4">
+                                                    <p className="font-medium text-slate-900">{professional.professionalName || professional.name}</p>
+                                                    <p className="text-xs text-slate-500">{professional.email}</p>
+                                                </td>
+                                                <td className="p-4 text-slate-600">{professional.specialty || 'Não informada'}</td>
+                                                <td className="p-4">
+                                                    <span className={`rounded-full px-2 py-1 text-xs font-bold ${contracted ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                        {contracted ? 'Contrato vinculado' : 'Contrato pendente'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    {contracted ? (
+                                                        <button onClick={() => setActiveView('contracts')} className="text-sm font-medium text-blue-600 hover:underline">Ver contrato</button>
+                                                    ) : (
+                                                        <button onClick={() => handleCreateContractForUser(professional)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Criar contrato</button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : activeView === 'requests' ? (
                     /* Clinic Link Requests Section */
                     <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
                         <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
@@ -681,6 +887,7 @@ const ContractsView: React.FC = () => {
                                             <tr key={contract.id} className="hover:bg-orange-100/50 transition-colors">
                                                 <td className="p-4">
                                                     <p className="font-medium text-slate-900">{contract.providerName}</p>
+                                                    {contract.contractKind === 'partner' && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">Sócio{contract.equityPercentage ? ` · ${contract.equityPercentage}%` : ''}</span>}
                                                     {contract.councilNumber && <p className="text-xs text-slate-500">CRM: {contract.councilNumber}</p>}
                                                 </td>
                                                 <td className="p-4 text-slate-700">{contract.serviceType}</td>
@@ -753,13 +960,19 @@ const ContractsView: React.FC = () => {
                                                 <td className="p-4">
                                                     <p className="font-medium text-slate-900">{contract.providerName}</p>
                                                     <div className="text-xs text-slate-500 flex flex-col">
-                                                        <span>{contract.personType === 'PF' ? `CPF: ${contract.cpf}` : `CNPJ: ${contract.cnpj}`}</span>
+                                                        <span>
+                                                            {contract.personType === 'PF'
+                                                                ? `CPF: ${contract.cpf || 'Não informado'}`
+                                                                : `CNPJ: ${contract.cnpj || 'Não informado'}`}
+                                                        </span>
                                                         {contract.councilNumber && <span>Conselho: {contract.councilNumber}</span>}
                                                     </div>
                                                 </td>
                                                 <td className="p-4 text-slate-600">{contract.serviceType}</td>
                                                 <td className="p-4 text-slate-600 text-sm">
-                                                    {new Date(contract.startDate).toLocaleDateString('pt-BR')} - {new Date(contract.endDate).toLocaleDateString('pt-BR')}
+                                                    {contract.contractKind === 'partner'
+                                                        ? `Desde ${new Date(`${contract.startDate}T12:00:00`).toLocaleDateString('pt-BR')}`
+                                                        : `${new Date(`${contract.startDate}T12:00:00`).toLocaleDateString('pt-BR')} - ${new Date(`${contract.endDate}T12:00:00`).toLocaleDateString('pt-BR')}`}
                                                 </td>
                                                 <td className="p-4 font-medium text-slate-900">
                                                     {contract.paymentModel === 'commission' ? (
@@ -809,7 +1022,7 @@ const ContractsView: React.FC = () => {
                             <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                                 <div className="flex justify-between items-center p-6 border-b border-gray-200">
                                     <h2 className="text-xl font-bold text-slate-800">
-                                        {editingContract ? 'Editar Contrato' : 'Novo Contrato'}
+                                        {editingContract ? (formData.contractKind === 'partner' ? 'Editar Sócio' : 'Editar Contrato') : (formData.contractKind === 'partner' ? 'Adicionar Sócio' : 'Novo Contrato')}
                                     </h2>
                                     <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-slate-700">
                                         <X className="w-6 h-6" />
@@ -850,6 +1063,12 @@ const ContractsView: React.FC = () => {
                                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                                     {activeTab === 'general' && (
                                         <div className="grid grid-cols-2 gap-4">
+                                            {formData.contractKind === 'partner' && (
+                                                <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                                    <p className="font-bold text-amber-900">Cadastro societário</p>
+                                                    <p className="mt-1 text-sm text-amber-800">O sócio ficará disponível na seleção de responsável pelas notas fiscais e no rateio de impostos.</p>
+                                                </div>
+                                            )}
                                             <div className="col-span-2 grid grid-cols-2 gap-4">
                                                 <div>
                                                     <label className="text-sm font-medium text-slate-700">Tipo de Pessoa</label>
@@ -877,7 +1096,7 @@ const ContractsView: React.FC = () => {
                                             </div>
 
                                             <div className="col-span-2">
-                                                <label className="text-sm font-medium text-slate-700">Prestador *</label>
+                                                <label className="text-sm font-medium text-slate-700">{formData.contractKind === 'partner' ? 'Nome do sócio *' : 'Prestador *'}</label>
                                                 <input
                                                     type="text"
                                                     value={formData.providerName}
@@ -930,11 +1149,30 @@ const ContractsView: React.FC = () => {
                                                     required
                                                 >
                                                     <option value="">Selecione o tipo...</option>
-                                                    {professionalTypes.map(type => (
+                                                    {formData.contractKind === 'partner' && <option value="Sócio">Sócio</option>}
+                                                    {registryProfessionalTypes.map(type => (
                                                         <option key={type} value={type}>{type}</option>
                                                     ))}
+                                                    <option value="__custom__">+ Adicionar novo tipo</option>
                                                 </select>
+                                                {formData.professionalType === '__custom__' && (
+                                                    <input
+                                                        type="text"
+                                                        value={customProfessionalType}
+                                                        onChange={e => setCustomProfessionalType(e.target.value)}
+                                                        className="w-full p-2.5 border border-gray-300 rounded-lg mt-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="Digite o novo tipo profissional"
+                                                        required
+                                                    />
+                                                )}
                                             </div>
+
+                                            {formData.contractKind === 'partner' && (
+                                                <div>
+                                                    <label className="text-sm font-medium text-slate-700">Participação societária (%)</label>
+                                                    <input type="number" min="0" max="100" step="0.01" value={formData.equityPercentage} onChange={e => setFormData({ ...formData, equityPercentage: Number(e.target.value) })} className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-amber-500" />
+                                                </div>
+                                            )}
                                             <div>
                                                 <label className="text-sm font-medium text-slate-700">Especialidade</label>
                                                 <select
@@ -943,10 +1181,22 @@ const ContractsView: React.FC = () => {
                                                     className="w-full p-2.5 border border-gray-300 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-blue-500"
                                                 >
                                                     <option value="">Selecione a especialidade...</option>
-                                                    {specialties.map(spec => (
+                                                    {formData.contractKind === 'partner' && <option value="Sócio">Sócio</option>}
+                                                    {registrySpecialties.map(spec => (
                                                         <option key={spec} value={spec}>{spec}</option>
                                                     ))}
+                                                    <option value="__custom__">+ Adicionar nova especialidade</option>
                                                 </select>
+                                                {formData.serviceType === '__custom__' && (
+                                                    <input
+                                                        type="text"
+                                                        value={customSpecialty}
+                                                        onChange={e => setCustomSpecialty(e.target.value)}
+                                                        className="w-full p-2.5 border border-gray-300 rounded-lg mt-2 outline-none focus:ring-2 focus:ring-blue-500"
+                                                        placeholder="Digite a nova especialidade"
+                                                        required
+                                                    />
+                                                )}
                                             </div>
                                             <div>
                                                 <label className="text-sm font-medium text-slate-700">Email</label>

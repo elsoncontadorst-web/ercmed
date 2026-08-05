@@ -6,7 +6,7 @@ import { saveProfessionalAnamnesis, getProfessionalAnamneses, updateProfessional
 import { ProfessionalAnamnesis, FilledSection, FilledField, Patient, Anamnesis } from '../types/health';
 import { calculateAge } from '../utils/formatters';
 import { useUser } from '../contexts/UserContext';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 
 interface Props {
   patientId: string;

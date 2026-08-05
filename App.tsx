@@ -8,52 +8,96 @@ import { auth, onAuthStateChanged, User } from './services/firebase';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { SimulationProvider } from './contexts/SimulationContext';
-import { UserProvider } from './contexts/UserContext';
+import { UserProvider, useUser } from './contexts/UserContext';
 import { logUserActivity, incrementModuleUsage } from './services/userDataService';
 import LGPDConsent from './components/LGPDConsent';
 import { hasAcceptedLGPD, registerConsent } from './services/lgpdService';
 import { NotificationProvider } from './contexts/NotificationContext';
 
+const isChunkLoadingError = (message: string) =>
+  message.includes('Failed to fetch dynamically imported module') ||
+  message.includes('Importing a module script failed') ||
+  message.includes('Failed to load module script') ||
+  message.includes('Expected a JavaScript-or-Wasm module script');
+
+const safeLazy = <T extends React.ComponentType<any>>(
+  importer: () => Promise<{ default: T }>,
+  cacheKey: string
+) =>
+  React.lazy(async () => {
+    try {
+      return await importer();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (typeof window !== 'undefined' && isChunkLoadingError(message)) {
+        const reloadKey = `ercmed_lazy_chunk_reload_${cacheKey}`;
+        const alreadyReloaded = sessionStorage.getItem(reloadKey) === '1';
+        if (!alreadyReloaded) {
+          sessionStorage.setItem(reloadKey, '1');
+          window.location.reload();
+          return new Promise<{ default: T }>(() => undefined);
+        }
+      }
+
+      throw error;
+    }
+  });
+
 // Lazy load components for better performance
-const AiConsultantView = React.lazy(() => import('./components/AiConsultantView'));
-const AboutAppView = React.lazy(() => import('./components/AboutAppView'));
-const HowToUseView = React.lazy(() => import('./components/HowToUseView'));
-const DashboardView = React.lazy(() => import('./components/DashboardView'));
-const SubscriptionView = React.lazy(() => import('./components/SubscriptionView'));
-const UserProfileView = React.lazy(() => import('./components/UserProfileView'));
-const CashFlowView = React.lazy(() => import('./components/CashFlowView'));
-const FinancialControlView = React.lazy(() => import('./components/FinancialControlView'));
-const SalesView = React.lazy(() => import('./components/SalesView'));
-const ManagerLoginView = React.lazy(() => import('./components/ManagerLoginView'));
-const ManagerDashboardView = React.lazy(() => import('./components/ManagerDashboardView'));
-const FeedbackView = React.lazy(() => import('./components/FeedbackView'));
+const AiConsultantView = safeLazy(() => import('./components/AiConsultantView'), 'ai_consultant');
+const AboutAppView = safeLazy(() => import('./components/AboutAppView'), 'about_app');
+const HowToUseView = safeLazy(() => import('./components/HowToUseView'), 'how_to_use');
+const DashboardView = safeLazy(() => import('./components/DashboardView'), 'dashboard');
+const SubscriptionView = safeLazy(() => import('./components/SubscriptionView'), 'subscription');
+const UserProfileView = safeLazy(() => import('./components/UserProfileView'), 'user_profile');
+const CashFlowView = safeLazy(() => import('./components/CashFlowView'), 'cash_flow');
+const FinancialControlView = safeLazy(() => import('./components/FinancialControlView'), 'financial_control');
+const BankAccountsView = safeLazy(() => import('./components/BankAccountsView'), 'bank_accounts');
+const BankReconciliationView = safeLazy(() => import('./components/BankReconciliationView'), 'bank_reconciliation');
+const SalesView = safeLazy(() => import('./components/SalesView'), 'sales');
+const ManagerLoginView = safeLazy(() => import('./components/ManagerLoginView'), 'manager_login');
+const ManagerDashboardView = safeLazy(() => import('./components/ManagerDashboardView'), 'manager_dashboard');
+const FeedbackView = safeLazy(() => import('./components/FeedbackView'), 'feedback');
 
 // Easymed Components
-const HealthDashboard = React.lazy(() => import('./components/HealthDashboard'));
-const RepasseDashboard = React.lazy(() => import('./components/RepasseDashboard'));
-const ContractsView = React.lazy(() => import('./components/ContractsView').then(module => ({ default: module.default })));
-const AppointmentsView = React.lazy(() => import('./components/AppointmentsView'));
-const EMRView = React.lazy(() => import('./components/EMRView'));
-const InventoryView = React.lazy(() => import('./components/InventoryView'));
-const PatientsView = React.lazy(() => import('./components/PatientsView'));
-const ClinicsView = React.lazy(() => import('./components/ClinicsView'));
-const BillingView = React.lazy(() => import('./components/BillingView'));
-const OnboardingView = React.lazy(() => import('./components/OnboardingView'));
-const ReceiptsView = React.lazy(() => import('./components/ReceiptsView'));
-const ClinicHoursView = React.lazy(() => import('./components/ClinicHoursView'));
-const BookingSettingsView = React.lazy(() => import('./components/BookingSettingsView'));
-const RepasseCalculationView = React.lazy(() => import('./components/RepasseCalculationView'));
-const PublicBookingPage = React.lazy(() => import('./components/PublicBookingPage'));
-const TISSView = React.lazy(() => import('./components/TISSView'));
-const UsersManagementView = React.lazy(() => import('./components/UsersManagementView'));
-const PermissionsManagementView = React.lazy(() => import('./components/PermissionsManagementView'));
-const FeaturesPage = React.lazy(() => import('./components/FeaturesPage'));
-const DebugView = React.lazy(() => import('./components/DebugView'));
-const PlansView = React.lazy(() => import('./components/PlansView'));
-const AccountantModule = React.lazy(() => import('./components/AccountantModule'));
-const TeamInvitationsView = React.lazy(() => import('./components/TeamInvitationsView'));
-const ClinicTeamsView = React.lazy(() => import('./components/ClinicTeamsView'));
-const TherapeuticIntelligenceView = React.lazy(() => import('./components/TherapeuticIntelligenceView'));
+const HealthDashboard = safeLazy(() => import('./components/HealthDashboard'), 'health_dashboard');
+const PersonalDashboard = safeLazy(() => import('./components/PersonalDashboard'), 'personal_dashboard');
+const RepasseDashboard = safeLazy(() => import('./components/RepasseDashboard'), 'repasse_dashboard');
+const ContractsView = safeLazy(() => import('./components/ContractsView').then(module => ({ default: module.default })), 'contracts');
+const AppointmentsView = safeLazy(() => import('./components/AppointmentsView'), 'appointments');
+const ProductionEntryView = safeLazy(() => import('./components/ProductionEntryView'), 'production_entry');
+const EMRView = safeLazy(() => import('./components/EMRView'), 'emr');
+const InventoryView = safeLazy(() => import('./components/InventoryView'), 'inventory');
+const PatientsView = safeLazy(() => import('./components/PatientsView'), 'patients');
+const ClinicsView = safeLazy(() => import('./components/ClinicsView'), 'clinics');
+const BillingView = safeLazy(() => import('./components/BillingView'), 'billing');
+const OnboardingView = safeLazy(() => import('./components/OnboardingView'), 'onboarding');
+const ReceiptsView = safeLazy(() => import('./components/ReceiptsView'), 'receipts');
+const ClinicHoursView = safeLazy(() => import('./components/ClinicHoursView'), 'clinic_hours');
+const BookingSettingsView = safeLazy(() => import('./components/BookingSettingsView'), 'booking_settings');
+const RepasseCalculationView = safeLazy(() => import('./components/RepasseCalculationView'), 'repasse_calculation');
+const PublicBookingPage = safeLazy(() => import('./components/PublicBookingPage'), 'public_booking');
+const TISSView = safeLazy(() => import('./components/TISSView'), 'tiss');
+const UsersManagementView = safeLazy(() => import('./components/UsersManagementView'), 'users_management');
+const PermissionsManagementView = safeLazy(() => import('./components/PermissionsManagementView'), 'permissions_management');
+const FeaturesPage = safeLazy(() => import('./components/FeaturesPage'), 'features');
+
+const RoleAwareDashboard: React.FC<{ setView: (view: AppView) => void }> = ({ setView }) => {
+  const { isAdmin } = useUser();
+  return isAdmin ? <HealthDashboard setView={setView} /> : <PersonalDashboard setView={setView} />;
+};
+const DebugView = safeLazy(() => import('./components/DebugView'), 'debug');
+const PlansView = safeLazy(() => import('./components/PlansView'), 'plans');
+const AccountantModule = safeLazy(() => import('./components/AccountantModule'), 'accountant_module');
+const TeamInvitationsView = safeLazy(() => import('./components/TeamInvitationsView'), 'team_invitations');
+const ClinicTeamsView = safeLazy(() => import('./components/ClinicTeamsView'), 'clinic_teams');
+const TherapeuticIntelligenceView = safeLazy(() => import('./components/TherapeuticIntelligenceView'), 'therapeutic_intelligence');
+const ServiceCatalogView = safeLazy(() => import('./components/ServiceCatalogView'), 'service_catalog');
+const FiscalImportView = safeLazy(() => import('./components/FiscalImportView'), 'fiscal_import');
+const CarePackagesView = safeLazy(() => import('./components/CarePackagesView'), 'care_packages');
+const AssetsView = safeLazy(() => import('./components/AssetsView'), 'assets');
+const AttendancesView = safeLazy(() => import('./components/AttendancesView'), 'attendances');
+const ERPWorkspaceView = safeLazy(() => import('./components/ERPWorkspaceView'), 'erp_workspace');
 
 
 // Error Boundary Component
@@ -69,6 +113,21 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+
+    const message = error?.message || error?.toString() || '';
+    const isDynamicImportError =
+      message.includes('Failed to fetch dynamically imported module') ||
+      message.includes('Importing a module script failed') ||
+      message.includes('Failed to load module script');
+
+    if (isDynamicImportError) {
+      const reloadKey = 'ercmed_dynamic_import_recovery_once';
+      const alreadyReloaded = sessionStorage.getItem(reloadKey) === '1';
+      if (!alreadyReloaded) {
+        sessionStorage.setItem(reloadKey, '1');
+        window.location.reload();
+      }
+    }
   }
 
   render() {
@@ -105,7 +164,7 @@ function App() {
   // ... (existing state)
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentView, setView] = useState<AppView>(AppView.DASHBOARD);
+  const [currentView, setView] = useState<AppView>(AppView.HEALTH_DASHBOARD);
   const [showLogin, setShowLogin] = useState(false);
   const [showLGPDConsent, setShowLGPDConsent] = useState(false);
   const [initialSignUpMode, setInitialSignUpMode] = useState(false);
@@ -113,6 +172,22 @@ function App() {
   // Estados para controle do Trial
   const [isTrial, setIsTrial] = useState(false);
   const [trialHoursLeft, setTrialHoursLeft] = useState(0);
+
+  useEffect(() => {
+    const cleanupReloadFlags = () => {
+      if (typeof window === 'undefined') return;
+
+      sessionStorage.removeItem('ercmed_dynamic_import_recovery_once');
+      sessionStorage.removeItem('ercmed_preload_error_reload_once');
+
+      Object.keys(sessionStorage)
+        .filter((key) => key.startsWith('ercmed_lazy_chunk_reload_'))
+        .forEach((key) => sessionStorage.removeItem(key));
+    };
+
+    const timer = window.setTimeout(cleanupReloadFlags, 1500);
+    return () => window.clearTimeout(timer);
+  }, [currentView, user?.uid]);
 
   useEffect(() => {
     // Escuta mudanças na autenticação (Login/Logout) em tempo real
@@ -186,19 +261,27 @@ function App() {
         {(() => {
           switch (currentView) {
             case AppView.DASHBOARD:
-              return <DashboardView setView={setView} />;
+              return <RoleAwareDashboard setView={setView} />;
 
             // Health Management Views
             case AppView.HEALTH_DASHBOARD:
-              return <HealthDashboard />;
+              return <RoleAwareDashboard setView={setView} />;
             case AppView.PATIENTS:
               return <PatientsView setView={setView} />;
             case AppView.APPOINTMENTS:
               return <AppointmentsView />;
+            case AppView.ATTENDANCES:
+              return <AttendancesView setView={setView} />;
+            case AppView.PRODUCTION_ENTRY:
+              return <ProductionEntryView />;
             case AppView.EMR:
               return <EMRView />;
             case AppView.INVENTORY:
               return <InventoryView />;
+            case AppView.CARE_PACKAGES:
+              return <CarePackagesView />;
+            case AppView.ASSETS:
+              return <AssetsView />;
             case AppView.RECEIPTS:
               return <ReceiptsView />;
             case AppView.CLINIC_HOURS:
@@ -226,6 +309,18 @@ function App() {
             // TISS Billing
             case AppView.TISS_BILLING:
               return <TISSView />;
+            case AppView.BILLING_INSURANCE:
+            case AppView.INSURANCE_PLANS:
+              return <TISSView initialTab="CONVENIOS" />;
+            case AppView.BILLING_GUIDES:
+              return <TISSView initialTab="GUIAS" />;
+            case AppView.BILLING_GLOSAS:
+            case AppView.BILLING_AUDIT:
+              return <TISSView initialTab="GLOSAS" />;
+            case AppView.SERVICE_CATALOG:
+              return <ServiceCatalogView />;
+            case AppView.FISCAL_IMPORT:
+              return <FiscalImportView />;
 
             // User Management
             case AppView.USERS_MANAGEMENT:
@@ -238,6 +333,46 @@ function App() {
               return <AiConsultantView />;
             case AppView.FINANCIAL_CONTROL:
               return <FinancialControlView />;
+            case AppView.ACCOUNTS_RECEIVABLE:
+              return <FinancialControlView initialTab="receivable" />;
+            case AppView.ACCOUNTS_PAYABLE:
+              return <FinancialControlView initialTab="payable" />;
+            case AppView.CASH_ACCOUNTS:
+              return <FinancialControlView initialTab="transactions" />;
+            case AppView.BANKS:
+              return <BankAccountsView />;
+            case AppView.BANK_RECONCILIATION:
+              return <BankReconciliationView />;
+            case AppView.COLLECTIONS:
+              return <FinancialControlView initialTab="transactions" />;
+            case AppView.BILLING_PRODUCTION:
+            case AppView.BILLING_PRIVATE:
+            case AppView.PROFESSIONALS:
+            case AppView.PROFESSIONAL_PRODUCTION:
+            case AppView.PROFESSIONAL_SCALES:
+            case AppView.SERVICES_PROCEDURES:
+            case AppView.PRICE_TABLES:
+            case AppView.SUPPLIERS:
+            case AppView.PURCHASES:
+            case AppView.COST_CENTERS:
+            case AppView.RESULT_CENTERS:
+            case AppView.BUDGET:
+            case AppView.CHART_OF_ACCOUNTS:
+            case AppView.ACCOUNTING_INTEGRATION:
+            case AppView.FISCAL_DOCUMENTS:
+            case AppView.TAX_RETENTIONS:
+            case AppView.ADMIN_GENERAL_REGISTRATIONS:
+            case AppView.ADMIN_PARAMETERS:
+            case AppView.ADMIN_AUDIT:
+            case AppView.ADMIN_INTEGRATIONS:
+            case AppView.ADMIN_LOGS:
+            case AppView.SUPPORT_DOCUMENTATION:
+            case AppView.SUPPORT_CHANGELOG:
+              return <ERPWorkspaceView currentView={currentView} setView={setView} />;
+            case AppView.DRE_MANAGERIAL:
+            case AppView.MANAGERIAL_FLOW:
+            case AppView.PROFITABILITY_INDICATORS:
+              return <CashFlowView />;
             case AppView.SALES_MANAGEMENT:
               return <SalesView />;
             case AppView.SALES_MANAGEMENT:
@@ -273,7 +408,7 @@ function App() {
               return <OnboardingView 
                 setView={setView} 
                 onComplete={async () => {
-                  setView(AppView.DASHBOARD);
+                  setView(AppView.HEALTH_DASHBOARD);
                 }}
               />;
 
@@ -281,7 +416,7 @@ function App() {
               return <TherapeuticIntelligenceView />;
 
             default:
-              return <DashboardView setView={setView} />;
+              return <HealthDashboard setView={setView} />;
           }
         })()}
       </Suspense>

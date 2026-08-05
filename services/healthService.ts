@@ -12,12 +12,25 @@ import {
     serverTimestamp,
     setDoc,
     collectionGroup,
-    onSnapshot
+    onSnapshot,
+    DocumentData,
+    Query
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserRecord, Appointment, Medication, Measurement, Patient, ClinicalNote, Prescription, ExamRequest, ExamResult, PatientEvolution, PatientTeamMember, Anamnesis, MixedAnamnesis, TeamInvitation, ProfessionalAnamnesis } from '../types/health';
-import { createTeamQuery, getManagerIdForUser, getUserAccessSettings } from './accessControlService';
+import { createTeamQuery, getAllowedClinicsForUser, getManagerIdForUser, getUserAccessSettings } from './accessControlService';
 import { auth } from './firebase';
+import { getUserProfile, getUserRole } from './userRoleService';
+
+const getProfessionalAppointmentId = async (userId: string): Promise<string | null> => {
+    const role = await getUserRole(userId);
+    if (!['professional', 'health_professional', 'autonomous_provider'].includes(role as string)) {
+        return null;
+    }
+
+    const profile = await getUserProfile(userId);
+    return profile?.professionalId || userId;
+};
 
 // ==================== USER MEDICAL RECORD ====================
 
@@ -125,6 +138,10 @@ export const getAllPatients = async (managerId?: string): Promise<Patient[]> => 
             console.log('[PATIENT] No user ID provided');
             return [];
         }
+        const currentRole = await getUserRole(userId);
+        const isProfessional = ['professional', 'health_professional', 'autonomous_provider'].includes(currentRole as string);
+        const allowedClinicIds = isProfessional ? await getAllowedClinicsForUser(userId) : [];
+        if (isProfessional && allowedClinicIds.length === 0) return [];
 
         // SECURITY: If managerId is provided, we filter by it.
         // If not provided AND not master admin, we use the user's managerId.
@@ -150,16 +167,15 @@ export const getAllPatients = async (managerId?: string): Promise<Patient[]> => 
                 const snap2 = await getDocs(q2);
                 snap2.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...d.data() }));
             } else {
-                // Unrestricted mode: Patients of the manager and fallback to professionalId
-                const queries = [
-                    query(patientsRef, where('managerId', '==', effectiveManagerId), where('active', '==', true))
-                ];
-
-                if (effectiveManagerId === userId) {
-                    queries.push(query(patientsRef, where('professionalId', '==', userId), where('active', '==', true)));
-                }
-
-                const snapshots = await Promise.all(queries.map(q => getDocs(q)));
+                const queries = isProfessional
+                    ? allowedClinicIds.map(clinicId => query(
+                        patientsRef,
+                        where('managerId', '==', effectiveManagerId),
+                        where('clinicId', '==', clinicId),
+                        where('active', '==', true)
+                    ))
+                    : [query(patientsRef, where('managerId', '==', effectiveManagerId), where('active', '==', true))];
+                const snapshots = await Promise.all(queries.map(candidate => getDocs(candidate)));
                 snapshots.forEach(snap => {
                     snap.docs.forEach(d => managedDocs.set(d.id, { id: d.id, ...(d.data() as any) } as Patient));
                 });
@@ -194,7 +210,18 @@ export const getAllPatients = async (managerId?: string): Promise<Patient[]> => 
 
     } catch (error) {
         console.error('[PATIENT] Error loading patients:', error);
-        return [];
+        const userId = auth.currentUser?.uid;
+        if (!userId) return [];
+
+        try {
+            const patientsRef = collection(db, 'patients');
+            const fallbackQuery = query(patientsRef, where('professionalId', '==', userId), where('active', '==', true));
+            const fallbackSnapshot = await getDocs(fallbackQuery);
+            const ownPatients = fallbackSnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Patient));
+            return ownPatients.sort((a, b) => a.name.localeCompare(b.name));
+        } catch {
+            return [];
+        }
     }
 };
 
@@ -249,7 +276,14 @@ export const addAppointment = async (
 ): Promise<string | null> => {
     try {
         const appointmentsRef = collection(db, 'users', userId, 'appointments');
-        const managerId = await getManagerIdForUser(userId);
+        // The document may be stored under the selected professional, but the
+        // tenant must come from the authenticated clinic user who is creating
+        // it. Deriving the tenant from the professional breaks production and
+        // agenda writes when that professional has a separate user account.
+        const requesterId = auth.currentUser?.uid;
+        const managerId =
+            appointment.managerId ||
+            await getManagerIdForUser(requesterId || userId);
         const docRef = await addDoc(appointmentsRef, {
             ...appointment,
             userId,
@@ -276,7 +310,14 @@ export const getAppointments = async (userId: string): Promise<Appointment[]> =>
     }
 };
 
-export const getAllAppointments = async (): Promise<Appointment[]> => {
+const sortAppointmentsDesc = (appointments: Appointment[]) =>
+    appointments.sort((a, b) => {
+        const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
+        const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
+        return dateB.getTime() - dateA.getTime();
+    });
+
+export const getAllAppointments = async (scopedManagerId?: string): Promise<Appointment[]> => {
     try {
         const userId = auth.currentUser?.uid;
         const currentUserEmail = auth.currentUser?.email;
@@ -285,14 +326,19 @@ export const getAllAppointments = async (): Promise<Appointment[]> => {
         if (!userId) return [];
 
         const appointmentsRef = collectionGroup(db, 'appointments');
-        let q;
+        let q: Query<DocumentData>;
+        const professionalId = await getProfessionalAppointmentId(userId);
 
-        if (isMasterAdmin) {
+        if (isMasterAdmin && !scopedManagerId) {
             // Master Admin sees ALL appointments globally
 
             q = query(appointmentsRef, orderBy('date', 'desc'));
+        } else if (professionalId) {
+            q = query(appointmentsRef, where('professionalId', '==', professionalId));
+        } else if (scopedManagerId) {
+            q = query(appointmentsRef, where('managerId', '==', scopedManagerId));
         } else {
-            const managerId = await getManagerIdForUser(userId);
+            const managerId = scopedManagerId || await getManagerIdForUser(userId);
             const effectiveManagerId = managerId || userId;
             if (!effectiveManagerId) return [];
 
@@ -300,16 +346,22 @@ export const getAllAppointments = async (): Promise<Appointment[]> => {
         }
 
         const snapshot = await getDocs(q);
-        const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
+        let appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
+        if (professionalId) {
+            const allowedClinicIds = await getAllowedClinicsForUser(userId);
+            appointments = appointments.filter(item => Boolean(item.clinicId && allowedClinicIds.includes(item.clinicId)));
+        }
 
-        return appointments.sort((a, b) => {
-            const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
-            const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
-            return dateB.getTime() - dateA.getTime();
-        });
+        return sortAppointmentsDesc(appointments);
     } catch (error) {
         console.error('Erro ao buscar todas as consultas (Admin):', error);
-        return [];
+        const userId = auth.currentUser?.uid;
+        if (!userId) return [];
+        try {
+            return sortAppointmentsDesc(await getAppointments(userId));
+        } catch {
+            return [];
+        }
     }
 };
 
@@ -349,7 +401,7 @@ export const updateAppointment = async (
     }
 };
 
-export const getAllUpcomingAppointments = async (): Promise<Appointment[]> => {
+export const getAllUpcomingAppointments = async (scopedManagerId?: string): Promise<Appointment[]> => {
     try {
         const userId = auth.currentUser?.uid;
         const currentUserEmail = auth.currentUser?.email;
@@ -359,13 +411,13 @@ export const getAllUpcomingAppointments = async (): Promise<Appointment[]> => {
 
         const today = new Date().toISOString().split('T')[0];
         const appointmentsRef = collectionGroup(db, 'appointments');
-        let q;
+        let q: Query<DocumentData>;
 
-        if (isMasterAdmin) {
+        if (isMasterAdmin && !scopedManagerId) {
 
             q = query(appointmentsRef, where('date', '>=', today), where('status', '==', 'scheduled'));
         } else {
-            const managerId = await getManagerIdForUser(userId);
+            const managerId = scopedManagerId || await getManagerIdForUser(userId);
             const effectiveManagerId = managerId || userId;
             if (!effectiveManagerId) return [];
 
@@ -385,7 +437,19 @@ export const getAllUpcomingAppointments = async (): Promise<Appointment[]> => {
             });
     } catch (error) {
         console.error('Erro ao buscar todas as consultas futuras:', error);
-        return [];
+        const userId = auth.currentUser?.uid;
+        if (!userId) return [];
+        try {
+            return (await getAppointments(userId))
+                .filter(apt => apt.date >= new Date().toISOString().split('T')[0] && apt.status === 'scheduled')
+                .sort((a, b) => {
+                    const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
+                    const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
+                    return dateA.getTime() - dateB.getTime();
+                });
+        } catch {
+            return [];
+        }
     }
 };
 
@@ -791,6 +855,7 @@ export const subscribeToAllAppointments = (
     }
 
     let unsubscribe: () => void = () => { };
+    let fallbackUnsubscribe: (() => void) | null = null;
 
     const setup = async () => {
         try {
@@ -799,6 +864,7 @@ export const subscribeToAllAppointments = (
             
             const appointmentsRef = collectionGroup(db, 'appointments');
             let q;
+            const professionalId = await getProfessionalAppointmentId(userId);
 
             if (isMasterAdmin) {
 
@@ -808,7 +874,17 @@ export const subscribeToAllAppointments = (
                     orderBy('date', 'asc'),
                     orderBy('time', 'asc')
                 );
+            } else if (professionalId) {
+                // Professional accounts only subscribe to their own agenda.
+                // Sorting and status filtering happen client-side to avoid a
+                // fragile composite-index dependency.
+                q = query(appointmentsRef, where('professionalId', '==', professionalId));
             } else {
+                const currentRole = await getUserRole(userId);
+                if (['professional', 'health_professional', 'autonomous_provider'].includes(currentRole as string)) {
+                    onUpdate([]);
+                    return;
+                }
                 const managerId = await getManagerIdForUser(userId);
                 const effectiveManagerId = managerId || userId;
 
@@ -831,11 +907,32 @@ export const subscribeToAllAppointments = (
                     id: doc.id,
                     ...doc.data()
                 })) as Appointment[];
-                onUpdate(appointments);
+                onUpdate(
+                    appointments
+                        .filter(appointment => ['scheduled', 'confirmed'].includes(appointment.status))
+                        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+                );
             }, (error) => {
                 console.error('Error in appointments snapshot:', error);
                 if (onError) onError(error);
-                onUpdate([]); // Resolve loading state
+                if (!fallbackUnsubscribe) {
+                    const ownAppointmentsRef = collection(db, 'users', userId, 'appointments');
+                    const fallbackQuery = query(
+                        ownAppointmentsRef,
+                        where('status', 'in', ['scheduled', 'confirmed']),
+                        orderBy('date', 'asc'),
+                        orderBy('time', 'asc')
+                    );
+                    fallbackUnsubscribe = onSnapshot(fallbackQuery, (fallbackSnapshot) => {
+                        const fallbackAppointments = fallbackSnapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        })) as Appointment[];
+                        onUpdate(fallbackAppointments);
+                    }, () => onUpdate([]));
+                } else {
+                    onUpdate([]);
+                }
             });
         } catch (error) {
             console.error('Error setting up all appointments listener:', error);
@@ -847,6 +944,7 @@ export const subscribeToAllAppointments = (
     setup();
     return () => {
         unsubscribe();
+        if (fallbackUnsubscribe) fallbackUnsubscribe();
     };
 };
 
@@ -871,6 +969,25 @@ export const subscribeToPatients = (
         const patients = Array.from(patientMap.values());
         const sorted = patients.sort((a, b) => a.name.localeCompare(b.name));
         onUpdate(sorted);
+    };
+
+    const subscribeOwnPatientsFallback = () => {
+        if (unsubscribes['main_fallback']) return;
+
+        const patientsRef = collection(db, 'patients');
+        const fallbackQuery = query(patientsRef, where('professionalId', '==', userId), where('active', '==', true));
+        unsubscribes['main_fallback'] = onSnapshot(fallbackQuery, (snapshot) => {
+            patientMap.clear();
+            clinicPatientIds.clear();
+            snapshot.docs.forEach(doc => {
+                const data = { id: doc.id, ...doc.data() } as Patient;
+                patientMap.set(doc.id, data);
+                clinicPatientIds.add(doc.id);
+            });
+            triggerUpdate();
+        }, () => {
+            onUpdate([]);
+        });
     };
 
     const setupListeners = async () => {
@@ -911,6 +1028,7 @@ export const subscribeToPatients = (
                 triggerUpdate();
             }, (error) => {
                 console.error('Error in main patients listener:', error);
+                subscribeOwnPatientsFallback();
             });
 
             // 2. TEAM MEMBERSHIP LISTENER (Patients via Team)

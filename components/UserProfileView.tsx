@@ -207,14 +207,20 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ user, subscription, i
             const { saveUserProfile } = await import('../services/userRoleService');
 
             // Save to user settings
-            await saveProfessionalSettings(user.uid, professionalSettings);
+            const settingsSaved = await saveProfessionalSettings(user.uid, professionalSettings);
+            if (!settingsSaved) {
+                throw new Error('Não foi possível salvar as configurações profissionais.');
+            }
 
             // Save user profile with CPF/CNPJ/CNES data
             const cleanedCpfCnpj = cpfCnpj.replace(/\D/g, '');
             await saveUserProfile(user.uid, {
                 uid: user.uid,
                 email: user.email || '',
-                role: 'HEALTH_PROFESSIONAL' as any,
+                // Authority fields (role, managerId, permissions and
+                // isClinicManager) are intentionally not written here. They are
+                // managed by the user-management flow and protected by
+                // Firestore rules. This form only edits the user's own profile.
                 displayName: professionalSettings.professionalName,
                 jobTitle: professionalSettings.role,
                 function: professionalSettings.specialty,
@@ -233,7 +239,7 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ user, subscription, i
             });
 
             // Also save/update in professionals database for appointments
-            await saveProfessional({
+            const professionalSaved = await saveProfessional({
                 userId: user.uid,
                 name: professionalSettings.professionalName,
                 specialty: professionalSettings.specialty || professionalSettings.role,
@@ -242,13 +248,16 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ user, subscription, i
                 email: professionalSettings.email || user.email || '',
                 active: true
             });
+            if (!professionalSaved) {
+                throw new Error('Não foi possível sincronizar o cadastro profissional.');
+            }
 
             setSaveMessage("Perfil profissional salvo com sucesso!");
             await refreshUserData();
             setTimeout(() => setSaveMessage(null), 3000);
         } catch (error) {
             console.error("Error saving settings", error);
-            setSaveMessage("Erro ao salvar configurações.");
+            setSaveMessage(error instanceof Error ? error.message : "Erro ao salvar configurações.");
         } finally {
             setLoadingSettings(false);
         }

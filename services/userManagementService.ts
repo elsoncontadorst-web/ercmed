@@ -12,8 +12,8 @@ import {
     serverTimestamp,
     setDoc
 } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { db, auth } from './firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { db, auth, createManagedAuthUser } from './firebase';
 import { SystemUser, UserCreationByAdmin, DEFAULT_PERMISSIONS } from '../types/users';
 import { addContract } from './contractService';
 import { Contract } from '../types/finance';
@@ -197,16 +197,14 @@ export const createUserByAdmin = async (
 ): Promise<{ success: boolean; userId?: string; error?: string }> => {
     try {
         // Create Firebase Auth user
-        const userCredential = await createUserWithEmailAndPassword(
-            auth,
-            userData.email,
-            userData.password
-        );
+        const userCredential = await createManagedAuthUser(userData.email, userData.password);
 
         const userId = userCredential.user.uid;
 
         // Create user document in Firestore
         const role = userData.role === 'professional' ? 'health_professional' : userData.role;
+        const actualManagerId = userData.managerId || (adminId !== 'elsoncontador.st@gmail.com' ? adminId : null);
+        const isProfessionalRole = userData.role === 'professional' || userData.role === 'health_professional';
         
         const userRef = doc(db, 'system_users', userId);
         await setDoc(userRef, {
@@ -224,27 +222,37 @@ export const createUserByAdmin = async (
             approvedAt: serverTimestamp(),
             accountTier: userData.accountTier || null,
             isClinicManager: userData.isClinicManager || false,
+            restrictToOwnPatients: false,
+            professionalName: isProfessionalRole ? userData.name : null,
             // Enforce Group Inheritance:
             // If creator is not master admin, they are a Manager, so new user belongs to their group.
             // If creator IS master admin, we use the passed managerId (if any) or null.
-            managerId: userData.managerId || (adminId !== 'elsoncontador.st@gmail.com' ? adminId : null)
+            managerId: actualManagerId,
+            clinicId: userData.clinicId || null,
+            clinicIds: userData.clinicId ? [userData.clinicId] : []
         });
-
-        const actualManagerId = userData.managerId || (adminId !== 'elsoncontador.st@gmail.com' ? adminId : null);
 
         // Also create/update user_profiles for tier management consistency
         const userProfileRef = doc(db, 'user_profiles', userId);
         await setDoc(userProfileRef, {
             email: userData.email,
+            name: userData.name,
+            displayName: userData.name,
+            role,
+            specialty: userData.specialty || '',
+            crm: userData.crm || '',
             accountTier: userData.accountTier || null,
             isClinicManager: userData.isClinicManager || false,
+            restrictToOwnPatients: false,
             managerId: actualManagerId,
+            clinicId: userData.clinicId || null,
+            clinicIds: userData.clinicId ? [userData.clinicId] : [],
             updatedAt: serverTimestamp()
         }, { merge: true });
 
         // CREATE AUTOMATIC CONTRACT FOR PROFESSIONALS
         // This ensures the user appears in the "Contratos" and "Operação Clínica" views
-        if (actualManagerId && userData.role === 'professional') {
+        if (actualManagerId && isProfessionalRole) {
             try {
                 const startDate = new Date().toISOString().split('T')[0];
                 const endDate = new Date();
@@ -272,7 +280,19 @@ export const createUserByAdmin = async (
                     userType: 'professional'
                 };
 
-                await addContract(contractData);
+                const professionalId = await addContract(contractData);
+                if (professionalId) {
+                    await setDoc(userRef, {
+                        professionalId,
+                        professionalName: userData.name,
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                    await setDoc(userProfileRef, {
+                        professionalId,
+                        professionalName: userData.name,
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                }
                 console.log('[AUTO-CONTRACT] Contract created for user:', userId);
             } catch (contractError) {
                 console.error('[AUTO-CONTRACT] Error creating automatic contract:', contractError);

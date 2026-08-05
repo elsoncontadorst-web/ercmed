@@ -8,6 +8,7 @@ import { getTransactions } from '../services/userDataService';
 import { getAllBillingRecords, processBilling, getProfessionalConfig } from '../services/repasseService';
 import { updateAppointment } from '../services/healthService';
 import { addTransaction } from '../services/userDataService';
+import { getManagerIdForUser } from '../services/accessControlService';
 import { CheckCircle2, X } from 'lucide-react';
 import { WelcomeTrialModal } from './WelcomeTrialModal';
 
@@ -216,9 +217,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({ setView }) => {
                 const clinicAmount = netAfterTaxes - repasseAmount;
 
                 // Create Billing Record
-                await processBilling({
+                const managerId = await getManagerIdForUser(auth.currentUser.uid);
+                if (!managerId) throw new Error('Clínica responsável não encontrada.');
+
+                const billingId = await processBilling({
                     professionalId: selectedAppointment.professionalId || 'unknown',
                     professionalName: selectedAppointment.professionalName,
+                    managerId,
                     patientName: selectedAppointment.patientName,
                     consultationDate: selectedAppointment.date,
                     grossAmount: amount,
@@ -231,16 +236,19 @@ const DashboardView: React.FC<DashboardViewProps> = ({ setView }) => {
                     paymentStatus: 'received',
                     notes: 'Gerado via Dashboard'
                 });
+                if (!billingId) throw new Error('Não foi possível registrar o faturamento.');
 
                 // Add to Financial Control (Cash Flow)
-                await addTransaction(auth.currentUser.uid, {
+                const transactionId = await addTransaction(managerId, {
                     date: new Date().toISOString().split('T')[0],
                     description: `Consulta - ${selectedAppointment.patientName} (${selectedAppointment.professionalName})`,
                     category: 'Faturamento Médico',
                     amount: amount,
                     type: 'income',
-                    status: 'paid'
+                    status: 'paid',
+                    sourceBillingId: billingId
                 });
+                if (!transactionId) throw new Error('Não foi possível lançar a receita no financeiro.');
             }
 
             // Refresh Data

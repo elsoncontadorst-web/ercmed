@@ -8,7 +8,8 @@ import { getAllProfessionals } from '../services/repasseService';
 import { Patient, Appointment } from '../types/health';
 import { Professional } from '../types/finance';
 import { useUser } from '../contexts/UserContext';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
+import { getManagerIdForUser } from '../services/accessControlService';
 
 const ReceiptsView: React.FC = () => {
     const { user, userProfile, isAdminMaster, isAdmin } = useUser();
@@ -66,10 +67,8 @@ const ReceiptsView: React.FC = () => {
         if (!user) return;
 
         try {
-            const isClinicManager = userProfile?.isClinicManager === true;
-            
             // SECURITY: Only Master Admin can bypass the clinic filter
-            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+            const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
 
             if (isAdmin) {
                 // Admin/Manager vê os profissionais da sua clínica
@@ -101,7 +100,8 @@ const ReceiptsView: React.FC = () => {
             // Buscar atendimentos vinculados ao profissional selecionado
             // Nota: Se for clinic manager, user.uid é o managerId.
             // Precisamos garantir que a busca seja segura.
-            const allAppointments = await getAppointments(user.uid);
+            const managerId = isAdminMaster ? user.uid : (await getManagerIdForUser(user.uid)) || user.uid;
+            const allAppointments = await getAppointments(managerId);
 
             // Filtrar por profissional e status concluído/confirmado
             const filtered = allAppointments.filter(apt =>
@@ -120,11 +120,10 @@ const ReceiptsView: React.FC = () => {
 
         setLoading(true);
         try {
-            const isClinicManager = userProfile?.isClinicManager === true;
-            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+            const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
 
             const [receiptsData, patientsData] = await Promise.all([
-                getReceipts(user.uid, isAdminMaster),
+                getReceipts(user.uid),
                 getAllPatients(managerId)
             ]);
             setReceipts(receiptsData);

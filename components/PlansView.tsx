@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Check, Info, Crown, Star, Shield, Zap, Building2, HelpCircle } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { AccountTier, TIER_DESCRIPTIONS } from '../types/accountTiers';
+import { openMercadoPagoCheckout, openSalesContact } from '../services/mercadoPagoCheckoutService';
 
 import { AppView } from '../types';
 
@@ -23,10 +24,18 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
         setTimeout(() => setCopiedTier(null), 2000);
     };
 
-    const handleAction = (planId: string) => {
-        if (setView) {
-            setView(AppView.DASHBOARD);
+    const handleAction = (planId: AccountTier) => {
+        if (planId === AccountTier.TRIAL) {
+            setView?.(AppView.HEALTH_DASHBOARD);
+            return;
         }
+
+        if (planId === AccountTier.UNLIMITED) {
+            openSalesContact();
+            return;
+        }
+
+        openMercadoPagoCheckout(planId);
     };
 
     const plans = [

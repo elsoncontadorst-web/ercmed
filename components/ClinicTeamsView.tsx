@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Search, UserPlus, RefreshCw, ChevronRight, ChevronDown, Check, X, Shield, Plus } from 'lucide-react';
-import { getAllPatients, getTeamMembers, addTeamMember, searchPatients } from '../services/healthService';
+import React, { useEffect, useState } from 'react';
+import { Users, Search, UserPlus, RefreshCw, ChevronRight, ChevronDown, X, Shield, Plus } from 'lucide-react';
+import { getAllPatients, getTeamMembers, addTeamMember } from '../services/healthService';
 import { Patient, PatientTeamMember } from '../types/health';
 import { useUser } from '../contexts/UserContext';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { getUserByEmail } from '../services/userManagementService';
+import { getProfessionalConfig } from '../services/repasseService';
+import { getManagerIdForUser } from '../services/accessControlService';
 
 const ClinicTeamsView: React.FC = () => {
     const { user, userProfile, isAdminMaster } = useUser();
@@ -14,8 +15,6 @@ const ClinicTeamsView: React.FC = () => {
     const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
     const [teamMembers, setTeamMembers] = useState<Record<string, PatientTeamMember[]>>({});
     const [loadingTeam, setLoadingTeam] = useState<string | null>(null);
-
-    // Modal State
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
     const [emailToAdd, setEmailToAdd] = useState('');
@@ -24,18 +23,13 @@ const ClinicTeamsView: React.FC = () => {
 
     useEffect(() => {
         loadPatients();
-    }, [user, userProfile, isAdminMaster]);
+    }, [user?.uid, userProfile?.isClinicManager, isAdminMaster]);
 
     const loadPatients = async () => {
         if (!user) return;
         setLoading(true);
         try {
-            const isClinicManager = userProfile?.isClinicManager === true;
-            
-            // SECURITY: Only Master Admin can bypass the clinic filter
-            const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
-
-            // Load patients managed by this user
+            const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
             const data = await getAllPatients(managerId);
             setPatients(data);
         } catch (error) {
@@ -67,9 +61,9 @@ const ClinicTeamsView: React.FC = () => {
 
     const handleAddMember = (patient: Patient) => {
         setSelectedPatient(patient);
-        setIsAddModalOpen(true);
         setEmailToAdd('');
         setRoleToAdd('');
+        setIsAddModalOpen(true);
     };
 
     const submitAddMember = async () => {
@@ -77,38 +71,31 @@ const ClinicTeamsView: React.FC = () => {
 
         setAddingMember(true);
         try {
-            // 1. Find professional by email
-            const usersRef = collection(db, 'users');
-            const q = query(usersRef, where('email', '==', emailToAdd));
-            const snapshot = await getDocs(q);
-
-            if (snapshot.empty) {
+            const linkedUser = await getUserByEmail(emailToAdd.trim());
+            if (!linkedUser) {
                 alert('Profissional não encontrado com este e-mail.');
-                setAddingMember(false);
                 return;
             }
 
-            const professionalDoc = snapshot.docs[0];
-            const professionalData = professionalDoc.data();
+            const professionalId = linkedUser.professionalId || linkedUser.id;
+            const professional = await getProfessionalConfig(professionalId);
+            const professionalName = professional?.name || linkedUser.professionalName || linkedUser.name || 'Profissional';
+            const specialty = professional?.specialty || linkedUser.specialty || 'Geral';
 
-            // 2. Add directly to team (Manager privilege)
             await addTeamMember({
                 patientId: selectedPatient.id,
-                professionalId: professionalDoc.id,
-                professionalEmail: emailToAdd,
-                professionalName: professionalData.displayName || professionalData.name || 'Profissional',
-                specialty: professionalData.specialty || professionalData.profession || 'Geral',
+                professionalId,
+                professionalEmail: linkedUser.email || emailToAdd,
+                professionalName,
+                specialty,
                 role: roleToAdd,
                 assignedBy: userProfile?.displayName || 'Gestor'
             });
 
-            // 3. Refresh team list
             const updatedMembers = await getTeamMembers(selectedPatient.id);
             setTeamMembers(prev => ({ ...prev, [selectedPatient.id]: updatedMembers }));
-
             setIsAddModalOpen(false);
-            alert('Profissional adicionado à equipe com sucesso!');
-
+            alert('Profissional adicionado à equipe com sucesso.');
         } catch (error) {
             console.error('Error adding member:', error);
             alert('Erro ao adicionar membro à equipe.');
@@ -128,22 +115,16 @@ const ClinicTeamsView: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                         <Users className="w-7 h-7 text-brand-600" />
-                        Gestão de Equipes da Clínica
+                        Equipes por Paciente
                     </h1>
-                    <p className="text-slate-600 mt-1">
-                        Visualize e gerencie as equipes multidisciplinares de seus pacientes.
-                    </p>
+                    <p className="text-slate-600 mt-1">Visualize e gerencie quais profissionais estão vinculados ao cuidado de cada paciente.</p>
                 </div>
-                <button
-                    onClick={loadPatients}
-                    className="flex items-center gap-2 text-brand-600 hover:text-brand-700 font-medium"
-                >
+                <button onClick={loadPatients} className="flex items-center gap-2 text-brand-600 hover:text-brand-700 font-medium">
                     <RefreshCw className="w-4 h-4" />
                     Atualizar Lista
                 </button>
             </div>
 
-            {/* Search */}
             <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -157,7 +138,6 @@ const ClinicTeamsView: React.FC = () => {
                 </div>
             </div>
 
-            {/* Patients List */}
             {loading ? (
                 <div className="text-center py-20">
                     <RefreshCw className="w-8 h-8 animate-spin text-brand-600 mx-auto" />
@@ -172,10 +152,7 @@ const ClinicTeamsView: React.FC = () => {
                 <div className="space-y-4">
                     {filteredPatients.map(patient => (
                         <div key={patient.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                            <div
-                                onClick={() => togglePatient(patient.id)}
-                                className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-                            >
+                            <div onClick={() => togglePatient(patient.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors">
                                 <div className="flex items-center gap-3">
                                     <div className={`p-2 rounded-lg ${expandedPatient === patient.id ? 'bg-brand-100 text-brand-600' : 'bg-slate-100 text-slate-500'}`}>
                                         {expandedPatient === patient.id ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
@@ -184,13 +161,10 @@ const ClinicTeamsView: React.FC = () => {
                                     <p className="text-sm text-slate-500">CPF: {patient.cpf || 'Não informado'} • Nascimento: {patient.birthdate ? new Date(patient.birthdate).toLocaleDateString('pt-BR') : '-'}</p>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <span className="text-sm font-medium text-slate-500">
-                                        {teamMembers[patient.id]?.length || 0} profissionais
-                                    </span>
+                                    <span className="text-sm font-medium text-slate-500">{teamMembers[patient.id]?.length || 0} profissionais vinculados</span>
                                 </div>
                             </div>
 
-                            {/* Expanded Team View */}
                             {expandedPatient === patient.id && (
                                 <div className="border-t border-slate-100 bg-slate-50/50 p-4 animate-fade-in">
                                     <div className="flex justify-between items-center mb-4">
@@ -198,10 +172,7 @@ const ClinicTeamsView: React.FC = () => {
                                             <Shield className="w-4 h-4 text-brand-600" />
                                             Equipe Multidisciplinar Atual
                                         </h4>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleAddMember(patient); }}
-                                            className="flex items-center gap-2 text-sm bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors"
-                                        >
+                                        <button onClick={(e) => { e.stopPropagation(); handleAddMember(patient); }} className="flex items-center gap-2 text-sm bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors">
                                             <UserPlus className="w-4 h-4" />
                                             Adicionar Profissional
                                         </button>
@@ -224,7 +195,6 @@ const ClinicTeamsView: React.FC = () => {
                                                             Email: {member.professionalEmail || 'N/A'}
                                                         </div>
                                                     </div>
-                                                    {/* Manager could potentially remove/manage here too, but start with View/Add */}
                                                     <div className="h-2 w-2 rounded-full bg-green-500" title="Ativo"></div>
                                                 </div>
                                             ))}
@@ -237,7 +207,6 @@ const ClinicTeamsView: React.FC = () => {
                 </div>
             )}
 
-            {/* Add Member Modal */}
             {isAddModalOpen && selectedPatient && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
@@ -278,15 +247,12 @@ const ClinicTeamsView: React.FC = () => {
                                     value={roleToAdd}
                                     onChange={(e) => setRoleToAdd(e.target.value)}
                                     className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
-                                    placeholder="Ex: Cardiologista, Fisioterapeuta"
+                                    placeholder="Ex: Fonoaudiólogo responsável"
                                 />
                             </div>
 
                             <div className="pt-4 flex justify-end gap-3">
-                                <button
-                                    onClick={() => setIsAddModalOpen(false)}
-                                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
-                                >
+                                <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">
                                     Cancelar
                                 </button>
                                 <button

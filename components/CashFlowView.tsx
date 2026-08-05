@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, Calendar, TrendingUp, TrendingDown, Download, Loader2, BarChart3, FileText, LayoutDashboard, Calculator } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { getTransactions, SavedTransaction } from '../services/userDataService';
+import { getClinics } from '../services/clinicService';
+import { getManagerIdForUser } from '../services/accessControlService';
+import { ACTIVE_CLINIC_CHANGED_EVENT, getActiveClinicScopeId } from '../services/activeClinicStorage';
+import { recordMatchesClinicScope } from '../services/clinicScopeService';
+import { generateExecutiveFinancialPDF, generateProfessionalCashFlowPDF } from '../services/pdfGenerator';
 
 interface MonthlyData {
     monthIndex: number;
@@ -14,10 +19,19 @@ interface MonthlyData {
     accumulatedBalance: number;
 }
 
+interface ResultCenterData {
+    label: string;
+    value: number;
+}
+
 export const CashFlowView: React.FC = () => {
-    const { user } = useUser();
+    const { user, isAdminMaster } = useUser();
     const [isLoading, setIsLoading] = useState(true);
     const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
+    const [transactions, setTransactions] = useState<SavedTransaction[]>([]);
+    const [clinicNames, setClinicNames] = useState<Record<string, string>>({});
+    const [activeClinicId, setActiveClinicId] = useState<string | null>(getActiveClinicScopeId());
+    const [activeUnitName, setActiveUnitName] = useState('Grupo consolidado — todas as unidades');
     const [showForecast, setShowForecast] = useState(false);
     const [activeTab, setActiveTab] = useState<'mensal' | 'dre' | 'graficos'>('mensal');
     
@@ -29,9 +43,13 @@ export const CashFlowView: React.FC = () => {
         payroll: 0,
         operatingExpenses: 0,
         totalCosts: 0,
+        ebitda: 0,
+        breakEvenRevenue: 0,
         netProfit: 0,
         profitMargin: 0
     });
+    const [resultCenters, setResultCenters] = useState<ResultCenterData[]>([]);
+    const currentYear = new Date().getFullYear();
 
     const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -41,11 +59,29 @@ export const CashFlowView: React.FC = () => {
     };
 
     useEffect(() => {
+        const syncClinic = () => setActiveClinicId(getActiveClinicScopeId());
+        window.addEventListener(ACTIVE_CLINIC_CHANGED_EVENT, syncClinic);
+        return () => window.removeEventListener(ACTIVE_CLINIC_CHANGED_EVENT, syncClinic);
+    }, []);
+
+    useEffect(() => {
         const loadData = async () => {
             if (!user) return;
             setIsLoading(true);
             try {
-                const transactions = await getTransactions(user.uid);
+                const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
+                const ownerId = managerId || user.uid;
+                const clinics = await getClinics(ownerId);
+                setClinicNames(Object.fromEntries(clinics.map(clinic => [clinic.id, clinic.name])));
+                const allTransactions = await getTransactions(ownerId);
+                const scopedTransactions = allTransactions.filter(item => recordMatchesClinicScope(item, activeClinicId, clinics));
+                const transactions = scopedTransactions.filter(item => {
+                    const year = Number(String(item.date || '').slice(0, 4));
+                    return year === currentYear;
+                });
+                const activeClinic = activeClinicId ? clinics.find(clinic => clinic.id === activeClinicId) : undefined;
+                setActiveUnitName(activeClinic?.name || 'Grupo consolidado — todas as unidades');
+                setTransactions(transactions);
                 
                 // Initialize 12 months array
                 let currentAccumulated = 0;
@@ -61,6 +97,7 @@ export const CashFlowView: React.FC = () => {
                 }));
 
                 // Process Transactions
+                const centerMap = new Map<string, number>();
                 transactions.forEach(t => {
                     const date = new Date(t.date);
                     // Ensure we consider UTC to avoid timezone shift pushing it to prev month if midnight
@@ -73,6 +110,8 @@ export const CashFlowView: React.FC = () => {
 
                         if (t.type === 'income') {
                             months[monthIndex].revenue += amount;
+                            const centerLabel = String(t.category || 'Receita assistencial');
+                            centerMap.set(centerLabel, (centerMap.get(centerLabel) || 0) + amount);
                         } else if (t.type === 'expense') {
                             months[monthIndex].expenses += amount;
                             
@@ -108,6 +147,9 @@ export const CashFlowView: React.FC = () => {
                 
                 const netProfit = netRev - totalPayroll - operatingExp;
                 const margin = grossRev > 0 ? (netProfit / grossRev) * 100 : 0;
+                const ebitda = netRev - totalPayroll - operatingExp;
+                const fixedCosts = totalPayroll + operatingExp;
+                const breakEvenRevenue = grossRev > 0 ? fixedCosts / Math.max(0.01, (netRev / grossRev)) : fixedCosts;
 
                 setDreData({
                     grossRevenue: grossRev,
@@ -116,9 +158,17 @@ export const CashFlowView: React.FC = () => {
                     payroll: totalPayroll,
                     operatingExpenses: operatingExp,
                     totalCosts: totalPayroll + operatingExp,
+                    ebitda,
+                    breakEvenRevenue,
                     netProfit: netProfit,
                     profitMargin: margin
                 });
+                setResultCenters(
+                    Array.from(centerMap.entries())
+                        .map(([label, value]) => ({ label, value }))
+                        .sort((a, b) => b.value - a.value)
+                        .slice(0, 5)
+                );
 
             } catch (error) {
                 console.error("Erro ao carregar transações para Fluxo de Caixa:", error);
@@ -128,7 +178,7 @@ export const CashFlowView: React.FC = () => {
         };
 
         loadData();
-    }, [user]);
+    }, [user, isAdminMaster, activeClinicId, currentYear]);
 
     // Derived Projected Data
     const getProjectedData = () => {
@@ -171,8 +221,38 @@ export const CashFlowView: React.FC = () => {
     const scaleMultiplier = 100 / maxVal;
 
     const exportToPDF = () => {
-        // Simple alert for now, the user can use standard browser print or future jsPDF update
-        window.print();
+        generateProfessionalCashFlowPDF(displayData, {
+            unitName: activeUnitName,
+            periodLabel: `Ano de ${currentYear}`,
+            includeForecast: showForecast
+        });
+    };
+
+    const exportBillingReport = () => {
+        const units = new Map<string, { name: string; clinical: number; laboratory: number; other: number; total: number; entries: number }>();
+        transactions.filter(item => item.type === 'income').forEach(item => {
+            const name = activeClinicId
+                ? activeUnitName
+                : (item.unitName || (item.clinicId ? clinicNames[item.clinicId] || `Unidade ${item.clinicId}` : 'Matriz / registros anteriores'));
+            const current = units.get(name) || { name, clinical: 0, laboratory: 0, other: 0, total: 0, entries: 0 };
+            const amount = Number(item.amount || 0);
+            if (item.revenueUnit === 'laboratory') current.laboratory += amount;
+            else if (item.revenueUnit === 'clinical') current.clinical += amount;
+            else if (/\blab(?:orat[oó]rio|oratorial)?\b/i.test(`${name} ${item.description} ${item.category}`)) current.laboratory += amount;
+            else current.clinical += amount;
+            current.total += amount;
+            current.entries += 1;
+            units.set(name, current);
+        });
+        const reportUnits = Array.from(units.values()).sort((a, b) => b.total - a.total);
+        if (!reportUnits.length) {
+            window.alert(`Não há faturamento registrado em ${currentYear} para gerar o relatório.`);
+            return;
+        }
+        generateExecutiveFinancialPDF(transactions, reportUnits, monthlyData, {
+            unitName: activeUnitName,
+            periodLabel: `Ano de ${currentYear}`
+        });
     };
 
     if (isLoading) {
@@ -184,7 +264,7 @@ export const CashFlowView: React.FC = () => {
         );
     }
 
-    const { grossRevenue, totalCosts, netProfit, profitMargin } = dreData;
+    const { grossRevenue, totalCosts, netProfit, profitMargin, ebitda, breakEvenRevenue } = dreData;
 
     return (
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden animate-fade-in print:bg-white">
@@ -206,7 +286,14 @@ export const CashFlowView: React.FC = () => {
                             className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors text-sm font-bold shadow-sm print:hidden"
                         >
                             <Download className="w-4 h-4" />
-                            Imprimir PDF
+                            Extrato PDF
+                        </button>
+                        <button
+                            onClick={exportBillingReport}
+                            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white hover:bg-brand-700 rounded-lg transition-colors text-sm font-bold shadow-sm print:hidden"
+                        >
+                            <FileText className="w-4 h-4" />
+                            Relatório de faturamento
                         </button>
                         <button
                             onClick={() => setShowForecast(!showForecast)}
@@ -289,6 +376,34 @@ export const CashFlowView: React.FC = () => {
                                     <div>
                                         <p className={`text-xs font-bold uppercase ${netProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>Saldo Anual Acumulado</p>
                                         <p className={`text-xl font-black ${netProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(netProfit)}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_.8fr]">
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                    <h3 className="text-lg font-bold text-slate-800">Indicadores de controladoria</h3>
+                                    <div className="mt-5 grid gap-4 md:grid-cols-3">
+                                        <MiniIndicator label="EBITDA estimado" value={formatMoney(ebitda)} tone={ebitda >= 0 ? 'emerald' : 'red'} />
+                                        <MiniIndicator label="Ponto de equilíbrio" value={formatMoney(breakEvenRevenue)} tone="blue" />
+                                        <MiniIndicator label="Margem líquida" value={`${profitMargin.toFixed(1)}%`} tone={profitMargin >= 0 ? 'emerald' : 'red'} />
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                    <h3 className="text-lg font-bold text-slate-800">Centros de resultado</h3>
+                                    <div className="mt-4 space-y-3">
+                                        {resultCenters.length ? resultCenters.map(center => (
+                                            <div key={center.label}>
+                                                <div className="flex items-center justify-between text-sm">
+                                                    <span className="font-medium text-slate-700">{center.label}</span>
+                                                    <span className="font-bold text-slate-900">{formatMoney(center.value)}</span>
+                                                </div>
+                                                <div className="mt-1 h-2 rounded-full bg-slate-100">
+                                                    <div className="h-2 rounded-full bg-brand-600" style={{ width: `${Math.min(100, grossRevenue > 0 ? Math.max(8, (center.value / grossRevenue) * 100) : 8)}%` }} />
+                                                </div>
+                                            </div>
+                                        )) : <p className="text-sm text-slate-500">Os centros de resultado aparecerão conforme as receitas forem classificadas no ERP.</p>}
                                     </div>
                                 </div>
                             </div>
@@ -569,3 +684,18 @@ export const CashFlowView: React.FC = () => {
 };
 
 export default CashFlowView;
+
+const MiniIndicator = ({ label, value, tone }: { label: string; value: string; tone: 'emerald' | 'red' | 'blue' }) => {
+    const tones = {
+        emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        red: 'bg-red-50 text-red-700 border-red-100',
+        blue: 'bg-blue-50 text-blue-700 border-blue-100'
+    };
+
+    return (
+        <div className={`rounded-xl border p-4 ${tones[tone]}`}>
+            <p className="text-xs font-bold uppercase tracking-wide opacity-80">{label}</p>
+            <p className="mt-1 text-xl font-black">{value}</p>
+        </div>
+    );
+};

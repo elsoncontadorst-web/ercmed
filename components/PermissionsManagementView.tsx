@@ -3,9 +3,11 @@ import { getAllUsers, updateUserAccessSettings } from '../services/userManagemen
 import { SystemUser } from '../types/users';
 import { Search, Shield, Lock, Unlock, Save, Check, X, AlertTriangle } from 'lucide-react';
 import { TierBadge } from './TierBadge';
+import { useUser } from '../contexts/UserContext';
+import { getManagerIdForUser } from '../services/accessControlService';
 
 const MODULES = [
-    { key: 'healthManagement', label: 'Gestão de Saúde' },
+    { key: 'healthManagement', label: 'Operação Assistencial' },
     { key: 'financial', label: 'Financeiro' },
     { key: 'contracts', label: 'Contratos' },
     { key: 'tiss', label: 'Faturamento TISS' },
@@ -14,6 +16,7 @@ const MODULES = [
 ];
 
 const PermissionsManagementView: React.FC = () => {
+    const { user, isAdminMaster } = useUser();
     const [users, setUsers] = useState<SystemUser[]>([]);
     const [filteredUsers, setFilteredUsers] = useState<SystemUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -37,7 +40,9 @@ const PermissionsManagementView: React.FC = () => {
     const loadUsers = async () => {
         setLoading(true);
         try {
-            const allUsers = await getAllUsers();
+            if (!user) return;
+            const managerId = isAdminMaster ? undefined : (await getManagerIdForUser(user.uid)) || user.uid;
+            const allUsers = await getAllUsers(managerId);
             setUsers(allUsers);
             setFilteredUsers(allUsers);
         } catch (error) {

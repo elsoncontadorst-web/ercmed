@@ -1,20 +1,120 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ERCMed — Gestão Inteligente em Saúde
 
-# Run and deploy your AI Studio app
+Plataforma web para gestão integrada de clínicas, laboratórios, profissionais e grupos empresariais da área da saúde.
 
-This contains everything you need to run your app locally.
+Produção: [ercmed.com.br](https://ercmed.com.br)
 
-View your app in AI Studio: https://ai.studio/apps/drive/1z1Dku48In1YcyHchpPM96UEyvp1F5wmu
+## Principais recursos
 
-## Run Locally
+- Dashboard executivo por empresa ou grupo consolidado.
+- Controle financeiro com contas a receber, contas a pagar, caixa e conciliação.
+- Separação entre faturamento clínico e laboratorial.
+- Importação de planilhas Excel, XML e PDF fiscais.
+- Associação individual ou em massa de notas a profissionais e sócios.
+- Rateio de impostos conforme a participação de cada profissional no faturamento.
+- Uso prioritário dos lançamentos da categoria `Impostos e Tributos`; na ausência deles, cálculo estimado pelo Simples Nacional.
+- Painel Fiscal com memória do Fator R, RBT12, anexos e faixas do Simples Nacional.
+- Relatórios executivos financeiros em PDF.
+- Gestão de contratos, sócios, profissionais, repasses e produção.
+- Cadastro de empresas e unidades com visão consolidada.
+- Prontuário, pacientes, atendimentos, agenda e recursos clínicos.
+- Controle de acesso por plano, perfil e permissões.
 
-**Prerequisites:**  Node.js
+## Regras financeiras importantes
 
+### Empresas e unidades
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Os lançamentos e as importações são vinculados à empresa selecionada no topo do sistema. A opção **Grupo consolidado** reúne os dados das unidades permitidas ao usuário.
+
+### Importação de Excel
+
+O importador aceita arquivos `.xlsx` e `.xls` em dois formatos principais:
+
+1. **Lista de lançamentos:** uma linha por registro, com títulos como data, descrição, categoria e valor.
+2. **Grade mensal:** descrições nas linhas e meses nas colunas.
+
+Cada aba pode ser classificada como receita ou despesa. Para receitas, também é possível definir se o faturamento é clínico ou laboratorial.
+
+### XML e profissionais responsáveis
+
+As notas fiscais importadas podem ser vinculadas a profissionais ou sócios. A tela financeira permite:
+
+- selecionar várias notas e atribuir um responsável;
+- localizar notas ainda não vinculadas;
+- filtrar a lista por profissional;
+- visualizar o total do profissional no mês, ano e pesquisa selecionados;
+- baixar os XMLs arquivados.
+
+### Impostos e rateio
+
+Para cada período, o dashboard procura despesas classificadas exatamente na categoria **Impostos e Tributos**:
+
+- quando existem lançamentos, utiliza a soma desses valores como imposto apurado;
+- quando não existem, utiliza a estimativa calculada pelo Fator R e pelas regras do Simples Nacional.
+
+O imposto do período é rateado proporcionalmente ao faturamento atribuído a cada profissional.
+
+> Os valores do painel são apoio gerencial. A apuração oficial e o DAS devem ser conferidos com a contabilidade e com o PGDAS-D.
+
+## Tecnologias
+
+- React 19 e TypeScript
+- Vite
+- Tailwind CSS
+- Firebase Authentication, Firestore, Storage, Functions e Hosting
+- jsPDF e PDF.js
+- SheetJS
+
+## Ambiente local
+
+### Requisitos
+
+- Node.js 20 ou superior
+- npm
+- Projeto Firebase configurado
+
+### Instalação
+
+```bash
+npm install
+```
+
+Copie `.env.example` para `.env.local` e preencha somente as variáveis necessárias ao seu ambiente. Nunca envie `.env.local`, tokens ou chaves administrativas ao repositório.
+
+### Desenvolvimento
+
+```bash
+npm run dev
+```
+
+### Validação
+
+```bash
+npx tsc --noEmit
+npm run build
+```
+
+### Publicação no Firebase Hosting
+
+```bash
+firebase deploy --only hosting
+```
+
+## Estrutura resumida
+
+- `components/`: telas e componentes da aplicação.
+- `components/AccountantModule/`: painel fiscal e recursos contábeis.
+- `services/`: acesso a dados, regras de negócio, importações e integrações.
+- `types/`: contratos TypeScript compartilhados.
+- `functions/`: funções de backend do Firebase.
+- `public/`: arquivos públicos e marcas autorizadas exibidas na landing page.
+
+## Segurança
+
+- Credenciais privadas não devem ser armazenadas no código-fonte.
+- As regras de Firestore e Storage fazem parte do versionamento e devem ser revisadas antes de cada implantação.
+- Alterações financeiras e fiscais devem preservar o escopo da empresa selecionada.
+
+## Situação atual
+
+O projeto está em evolução ativa. Antes de publicar uma versão, execute a verificação de tipos e a compilação de produção.

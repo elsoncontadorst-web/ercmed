@@ -20,6 +20,7 @@ import {
     generateTissXml
 } from '../services/tissService';
 import { getAllPatients } from '../services/healthService';
+import { getManagerIdForUser } from '../services/accessControlService';
 import { getAllProfessionals } from '../services/repasseService';
 import { HealthInsurance, TissTable, TissGuide, TissBatch, TissGlosa, TissProcedure, TissGuideProcedure } from '../types/tiss';
 import { Patient } from '../types/health';
@@ -27,9 +28,15 @@ import { Professional } from '../types/finance';
 import { formatCNPJ, formatPhone, formatCurrency } from '../utils/formatters';
 import { useUser } from '../contexts/UserContext';
 
-const TISSView: React.FC = () => {
+type TissTab = 'CONVENIOS' | 'TABELAS' | 'GUIAS' | 'LOTES' | 'GLOSAS';
+
+interface TISSViewProps {
+    initialTab?: TissTab;
+}
+
+const TISSView: React.FC<TISSViewProps> = ({ initialTab = 'CONVENIOS' }) => {
     const { userProfile, isAdminMaster, isAdmin: isSystemAdmin } = useUser();
-    const [activeTab, setActiveTab] = useState<'CONVENIOS' | 'TABELAS' | 'GUIAS' | 'LOTES' | 'GLOSAS'>('CONVENIOS');
+    const [activeTab, setActiveTab] = useState<TissTab>(initialTab);
     const [loading, setLoading] = useState(false);
 
     // Data States
@@ -110,21 +117,24 @@ const TISSView: React.FC = () => {
         loadData();
     }, [userProfile]);
 
+    useEffect(() => {
+        setActiveTab(initialTab);
+    }, [initialTab]);
+
     const loadData = async () => {
         const user = auth.currentUser;
         if (!user) return;
 
-        const isClinicManager = userProfile?.isClinicManager === true;
-        
         // Only Master Admin can bypass the managerId filter
-        const managerId = (isClinicManager && !isAdminMaster) ? user.uid : undefined;
+        const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
+        const tenantId = managerId || user.uid;
 
         const [insurancesData, tablesData, guidesData, batchesData, glosasData, patientsData, professionalsData] = await Promise.all([
-            getHealthInsurances(user.uid),
-            getTissTables(user.uid),
-            getTissGuides(user.uid),
-            getTissBatches(user.uid),
-            getTissGlosas(user.uid),
+            getHealthInsurances(tenantId),
+            getTissTables(tenantId),
+            getTissGuides(tenantId),
+            getTissBatches(tenantId),
+            getTissGlosas(tenantId),
             getAllPatients(managerId),
             getAllProfessionals(managerId)
         ]);
