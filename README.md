@@ -118,3 +118,14 @@ firebase deploy --only hosting
 ## Situação atual
 
 O projeto está em evolução ativa. Antes de publicar uma versão, execute a verificação de tipos e a compilação de produção.
+
+## Documentação de continuidade
+
+Para manutenção, troca de computador ou recuperação do projeto, consulte:
+
+- [Troca de computador e recuperação](docs/RECUPERACAO.md)
+- [Configuração do ambiente](docs/AMBIENTE.md)
+- [Publicação e checklist de versão](docs/PUBLICACAO.md)
+- [Backup de código, dados e credenciais](docs/BACKUP.md)
+
+O GitHub armazena o código e esta documentação. Os dados do Firestore, arquivos do Storage e credenciais privadas precisam de rotinas próprias de backup.
