@@ -78,7 +78,7 @@ export const canAccessView = (
     AppView.BILLING_MANAGEMENT, AppView.TISS_BILLING, AppView.REPASSE_DASHBOARD,
   ].includes(view)) return permissions.canManageBilling;
   if ([AppView.INVENTORY].includes(view)) return permissions.canManageInventory;
-  if ([AppView.CONTRACTS, AppView.SERVICE_CATALOG].includes(view)) return permissions.canManageContracts;
+    if ([AppView.CONTRACTS, AppView.SERVICE_CATALOG, AppView.SERVICES_PROCEDURES, AppView.PRICE_TABLES].includes(view)) return permissions.canManageContracts;
   if ([AppView.USERS_MANAGEMENT].includes(view)) return permissions.canManageUsers;
   if ([AppView.CLINICS, AppView.PERMISSIONS_MANAGEMENT].includes(view)) return permissions.canManageSettings;
 

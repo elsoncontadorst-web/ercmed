@@ -108,7 +108,7 @@ export const resolveClinicServicePrice = async (
 
   const candidates = services.filter(item =>
     item.active &&
-    item.payer === context.payer &&
+    ((item.payers?.length ? item.payers.includes(context.payer) : item.payer === context.payer)) &&
     item.code === baseService.code &&
     item.name === baseService.name &&
     isRuleEffective(item, context.date)

@@ -46,7 +46,7 @@ export const registerProductionEntry = async (entry: ProductionEntry) => {
     unitName: entry.unitName
   });
   if (!requestedService || !service) throw new Error('Serviço ativo não encontrado na tabela de preços.');
-  if (service.payer !== entry.payer) throw new Error('O serviço selecionado não corresponde ao pagador informado.');
+  if (!(service.payers?.length ? service.payers.includes(entry.payer) : service.payer === entry.payer)) throw new Error('O serviço selecionado não corresponde ao pagador informado.');
 
   const taxPercentage = entry.professional.repasseConfig?.taxRate || 0;
   const repassePercentage = entry.professional.repasseConfig?.splitPercentage || 0;

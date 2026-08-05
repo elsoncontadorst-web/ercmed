@@ -15,6 +15,7 @@ export interface ClinicService {
   durationMinutes: number;
   modality: 'in_person' | 'online' | 'home';
   payer: ServicePayer;
+  payers?: ServicePayer[];
   grossPrice: number;
   minimumPrice?: number;
   tussCode?: string;

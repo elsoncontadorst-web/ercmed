@@ -12,6 +12,8 @@ import { Professional } from '../types/finance';
 import { ClinicService, InventoryItem, ServicePayer } from '../types/clinicErp';
 import { getActiveClinicScopeId, ACTIVE_CLINIC_CHANGED_EVENT } from '../services/activeClinicStorage';
 import { getClinics } from '../services/clinicService';
+import { getHealthInsurances } from '../services/tissService';
+import { HealthInsurance } from '../types/tiss';
 
 const today = new Date().toISOString().slice(0, 10);
 const money = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -22,6 +24,7 @@ const ProductionEntryView: React.FC = () => {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [services, setServices] = useState<ClinicService[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [healthInsurances, setHealthInsurances] = useState<HealthInsurance[]>([]);
   const [resolvedPrice, setResolvedPrice] = useState<ClinicService | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -71,10 +74,11 @@ const ProductionEntryView: React.FC = () => {
     (async () => {
       if (!user) return;
       const managerId = (await getManagerIdForUser(user.uid)) || user.uid;
-      const [availableProfessionals, availableServices, availableInventory] = await Promise.all([
+      const [availableProfessionals, availableServices, availableInventory, availableInsurances] = await Promise.all([
         getAllProfessionals(managerId, activeClinicId || undefined),
         getClinicServices(managerId),
-        getInventoryItems(managerId)
+        getInventoryItems(managerId),
+        getHealthInsurances(managerId)
       ]);
       setProfessionals(availableProfessionals);
       setServices(
@@ -83,6 +87,7 @@ const ProductionEntryView: React.FC = () => {
           : availableServices
       );
       setInventoryItems(availableInventory.filter(item => item.active));
+      setHealthInsurances(availableInsurances.filter(item => item.active));
       const ownProfessional = availableProfessionals.find(item => item.userId === user.uid);
       if (ownProfessional) setForm(current => ({ ...current, professionalId: ownProfessional.id }));
     })();
@@ -90,7 +95,7 @@ const ProductionEntryView: React.FC = () => {
 
   const canChooseProfessional = isAdmin || userProfile?.isClinicManager === true;
   const availableServices = useMemo(
-    () => services.filter(item => item.active && item.payer === form.payer),
+    () => services.filter(item => item.active && (item.payers?.length ? item.payers.includes(form.payer) : item.payer === form.payer)),
     [services, form.payer]
   );
   const selectedService = services.find(item => item.id === form.serviceId);
@@ -241,7 +246,7 @@ const ProductionEntryView: React.FC = () => {
         </Field>
 
         <Field label="Pagador">
-          <select value={form.payer} onChange={e => setForm({ ...form, payer: e.target.value as ServicePayer, serviceId: '' })} className="input">
+          <select value={form.payer} onChange={e => setForm({ ...form, payer: e.target.value as ServicePayer, serviceId: '', contractName: '' })} className="input">
             <option value="private">Particular</option>
             <option value="insurance">Convenio</option>
             <option value="contract">Contrato/empresa</option>
@@ -256,7 +261,26 @@ const ProductionEntryView: React.FC = () => {
         </Field>
 
         <Field label="Contrato ou convenio">
-          <input value={form.contractName} onChange={e => setForm({ ...form, contractName: e.target.value })} className="input" placeholder="Opcional para resolver regra comercial" />
+          {form.payer === 'insurance' && healthInsurances.length > 0 ? (
+            <select value={form.contractName} onChange={e => setForm({ ...form, contractName: e.target.value })} className="input">
+              <option value="">Selecione o convenio</option>
+              {healthInsurances.map(insurance => (
+                <option key={insurance.id} value={insurance.name}>{insurance.name}</option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <input
+                value={form.contractName}
+                onChange={e => setForm({ ...form, contractName: e.target.value })}
+                className="input"
+                placeholder={form.payer === 'insurance' ? 'Nenhum convenio cadastrado' : 'Opcional para resolver regra comercial'}
+              />
+              {form.payer === 'insurance' && (
+                <p className="mt-1 text-xs text-amber-600">Cadastre o convenio em Recursos &gt; Convenios e Planos para seleciona-lo aqui.</p>
+              )}
+            </>
+          )}
         </Field>
 
         {form.attendanceKind === 'package' && (

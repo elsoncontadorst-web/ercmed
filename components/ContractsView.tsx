@@ -8,7 +8,7 @@ import { canAddProfessional, getUserTierInfo } from '../services/accountTierServ
 import { AccountTier, TIER_NAMES, getProfessionalLimitText } from '../types/accountTiers';
 import { UserRole } from '../types';
 import { SystemUser } from '../types/users';
-import { createUserByAdmin, linkUserToManager, getUserByEmail, getAllUsers } from '../services/userManagementService';
+import { createUserByAdmin, linkUserToManager, getUserByEmail, getAllUsers, deleteUser } from '../services/userManagementService';
 import { Lock, Copy, Check } from 'lucide-react';
 import { getPendingRequestsForManager, approveLinkRequest, rejectLinkRequest } from '../services/clinicLinkService';
 import { ClinicLinkRequest } from '../types/clinic_link_requests';
@@ -524,6 +524,28 @@ const ContractsView: React.FC = () => {
         setShowModal(true);
     };
 
+    const handleDeletePendingProfessional = async (professional: SystemUser) => {
+        if (hasContract(professional)) {
+            alert('Este profissional possui contrato. Exclua o contrato antes de remover o cadastro pendente.');
+            return;
+        }
+        const professionalName = professional.professionalName || professional.name;
+        if (!confirm(`Excluir a pendência contratual de ${professionalName}?`)) return;
+
+        setLoading(true);
+        try {
+            const removed = await deleteUser(professional.id);
+            if (!removed) throw new Error('Não foi possível excluir o cadastro pendente.');
+            setClinicProfessionals(previous => previous.filter(item => item.id !== professional.id));
+            alert('Pendência contratual excluída.');
+        } catch (error) {
+            console.error('Erro ao excluir pendência contratual:', error);
+            alert('Não foi possível excluir a pendência contratual.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleCreateContractForUser = (professional: SystemUser) => {
         resetForm();
         setLinkedUserId(professional.id);
@@ -777,7 +799,18 @@ const ContractsView: React.FC = () => {
                                                     {contracted ? (
                                                         <button onClick={() => setActiveView('contracts')} className="text-sm font-medium text-blue-600 hover:underline">Ver contrato</button>
                                                     ) : (
-                                                        <button onClick={() => handleCreateContractForUser(professional)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Criar contrato</button>
+                                                        <div className="flex justify-end gap-2">
+                                                            <button onClick={() => handleCreateContractForUser(professional)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Criar contrato</button>
+                                                            <button
+                                                                onClick={() => handleDeletePendingProfessional(professional)}
+                                                                disabled={loading}
+                                                                className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                                title="Excluir pendência"
+                                                                aria-label={`Excluir pendência de ${professional.professionalName || professional.name}`}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </td>
                                             </tr>

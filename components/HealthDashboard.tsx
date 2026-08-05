@@ -73,7 +73,7 @@ const currency = (value: number) =>
     style: 'currency',
     currency: 'BRL',
     maximumFractionDigits: 0,
-  }).format(value || 0);
+  }).format(Math.abs(value || 0) < 0.005 ? 0 : value || 0);
 
 const percentage = (part: number, total: number) => (total ? (part / total) * 100 : 0);
 
@@ -187,6 +187,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [activeClinicId, setActiveClinicId] = useState<string | null>(getActiveClinicScopeId());
   const [selectedPeriod, setSelectedPeriod] = useState('');
+  const [periodView, setPeriodView] = useState<'monthly' | 'annual'>('monthly');
   const [showSimplesAllocation, setShowSimplesAllocation] = useState(false);
 
   const loadDashboard = async () => {
@@ -250,11 +251,22 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
     const [periodYear, periodMonth] = periodKey.split('-').map(Number);
     const previousDate = new Date(periodYear, periodMonth - 2, 1);
     const previousKey = dateMonthKey(previousDate);
-    const isInSelectedPeriod = (date?: string) => Boolean(date && date.slice(0, 7) === periodKey);
+    const selectedYear = String(periodYear);
+    const previousYear = String(periodYear - 1);
+    const isWithinAnnualCutoff = (date?: string) => {
+      const month = Number(date?.slice(5, 7));
+      return Number.isFinite(month) && month >= 1 && month <= periodMonth;
+    };
+    const isInSelectedPeriod = (date?: string) => Boolean(date && (periodView === 'annual'
+      ? date.slice(0, 4) === selectedYear && isWithinAnnualCutoff(date)
+      : date.slice(0, 7) === periodKey));
+    const isInPreviousPeriod = (date?: string) => Boolean(date && (periodView === 'annual'
+      ? date.slice(0, 4) === previousYear && isWithinAnnualCutoff(date)
+      : date.slice(0, 7) === previousKey));
     const monthBillings = data.billings.filter(item => isInSelectedPeriod(item.consultationDate));
     const monthTransactions = data.transactions.filter(item => isInSelectedPeriod(item.date));
-    const previousBillings = data.billings.filter(item => item.consultationDate?.slice(0, 7) === previousKey);
-    const previousTransactions = data.transactions.filter(item => item.date?.slice(0, 7) === previousKey);
+    const previousBillings = data.billings.filter(item => isInPreviousPeriod(item.consultationDate));
+    const previousTransactions = data.transactions.filter(item => isInPreviousPeriod(item.date));
     const incomeTransactions = monthTransactions.filter(item => item.type === 'income');
     const paidIncomeTransactions = incomeTransactions.filter(item => item.status === 'paid');
     const expenseTransactions = monthTransactions.filter(item => item.type === 'expense');
@@ -302,13 +314,33 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
     });
     const factorR = calculateFactorR(mergeFactorRMonths(factorAutomatic, data.factorRSettings), billed);
     const simples = factorR.simples || calculateExecutiveSimples(billed, rbt12, 'III');
-    const taxExpenseAmount = expenseTransactions
+    const getTaxCompetence = (item: { competence?: string; date?: string }) => {
+      if (/^\d{4}-\d{2}$/.test(item.competence || '')) return item.competence as string;
+      if (!item.date) return '';
+      const [year, month] = item.date.slice(0, 7).split('-').map(Number);
+      return dateMonthKey(new Date(year, month - 2, 1));
+    };
+    const taxTransactionsPaidInPeriod = expenseTransactions
       .filter(item => (item.category || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase() === 'impostos e tributos')
+    const taxExpenseAmount = taxTransactionsPaidInPeriod
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const hasTaxExpense = taxExpenseAmount > 0;
+    const hasInferredTaxCompetence = taxTransactionsPaidInPeriod.some(item => !item.competence);
+    const taxCompetenceKeys = Array.from(new Set(taxTransactionsPaidInPeriod.map(getTaxCompetence).filter(Boolean)));
+    const allocationPeriodKeys = hasTaxExpense ? taxCompetenceKeys : (periodView === 'annual'
+      ? Array.from({ length: 12 }, (_, index) => `${selectedYear}-${String(index + 1).padStart(2, '0')}`)
+      : [periodKey]);
+    const allocationBillings = data.billings.filter(item => allocationPeriodKeys.includes(item.consultationDate?.slice(0, 7) || ''));
+    const allocationIncomeTransactions = data.transactions.filter(item =>
+      item.type === 'income' && allocationPeriodKeys.includes(item.date?.slice(0, 7) || '')
+    );
+    const allocationBilled = allocationBillings.reduce((sum, item) => sum + Number(item.grossAmount || 0), 0)
+      + allocationIncomeTransactions
+        .filter(item => !item.sourceBillingId && item.sourceType !== 'billing' && item.sourceType !== 'production_entry')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const taxForAllocation = hasTaxExpense ? taxExpenseAmount : (simples.impostoMensalEstimado || 0);
-    const displayedEffectiveRate = hasTaxExpense && billed > 0
-      ? (taxExpenseAmount / billed) * 100
+    const displayedEffectiveRate = hasTaxExpense && allocationBilled > 0
+      ? (taxExpenseAmount / allocationBilled) * 100
       : simples.aliquotaEfetiva;
     const professionalRevenue = new Map<string, { name: string; revenue: number; unassigned: boolean }>();
     const addProfessionalRevenue = (id: string | undefined, name: string | undefined, amount: number) => {
@@ -321,8 +353,8 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
         unassigned: !id && !normalizedName,
       });
     };
-    monthBillings.forEach(item => addProfessionalRevenue(item.professionalId, item.professionalName, item.grossAmount));
-    incomeTransactions
+    allocationBillings.forEach(item => addProfessionalRevenue(item.professionalId, item.professionalName, item.grossAmount));
+    allocationIncomeTransactions
       .filter(item => !item.sourceBillingId && item.sourceType !== 'billing' && item.sourceType !== 'production_entry')
       .forEach(item => addProfessionalRevenue(item.professionalId, item.professionalName, item.amount));
     const estimatedTaxCents = Math.max(0, Math.round(taxForAllocation * 100));
@@ -332,7 +364,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
       .filter(item => item.revenue > 0)
       .sort((a, b) => b.revenue - a.revenue);
     const simplesAllocation = allocationBase.map((item, index) => {
-      const share = billed > 0 ? item.revenue / billed : 0;
+      const share = allocationBilled > 0 ? item.revenue / allocationBilled : 0;
       const taxCents = index === allocationBase.length - 1
         ? estimatedTaxCents - allocatedTaxCents
         : Math.round(estimatedTaxCents * share);
@@ -362,7 +394,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
     const grossProfit = billed - expenses;
     const cash = income - paidExpenses;
     const openingBalance = data.transactions
-      .filter(item => item.date && item.date.slice(0, 7) < periodKey && item.status === 'paid')
+      .filter(item => item.date && (periodView === 'annual' ? item.date.slice(0, 4) < selectedYear : item.date.slice(0, 7) < periodKey) && item.status === 'paid')
       .reduce((sum, item) => sum + (item.type === 'income' ? item.amount || 0 : -(item.amount || 0)), 0);
     const previousIncome = previousTransactions.filter(item => item.type === 'income' && item.status === 'paid').reduce((sum, item) => sum + (item.amount || 0), 0);
     const previousExpenses = previousTransactions.filter(item => item.type === 'expense' && item.status === 'paid').reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -377,7 +409,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
       .filter(item => item.paymentStatus !== 'cancelled')
       .reduce((sum, item) => sum + (item.repasseAmount || 0), 0);
     const previousStatementRepasses = data.statements
-      .filter(item => item.periodEnd?.slice(0, 7) === previousKey)
+      .filter(item => isInPreviousPeriod(item.periodEnd))
       .reduce((sum, item) => sum + (item.netAmount || 0), 0);
     const previousRepasses = previousProvisionedRepasses > 0 ? previousProvisionedRepasses : previousStatementRepasses;
     const previousResult = previousReceived - previousExpenses - previousTaxes - previousRepasses;
@@ -390,26 +422,31 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
     );
     const priorPatientKeys = new Set(
       data.appointments
-        .filter(item => item.status === 'completed' && item.date?.slice(0, 7) < periodKey)
+        .filter(item => item.status === 'completed' && (periodView === 'annual' ? item.date?.slice(0, 4) < selectedYear : item.date?.slice(0, 7) < periodKey))
         .map(item => item.patientId || item.patientName)
         .filter(Boolean)
     );
     const returningPatients = Array.from(currentPatientKeys).filter(key => priorPatientKeys.has(key)).length;
-    const newPatients = data.patients.filter(item => timestampMonthKey(item.createdAt) === periodKey).length;
+    const newPatients = data.patients.filter(item => {
+      const createdPeriod = timestampMonthKey(item.createdAt);
+      return periodView === 'annual' ? createdPeriod.slice(0, 4) === selectedYear : createdPeriod === periodKey;
+    }).length;
     const activeProfessionalCount = new Set(
       appointments
         .filter(item => item.status === 'completed')
         .map(item => item.professionalId || item.professionalName)
         .filter(Boolean)
     ).size;
-    const daily = [1, 8, 15, 22, 29].map(day => {
-      const prefix = `${periodKey}-${String(day).padStart(2, '0')}`;
+    const chartPeriods = periodView === 'annual'
+      ? [1, 4, 7, 10, 12].map(month => ({ label: new Date(periodYear, month - 1, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''), prefix: `${selectedYear}-${String(month).padStart(2, '0')}` }))
+      : [1, 8, 15, 22, 29].map(day => ({ label: String(day).padStart(2, '0'), prefix: `${periodKey}-${String(day).padStart(2, '0')}` }));
+    const daily = chartPeriods.map(({ label, prefix }) => {
       const billedDayFromBilling = monthBillings.filter(item => item.consultationDate?.startsWith(prefix)).reduce((sum, item) => sum + (item.grossAmount || 0), 0);
       const billedDayFromTransactions = monthTransactions
         .filter(item => item.type === 'income' && !item.sourceBillingId && item.sourceType !== 'billing' && item.sourceType !== 'production_entry' && item.date?.startsWith(prefix))
         .reduce((sum, item) => sum + (item.amount || 0), 0);
       const expenseDay = monthTransactions.filter(item => item.type === 'expense' && item.status === 'paid' && item.date?.startsWith(prefix)).reduce((sum, item) => sum + (item.amount || 0), 0);
-      return { label: String(day).padStart(2, '0'), income: billedDayFromBilling + billedDayFromTransactions, expenses: expenseDay };
+      return { label, income: billedDayFromBilling + billedDayFromTransactions, expenses: expenseDay };
     });
 
     const resultCentersMap = new Map<string, number>();
@@ -431,6 +468,9 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
       rbt12,
       simples,
       hasTaxExpense,
+      hasInferredTaxCompetence,
+      taxCompetenceKeys,
+      allocationBilled,
       taxForAllocation,
       displayedEffectiveRate,
       simplesAllocation,
@@ -467,7 +507,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
       healthScore: calculateHealthScore({ cash, pending, billed, result, expenses }),
       savingsProjection: calculateSavingsProjection({ expenses, taxes, repasses, result }),
     };
-  }, [data, selectedPeriod]);
+  }, [data, selectedPeriod, periodView]);
 
   const alerts = [
     dashboard.pending > 0 ? { title: 'Recebimentos pendentes', detail: `${currency(dashboard.pending)} em aberto`, view: AppView.BILLING_MANAGEMENT } : null,
@@ -506,16 +546,44 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
             <p className="text-sm text-slate-500">Visão geral da gestão da sua empresa de saúde</p>
           </div>
           <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1" aria-label="Tipo de visão do dashboard">
+              <button
+                type="button"
+                onClick={() => setPeriodView('monthly')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${periodView === 'monthly' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                Mensal
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodView('annual')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${periodView === 'annual' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                Anual
+              </button>
+            </div>
             <select
-              value={selectedPeriod}
-              onChange={event => setSelectedPeriod(event.target.value)}
+              value={periodView === 'annual' ? (selectedPeriod || dateMonthKey()).slice(0, 4) : selectedPeriod}
+              onChange={event => {
+                if (periodView === 'annual') {
+                  const periodForYear = availablePeriods.find(period => period.startsWith(`${event.target.value}-`));
+                  setSelectedPeriod(periodForYear || `${event.target.value}-01`);
+                } else {
+                  setSelectedPeriod(event.target.value);
+                }
+              }}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 outline-none focus:border-brand-500"
               aria-label="Período do dashboard"
             >
-              {availablePeriods.map(period => {
+              {(periodView === 'annual'
+                ? availablePeriods.filter((period, index, periods) => periods.findIndex(item => item.slice(0, 4) === period.slice(0, 4)) === index)
+                : availablePeriods
+              ).map(period => {
                 const [year, month] = period.split('-').map(Number);
-                const label = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-                return <option key={period} value={period}>{label.charAt(0).toUpperCase() + label.slice(1)}</option>;
+                const label = periodView === 'annual'
+                  ? String(year)
+                  : new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+                return <option key={period} value={periodView === 'annual' ? String(year) : period}>{label.charAt(0).toUpperCase() + label.slice(1)}</option>;
               })}
               {availablePeriods.length === 0 && <option value={selectedPeriod || dateMonthKey()}>Este mês</option>}
             </select>
@@ -532,6 +600,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
           <Metric label="Margem Líquida" value={`${percentage(dashboard.result, dashboard.received || dashboard.billed).toFixed(1)}%`} detail="Resultado sobre receita" tone="green" values={dashboard.daily.map(item => item.income - item.expenses)} />
           <Metric label="Faturamento Clínico" value={currency(dashboard.clinicalBilled)} detail="Produzido no período" tone="teal" values={dashboard.daily.map(item => item.income)} />
           {dashboard.hasLaboratoryRevenue && <Metric label="Faturamento Laboratorial" value={currency(dashboard.laboratoryBilled)} detail="Produzido no período" tone="blue" values={dashboard.daily.map(item => item.income)} />}
+          {!dashboard.hasLaboratoryRevenue && <Metric label="Imposto estimado da competência" value={dashboard.factorR.annex ? currency(dashboard.simples.impostoMensalEstimado) : 'Pendente'} detail={`Estimativa sobre o faturamento ${periodView === 'annual' ? 'do ano' : 'do mês'}`} tone="orange" values={dashboard.daily.map(item => item.income * (dashboard.simples.aliquotaEfetiva || 0) / 100)} />}
           <Metric label="EBITDA" value={currency(dashboard.ebitda)} detail="Resultado operacional" tone="blue" values={dashboard.daily.map(item => item.income)} />
           <Metric label="Saldo do Período" value={currency(dashboard.cash)} detail="Entradas menos saídas registradas" tone="violet" values={dashboard.daily.map(item => item.income - item.expenses)} />
           <Metric label="Inadimplência" value={`${percentage(dashboard.pending, dashboard.billed).toFixed(1)}%`} detail="Títulos em aberto" tone="orange" values={dashboard.daily.map(item => item.expenses)} />
@@ -540,20 +609,20 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
         <section className="grid grid-cols-1 gap-3 xl:grid-cols-4">
           <TaxCard label="RBT12" value={currency(dashboard.factorR.revenue12 || dashboard.rbt12)} detail="Receita acumulada dos últimos 12 meses" />
           <TaxCard label="Fator R" value={dashboard.factorR.factorR === null ? 'Pendente' : `${(dashboard.factorR.factorR * 100).toFixed(2)}%`} detail={dashboard.factorR.annex ? `Anexo ${dashboard.factorR.annex} · ${dashboard.simples.faixa}ª faixa` : 'Anexo pendente de validação'} />
-          <TaxCard label={dashboard.hasTaxExpense ? 'Alíquota apurada' : 'Alíquota efetiva'} value={(dashboard.hasTaxExpense || dashboard.factorR.annex) ? `${dashboard.displayedEffectiveRate.toFixed(2)}%` : 'Pendente'} detail={dashboard.hasTaxExpense ? 'Calculada pelos lançamentos de Impostos e Tributos' : (dashboard.factorR.annex ? `Nominal ${dashboard.simples.aliquotaNominal.toFixed(2)}%` : 'Informe a folha no Painel Fiscal')} />
+          <TaxCard label="Alíquota do imposto lançado" value={dashboard.hasTaxExpense && dashboard.allocationBilled > 0 ? `${dashboard.displayedEffectiveRate.toFixed(2)}%` : 'Aguardando'} detail={dashboard.hasTaxExpense ? (dashboard.hasInferredTaxCompetence ? 'Comparada ao faturamento do mês anterior' : `Comparada ao faturamento da competência ${dashboard.taxCompetenceKeys.join(', ')}`) : 'Nenhum imposto lançado para pagamento no mês'} />
           <TaxCard
-            label={dashboard.hasTaxExpense ? 'Imposto lançado' : 'Imposto estimado'}
-            value={(dashboard.hasTaxExpense || dashboard.factorR.annex) ? currency(dashboard.taxForAllocation) : 'Pendente'}
-            detail={dashboard.hasTaxExpense ? 'Total da categoria Impostos e Tributos no período' : (dashboard.factorR.annex ? 'Baseado no faturamento, RBT12 e Fator R' : 'Aguardando validação do Fator R')}
-            action={dashboard.factorR.annex ? (showSimplesAllocation ? 'Ocultar rateio' : 'Ver rateio') : undefined}
+            label={`Imposto lançado no ${periodView === 'annual' ? 'ano' : 'mês'}`}
+            value={dashboard.hasTaxExpense ? currency(dashboard.taxForAllocation) : currency(0)}
+            detail={dashboard.hasTaxExpense ? (dashboard.hasInferredTaxCompetence ? 'Pagamento referente ao mês anterior; confirme a competência' : `Referente à competência ${dashboard.taxCompetenceKeys.join(', ')}`) : 'Nenhum lançamento em Impostos e Tributos'}
+            action={dashboard.hasTaxExpense ? (showSimplesAllocation ? 'Ocultar rateio' : 'Ver rateio') : undefined}
             onAction={() => setShowSimplesAllocation(value => !value)}
           />
         </section>
 
-        {showSimplesAllocation && dashboard.factorR.annex && (
+        {showSimplesAllocation && dashboard.hasTaxExpense && (
           <SimplesAllocationPanel
             rows={dashboard.simplesAllocation}
-            totalRevenue={dashboard.billed}
+            totalRevenue={dashboard.allocationBilled}
             totalTax={dashboard.taxForAllocation}
             onAssign={() => setView?.(AppView.FINANCIAL_CONTROL)}
           />
@@ -592,7 +661,12 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
 
         <section className="grid grid-cols-1 gap-3 xl:grid-cols-12">
           <ChartCard title="Desempenho Financeiro" action="Ver relatório completo" onAction={() => setView?.(AppView.CASH_FLOW)} className="xl:col-span-4">
-            <FinancialPerformanceTable current={{ operationalRevenue: dashboard.operationalRevenue, expenses: dashboard.expenses, grossProfit: dashboard.grossProfit, ebitda: dashboard.ebitda, result: dashboard.result }} previous={dashboard.previous} />
+            <FinancialPerformanceTable
+              current={{ operationalRevenue: dashboard.operationalRevenue, expenses: dashboard.expenses, grossProfit: dashboard.grossProfit, ebitda: dashboard.ebitda, result: dashboard.result }}
+              previous={dashboard.previous}
+              currentLabel={periodView === 'annual' ? `${(selectedPeriod || dateMonthKey()).slice(0, 4)} até o mês` : 'Valor atual'}
+              previousLabel={periodView === 'annual' ? `${Number((selectedPeriod || dateMonthKey()).slice(0, 4)) - 1} até o mesmo mês` : 'Mês anterior'}
+            />
           </ChartCard>
           <ChartCard title="Indicadores Empresariais" className="xl:col-span-4">
             <Indicators received={dashboard.received} billed={dashboard.billed} appointments={dashboard.appointments.length} expenses={dashboard.expenses} completed={dashboard.completed} newPatients={dashboard.newPatients} returnRate={dashboard.returnRate} activeProfessionalCount={dashboard.activeProfessionalCount} />
@@ -786,7 +860,12 @@ interface FinancialPeriodSummary {
   result: number;
 }
 
-const FinancialPerformanceTable = ({ current, previous }: { current: FinancialPeriodSummary; previous: FinancialPeriodSummary }) => {
+const FinancialPerformanceTable = ({ current, previous, currentLabel, previousLabel }: {
+  current: FinancialPeriodSummary;
+  previous: FinancialPeriodSummary;
+  currentLabel: string;
+  previousLabel: string;
+}) => {
   const rows = [
     { label: 'Receita Operacional', current: current.operationalRevenue, previous: previous.operationalRevenue },
     { label: 'Custos e Despesas', current: current.expenses, previous: previous.expenses },
@@ -801,22 +880,23 @@ const FinancialPerformanceTable = ({ current, previous }: { current: FinancialPe
         <thead className="border-b text-slate-400">
           <tr>
             <th className="pb-2 font-medium">Indicador</th>
-            <th className="pb-2 font-medium">Valor Atual</th>
-            <th className="pb-2 font-medium">Mês Anterior</th>
+            <th className="pb-2 font-medium">{currentLabel}</th>
+            <th className="pb-2 font-medium">{previousLabel}</th>
             <th className="pb-2 font-medium">Variação</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(row => {
-            const variation = row.previous ? ((row.current - row.previous) / row.previous) * 100 : 0;
+            const hasComparisonBase = Math.abs(row.previous) >= 0.01;
+            const variation = hasComparisonBase ? ((row.current - row.previous) / Math.abs(row.previous)) * 100 : 0;
             const positive = variation >= 0;
             return (
               <tr key={row.label} className="border-b border-slate-50">
                 <td className="py-2 font-semibold text-slate-700">{row.label}</td>
                 <td className="py-2 text-slate-600">{currency(row.current)}</td>
                 <td className="py-2 text-slate-500">{currency(row.previous)}</td>
-                <td className={`py-2 font-semibold ${row.previous === 0 ? 'text-slate-400' : positive ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {row.previous === 0 ? 'Sem base' : `${positive ? '+' : ''}${variation.toFixed(1)}%`}
+                <td className={`py-2 font-semibold ${!hasComparisonBase ? 'text-slate-400' : positive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {!hasComparisonBase ? 'Sem base' : `${positive ? '+' : ''}${variation.toFixed(1)}%`}
                 </td>
               </tr>
             );

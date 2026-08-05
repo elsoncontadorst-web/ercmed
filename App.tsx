@@ -297,6 +297,8 @@ function App() {
             case AppView.REPASSE_DASHBOARD:
               return <RepasseDashboard />;
             case AppView.BILLING_MANAGEMENT:
+            case AppView.BILLING_PRODUCTION:
+            case AppView.BILLING_PRIVATE:
               return <BillingView />;
             case AppView.REPASSE_CALCULATION:
               return <RepasseCalculationView />;
@@ -318,6 +320,8 @@ function App() {
             case AppView.BILLING_AUDIT:
               return <TISSView initialTab="GLOSAS" />;
             case AppView.SERVICE_CATALOG:
+            case AppView.SERVICES_PROCEDURES:
+            case AppView.PRICE_TABLES:
               return <ServiceCatalogView />;
             case AppView.FISCAL_IMPORT:
               return <FiscalImportView />;
@@ -345,13 +349,9 @@ function App() {
               return <BankReconciliationView />;
             case AppView.COLLECTIONS:
               return <FinancialControlView initialTab="transactions" />;
-            case AppView.BILLING_PRODUCTION:
-            case AppView.BILLING_PRIVATE:
             case AppView.PROFESSIONALS:
             case AppView.PROFESSIONAL_PRODUCTION:
             case AppView.PROFESSIONAL_SCALES:
-            case AppView.SERVICES_PROCEDURES:
-            case AppView.PRICE_TABLES:
             case AppView.SUPPLIERS:
             case AppView.PURCHASES:
             case AppView.COST_CENTERS:

@@ -271,8 +271,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       {
         title: 'Faturamento',
         items: [
-          { view: AppView.BILLING_MANAGEMENT, label: 'Produção', icon: ClipboardList, activeViews: [AppView.BILLING_PRODUCTION] },
-          { view: AppView.BILLING_MANAGEMENT, label: 'Particular', icon: Receipt, activeViews: [AppView.BILLING_PRIVATE] },
+          { view: AppView.BILLING_PRODUCTION, label: 'Produção', icon: ClipboardList },
+          { view: AppView.BILLING_PRIVATE, label: 'Particular', icon: Receipt },
           { view: AppView.BILLING_INSURANCE, label: 'Convênios', icon: Building2 },
           { view: AppView.BILLING_GUIDES, label: 'Guias e Lotes', icon: FileSpreadsheet },
           { view: AppView.TISS_BILLING, label: 'TISS', icon: FileBox },
@@ -292,8 +292,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       {
         title: 'Recursos',
         items: [
-          { view: AppView.SERVICE_CATALOG, label: 'Serviços e Procedimentos', icon: Tags, activeViews: [AppView.SERVICES_PROCEDURES] },
-          { view: AppView.SERVICE_CATALOG, label: 'Tabelas de Preços', icon: DollarSign, activeViews: [AppView.PRICE_TABLES] },
+          { view: AppView.SERVICES_PROCEDURES, label: 'Serviços e Procedimentos', icon: Tags },
+          { view: AppView.PRICE_TABLES, label: 'Tabelas de Preços', icon: DollarSign },
           { view: AppView.INSURANCE_PLANS, label: 'Convênios e Planos', icon: LinkIcon },
           { view: AppView.CARE_PACKAGES, label: 'Pacotes e Recorrência', icon: Layers3 },
           { view: AppView.SUPPLIERS, label: 'Fornecedores', icon: Building2 },

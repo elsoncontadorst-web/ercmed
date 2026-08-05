@@ -6,10 +6,18 @@ import { ConsultationBilling, Professional } from '../types/finance';
 import { useUser } from '../contexts/UserContext';
 import { jsPDF } from 'jspdf';
 import { getManagerIdForUser } from '../services/accessControlService';
+import { getTransactions, SavedTransaction } from '../services/userDataService';
+
+const normalizeName = (value?: string) => (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
 
 const RepasseCalculationView: React.FC = () => {
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [billings, setBillings] = useState<ConsultationBilling[]>([]);
+    const [financialTransactions, setFinancialTransactions] = useState<SavedTransaction[]>([]);
     const [selectedProfessional, setSelectedProfessional] = useState<string>('');
     const [dateRange, setDateRange] = useState({
         start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -64,7 +72,7 @@ const RepasseCalculationView: React.FC = () => {
         } else {
             setCalculation(null);
         }
-    }, [selectedProfessional, dateRange, adjustments, billings]);
+    }, [selectedProfessional, dateRange, adjustments, billings, financialTransactions]);
 
     const loadData = async () => {
         setLoading(true);
@@ -75,12 +83,15 @@ const RepasseCalculationView: React.FC = () => {
             // Only Master Admin can bypass the managerId filter
             const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
 
-            const [allProfs, allBillings] = await Promise.all([
+            const ownerId = managerId || user.uid;
+            const [allProfs, allBillings, allTransactions] = await Promise.all([
                 getAllProfessionals(managerId),
-                getAllBillingRecords(managerId)
+                getAllBillingRecords(managerId),
+                getTransactions(ownerId)
             ]);
             setProfessionals(allProfs);
             setBillings(allBillings);
+            setFinancialTransactions(allTransactions);
         } catch (error) {
             console.error("Error loading data", error);
             setNotification({ type: 'error', message: 'Erro ao carregar dados' });
@@ -115,6 +126,51 @@ const RepasseCalculationView: React.FC = () => {
         });
         const receivedBillings = filteredBillings.filter(b => b.paymentStatus === 'received');
 
+        const billingIds = new Set(filteredBillings.map(b => b.id));
+        const billingTransactionIds = new Set(
+            filteredBillings.map(b => b.financialTransactionId).filter(Boolean) as string[]
+        );
+        // A mesma pessoa pode aparecer no cadastro como contrato, sócio ou
+        // usuário profissional. Reúna todos os identificadores equivalentes.
+        const professionalName = normalizeName(professional.name);
+        const equivalentProfessionals = professionals.filter(candidate => {
+            const candidateName = normalizeName(candidate.name);
+            return candidate.id === professional.id ||
+                (!!professional.userId && candidate.userId === professional.userId) ||
+                (!!professionalName && candidateName === professionalName) ||
+                (!!professional.email && !!candidate.email && candidate.email.toLowerCase() === professional.email.toLowerCase());
+        });
+        const professionalIds = new Set(equivalentProfessionals.flatMap(candidate =>
+            [candidate.id, candidate.userId].filter(Boolean) as string[]
+        ));
+        const linkedFiscalNotes = financialTransactions.filter(transaction => {
+            const transactionDate = transaction.date || transaction.dueDate || '';
+            const transactionProfessionalName = normalizeName(transaction.professionalName);
+            const sameProfessional =
+                (!!transaction.professionalId && professionalIds.has(transaction.professionalId)) ||
+                (!!transactionProfessionalName && !!professionalName && (
+                    transactionProfessionalName === professionalName ||
+                    transactionProfessionalName.includes(professionalName) ||
+                    professionalName.includes(transactionProfessionalName)
+                ));
+            const isFiscalNote = transaction.sourceType === 'fiscal_import' || Boolean(
+                transaction.sourceFiscalDocumentId ||
+                transaction.sourceFiscalFileId ||
+                transaction.sourceAccessKey ||
+                transaction.sourceFingerprint?.startsWith('fiscal:')
+            );
+            const duplicatesBilling =
+                (!!transaction.sourceBillingId && billingIds.has(transaction.sourceBillingId)) ||
+                billingTransactionIds.has(transaction.id);
+
+            return transaction.type === 'income' &&
+                isFiscalNote &&
+                sameProfessional &&
+                transactionDate >= dateRange.start &&
+                transactionDate <= dateRange.end &&
+                !duplicatesBilling;
+        });
+
         // Parse inputs (handle empty strings as 0)
         const taxPct = adjustments.taxPercentage === '' ? 0 : Number(adjustments.taxPercentage);
         const repassePct = adjustments.repassePercentage === '' ? 0 : Number(adjustments.repassePercentage);
@@ -123,7 +179,9 @@ const RepasseCalculationView: React.FC = () => {
         const roomRent = adjustments.roomRent === '' ? 0 : Number(adjustments.roomRent);
 
         // Calculate totals
-        const grossRevenue = filteredBillings.reduce((sum, b) => sum + b.grossAmount, 0);
+        const consultationRevenue = filteredBillings.reduce((sum, b) => sum + b.grossAmount, 0);
+        const fiscalRevenue = linkedFiscalNotes.reduce((sum, note) => sum + Math.abs(Number(note.amount) || 0), 0);
+        const grossRevenue = consultationRevenue + fiscalRevenue;
         const totalConsultations = filteredBillings.length;
 
         // Total Revenue (Consultations + Additional)
@@ -156,7 +214,10 @@ const RepasseCalculationView: React.FC = () => {
             consultations: totalConsultations,
             receivedConsultations: receivedBillings.length,
             receivedRevenue: receivedBillings.reduce((sum, b) => sum + b.grossAmount, 0),
-            grossRevenue, // Only from consultations
+            grossRevenue,
+            consultationRevenue,
+            fiscalRevenue,
+            fiscalNotes: linkedFiscalNotes,
             totalRevenue, // Consultations + Additional
             taxAmount,
             taxPercentage: taxPct,
@@ -200,7 +261,8 @@ const RepasseCalculationView: React.FC = () => {
         doc.setFontSize(10);
         let yPos = 80;
         doc.text(`Total de Consultas: ${calculation.consultations}`, 25, yPos); yPos += 8;
-        doc.text(`Receita Consultas: ${formatMoney(calculation.grossRevenue)}`, 25, yPos); yPos += 8;
+        doc.text(`Receita de atendimentos: ${formatMoney(calculation.consultationRevenue)}`, 25, yPos); yPos += 8;
+        doc.text(`Receita de notas vinculadas: ${formatMoney(calculation.fiscalRevenue)}`, 25, yPos); yPos += 8;
 
         if (calculation.adjustedRevenue > 0) {
             doc.text(`Receita Adicional: ${formatMoney(calculation.adjustedRevenue)}`, 25, yPos); yPos += 8;
@@ -243,6 +305,29 @@ const RepasseCalculationView: React.FC = () => {
             );
             y += 6;
         });
+
+        if (calculation.fiscalNotes.length > 0) {
+            if (y > 255) {
+                doc.addPage();
+                y = 20;
+            }
+            doc.setFontSize(12);
+            doc.text('Notas fiscais vinculadas:', 20, y + 8);
+            y += 18;
+            doc.setFontSize(9);
+            calculation.fiscalNotes.forEach((note: SavedTransaction, index: number) => {
+                if (y > 270) {
+                    doc.addPage();
+                    y = 20;
+                }
+                doc.text(
+                    `${index + 1}. ${new Date(`${note.date}T12:00:00`).toLocaleDateString('pt-BR')} - ${note.description} - ${formatMoney(Math.abs(note.amount))}`,
+                    25,
+                    y
+                );
+                y += 6;
+            });
+        }
 
         // Notes
         if (adjustments.notes) {
@@ -492,15 +577,18 @@ const RepasseCalculationView: React.FC = () => {
                     {/* Summary Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <p className="text-sm text-blue-600 font-medium">Total de Consultas</p>
-                            <p className="text-2xl font-bold text-blue-700 mt-1">{calculation.consultations}</p>
+                            <p className="text-sm text-blue-600 font-medium">Registros considerados</p>
+                            <p className="text-2xl font-bold text-blue-700 mt-1">{calculation.consultations + calculation.fiscalNotes.length}</p>
+                            <p className="text-xs text-blue-600 mt-1">
+                                {calculation.consultations} atendimento(s) · {calculation.fiscalNotes.length} nota(s)
+                            </p>
                         </div>
 
                         <div className="bg-green-50 p-4 rounded-lg border border-green-100">
                             <p className="text-sm text-green-600 font-medium">Receita Total</p>
                             <p className="text-2xl font-bold text-green-700 mt-1">{formatMoney(calculation.totalRevenue)}</p>
                             <p className="text-xs text-green-600 mt-1">
-                                (Consultas: {formatMoney(calculation.grossRevenue)} + Adicional: {formatMoney(calculation.adjustedRevenue)})
+                                Atendimentos: {formatMoney(calculation.consultationRevenue)} · Notas: {formatMoney(calculation.fiscalRevenue)} · Adicional: {formatMoney(calculation.adjustedRevenue)}
                             </p>
                         </div>
 
@@ -569,6 +657,41 @@ const RepasseCalculationView: React.FC = () => {
                             </table>
                         </div>
                     </div>
+
+                    {calculation.fiscalNotes.length > 0 && (
+                        <div>
+                            <h4 className="font-semibold text-slate-700 mb-3">Notas fiscais vinculadas ao profissional</h4>
+                            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 sticky top-0">
+                                        <tr>
+                                            <th className="p-3 text-left font-semibold text-slate-700">Competência</th>
+                                            <th className="p-3 text-left font-semibold text-slate-700">Nota fiscal</th>
+                                            <th className="p-3 text-right font-semibold text-slate-700">Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {calculation.fiscalNotes.map((note: SavedTransaction) => (
+                                            <tr key={note.id} className="border-t border-gray-100">
+                                                <td className="p-3 text-slate-600">
+                                                    {new Date(`${note.date}T12:00:00`).toLocaleDateString('pt-BR')}
+                                                </td>
+                                                <td className="p-3 text-slate-800">
+                                                    <div className="font-medium">{note.description}</div>
+                                                    {note.fiscalIssuedAt && note.fiscalIssuedAt !== note.date && (
+                                                        <div className="text-xs text-slate-500">Emissão: {new Date(`${note.fiscalIssuedAt}T12:00:00`).toLocaleDateString('pt-BR')}</div>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-right font-medium text-teal-600">
+                                                    {formatMoney(Math.abs(note.amount))}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

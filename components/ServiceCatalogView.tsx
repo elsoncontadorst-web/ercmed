@@ -22,6 +22,7 @@ const initial = {
   durationMinutes: 30,
   modality: 'in_person' as ClinicService['modality'],
   payer: 'private' as ClinicService['payer'],
+  payers: ['private'] as ClinicService['payer'][],
   grossPrice: 0,
   minimumPrice: 0,
   tussCode: '',
@@ -68,7 +69,7 @@ const ServiceCatalogView: React.FC = () => {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!user || !form.name.trim()) return;
+    if (!user || !form.name.trim() || form.payers.length === 0) return;
 
     setSaving(true);
     setMessage('');
@@ -83,6 +84,7 @@ const ServiceCatalogView: React.FC = () => {
 
       const payload = {
         ...form,
+        payer: form.payers[0],
         code: form.code.trim() || form.name.trim().toUpperCase().replace(/\s+/g, '_'),
         specialty: normalizedSpecialty || undefined,
         professionalId: form.professionalId || undefined,
@@ -141,6 +143,7 @@ const ServiceCatalogView: React.FC = () => {
       durationMinutes: service.durationMinutes || 30,
       modality: service.modality || 'in_person',
       payer: service.payer || 'private',
+      payers: service.payers?.length ? service.payers : [service.payer || 'private'],
       grossPrice: service.grossPrice || 0,
       minimumPrice: service.minimumPrice || 0,
       tussCode: service.tussCode || '',
@@ -155,6 +158,15 @@ const ServiceCatalogView: React.FC = () => {
     setForm(initial);
     setCustomSpecialty('');
     setMessage('');
+  };
+
+  const togglePayer = (payer: ClinicService['payer']) => {
+    setForm(current => {
+      const selected = current.payers.includes(payer)
+        ? current.payers.filter(item => item !== payer)
+        : [...current.payers, payer];
+      return { ...current, payers: selected, payer: selected[0] || current.payer };
+    });
   };
 
   const removeService = async (service: ClinicService) => {
@@ -271,18 +283,18 @@ const ServiceCatalogView: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm font-medium text-slate-700">
-              Pagador
-              <select
-                value={form.payer}
-                onChange={event => setForm({ ...form, payer: event.target.value as typeof form.payer })}
-                className="mt-1 w-full rounded-lg border border-slate-200 p-2"
-              >
-                <option value="private">Particular</option>
-                <option value="insurance">Convênio</option>
-                <option value="contract">Contrato</option>
-              </select>
-            </label>
+            <fieldset className="block text-sm font-medium text-slate-700">
+              <legend>Pagadores</legend>
+              <div className="mt-1 flex min-h-[42px] flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+                {([['private', 'Particular'], ['insurance', 'Convênio'], ['contract', 'Contrato']] as const).map(([value, label]) => (
+                  <label key={value} className="flex cursor-pointer items-center gap-2 font-normal">
+                    <input type="checkbox" checked={form.payers.includes(value)} onChange={() => togglePayer(value)} className="h-4 w-4 rounded border-slate-300 text-brand-600" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              {form.payers.length === 0 && <p className="mt-1 text-xs text-red-600">Selecione ao menos um pagador.</p>}
+            </fieldset>
 
             <label className="block text-sm font-medium text-slate-700">
               Modalidade
@@ -322,7 +334,7 @@ const ServiceCatalogView: React.FC = () => {
                     <strong className="text-slate-800">{service.name}</strong>
                     <p className="mt-1 text-xs text-slate-500">
                       {service.category} · {service.specialty || 'Todas as especialidades'} · {service.durationMinutes} min ·{' '}
-                      {service.payer === 'private' ? 'Particular' : service.payer === 'insurance' ? 'Convênio' : 'Contrato'}
+                      {(service.payers?.length ? service.payers : [service.payer]).map(payer => payer === 'private' ? 'Particular' : payer === 'insurance' ? 'Convênio' : 'Contrato').join(', ')}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
                       {service.professionalName && <Badge icon={<UserRound className="h-3 w-3" />} text={service.professionalName} />}

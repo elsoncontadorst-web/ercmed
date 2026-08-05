@@ -11,7 +11,7 @@ interface PlansViewProps {
 }
 
 const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
-    const { user } = useUser();
+    const { user, userTier, trialDaysRemaining, isTrialExpired } = useUser();
     const [copiedTier, setCopiedTier] = useState<string | null>(null);
 
     // MasterAdmin functionality (keep existing)
@@ -138,8 +138,32 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
         }
     ];
 
+    const currentTier = userTier || AccountTier.TRIAL;
+    const currentPlan = plans.find(plan => plan.id === currentTier) || plans[0];
+
     return (
         <div className="min-h-full bg-slate-50/50 pb-20">
+            <div className="max-w-7xl mx-auto px-4 pt-8 sm:px-6 lg:px-8">
+                <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-700">Assinatura vigente</span>
+                                <span className={`rounded-full px-3 py-1 text-xs font-bold ${isTrialExpired ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{isTrialExpired ? 'Expirado' : 'Ativo'}</span>
+                            </div>
+                            <h2 className="mt-3 text-3xl font-extrabold text-slate-900">Plano {currentPlan.name}</h2>
+                            <p className="mt-1 text-slate-600">{currentPlan.description}</p>
+                            {currentTier === AccountTier.TRIAL && trialDaysRemaining !== undefined && <p className="mt-2 text-sm font-semibold text-slate-700">{trialDaysRemaining} dia(s) restante(s) no período gratuito</p>}
+                        </div>
+                        <div className="min-w-0 lg:max-w-2xl">
+                            <p className="mb-2 text-sm font-bold text-slate-800">Recursos contratados</p>
+                            <div className="flex flex-wrap gap-2">
+                                {currentPlan.features.map(feature => <span key={feature} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700"><Check className="h-4 w-4 text-emerald-600" />{feature}</span>)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             {/* Header Section */}
             <div className="bg-white border-b border-slate-100">
                 <div className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8 text-center">
@@ -185,6 +209,9 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
                                     Mais Popular
                                 </div>
                             )}
+                            {plan.id === currentTier && (
+                                <div className="absolute right-3 top-3 rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow">Seu plano</div>
+                            )}
 
                             <div className={`p-6 ${plan.bgColor} rounded-t-2xl border-b ${plan.borderColor}`}>
                                 <div className={`w-12 h-12 rounded-xl bg-white flex items-center justify-center mb-4 shadow-sm ${plan.color}`}>
@@ -222,7 +249,8 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
                                     )}
                                     <button 
                                         onClick={() => handleAction(plan.id)}
-                                        className={`w-full py-3 rounded-xl font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-95 ${plan.buttonColor}`}
+                                        disabled={plan.id === currentTier && !isTrialExpired}
+                                        className={`w-full py-3 rounded-xl font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-95 disabled:cursor-default disabled:bg-emerald-600 ${plan.buttonColor}`}
                                     >
                                         {plan.id === AccountTier.UNLIMITED ? 'Solicitar Proposta' : 'Começar Agora'}
                                     </button>

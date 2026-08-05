@@ -444,7 +444,7 @@ const BillingView: React.FC = () => {
                                         className="input"
                                     >
                                         <option value="">Lançamento avulso</option>
-                                        {services.filter(service => service.payer === payer).map(service => (
+                                        {services.filter(service => service.payers?.length ? service.payers.includes(payer) : service.payer === payer).map(service => (
                                             <option key={service.id} value={service.id}>{service.name} · {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(service.grossPrice)}</option>
                                         ))}
                                     </select>

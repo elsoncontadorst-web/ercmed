@@ -121,6 +121,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
     const [dateOrder, setDateOrder] = useState<'desc' | 'asc'>('desc');
     const [selectedMonth, setSelectedMonth] = useState('all');
     const [selectedYear, setSelectedYear] = useState('all');
+    const [selectedCategory, setSelectedCategory] = useState('all');
     const [xmlClassMode, setXmlClassMode] = useState<'auto' | 'income' | 'expense'>('auto');
     const [xmlProfessionalId, setXmlProfessionalId] = useState('all');
     const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -139,6 +140,28 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         ...transactions.map(item => String(item.dueDate || item.date || '').slice(0, 4)),
         ...billingRecords.map(item => String(item.consultationDate || '').slice(0, 4))
     ].filter(year => /^\d{4}$/.test(year)))).sort((a, b) => Number(b) - Number(a)), [transactions, billingRecords]);
+
+    const availableCategories = useMemo(() => {
+        const scopedTransactions = activeTab === 'receivable'
+            ? transactions.filter(item => item.type === 'income')
+            : activeTab === 'payable'
+                ? transactions.filter(item => item.type === 'expense')
+                : activeTab === 'billing'
+                    ? transactions.filter(item => item.type === 'income' && item.revenueUnit !== 'laboratory')
+                    : activeTab === 'laboratoryBilling'
+                        ? transactions.filter(item => item.type === 'income' && item.revenueUnit === 'laboratory')
+                        : transactions;
+        return Array.from(new Set(scopedTransactions
+            .map(item => item.category?.trim())
+            .filter((category): category is string => Boolean(category))))
+            .sort((first, second) => first.localeCompare(second, 'pt-BR'));
+    }, [activeTab, transactions]);
+
+    useEffect(() => {
+        if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && !availableCategories.includes(selectedCategory)) {
+            setSelectedCategory('all');
+        }
+    }, [availableCategories, selectedCategory]);
 
     useEffect(() => {
         setActiveTab(initialTab);
@@ -195,7 +218,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 }
 
                 // Load Custom Categories
-                const categoriesData = await getCustomCategories(user.uid);
+                const categoriesData = await getCustomCategories(ownerId);
                 if (categoriesData) {
                     setCustomExpenseCategories(categoriesData.expense);
                     setCustomIncomeCategories(categoriesData.income);
@@ -298,7 +321,8 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
             const currentExpense = type === 'expense' ? categories : customExpenseCategories;
             const currentIncome = type === 'income' ? categories : customIncomeCategories;
 
-            await saveCustomCategories(user.uid, {
+            const ownerId = (await getManagerIdForUser(user.uid)) || user.uid;
+            await saveCustomCategories(ownerId, {
                 expense: currentExpense,
                 income: currentIncome
             });
@@ -961,9 +985,14 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         );
     };
 
-    const handleSaveTransaction = () => {
+    const handleSaveTransaction = async () => {
         if (!newTransaction.description || !newTransaction.amount || !newTransaction.date) {
             alert("Preencha todos os campos obrigatórios!");
+            return;
+        }
+        const isTaxExpense = newTransaction.type === 'expense' && /imposto|tributo|simples|\bdas\b/i.test(`${newTransaction.category || ''} ${newTransaction.description || ''}`);
+        if (isTaxExpense && !newTransaction.competence) {
+            alert('Informe a competência do imposto. Ela deve corresponder ao mês do faturamento apurado, não ao mês do pagamento.');
             return;
         }
 
@@ -983,9 +1012,10 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
             unitName: newTransaction.unitName || activeClinicName || undefined
         };
 
+        let updatedTransactions: Transaction[];
         if (newTransaction.id) {
             // Update existing
-            setTransactions(prev => prev.map(t => t.id === newTransaction.id ? transactionData : t));
+            updatedTransactions = transactions.map(t => t.id === newTransaction.id ? transactionData : t);
         } else if (repeatMonthly && transactionData.type === 'expense') {
             const total = Math.max(2, Math.min(60, Math.trunc(repeatMonths || 12)));
             const seriesId = `recurring-${Date.now()}`;
@@ -1005,10 +1035,29 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                     recurrenceTotal: total
                 };
             });
-            setTransactions(prev => [...recurringTransactions.reverse(), ...prev]);
+            updatedTransactions = [...recurringTransactions.reverse(), ...transactions];
         } else {
             // Create new
-            setTransactions(prev => [transactionData, ...prev]);
+            updatedTransactions = [transactionData, ...transactions];
+        }
+
+        setTransactions(updatedTransactions);
+
+        // Grave imediatamente para que uma atualização da página logo após
+        // clicar em salvar não restaure a categoria anterior.
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+            try {
+                setIsSaving(true);
+                const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
+                await persistScopedTransactions(ownerId, updatedTransactions);
+            } catch (error) {
+                console.error('Erro ao salvar lançamento:', error);
+                alert('Não foi possível salvar o lançamento. Tente novamente.');
+                return;
+            } finally {
+                setIsSaving(false);
+            }
         }
         
         setIsModalOpen(false);
@@ -1157,6 +1206,10 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
             .filter(item => xmlProfessionalId === 'unassigned'
                 ? !item.professionalId && !item.professionalName?.trim()
                 : item.professionalId === xmlProfessionalId)
+            .filter(item => selectedCategory === 'all'
+                || (selectedCategory === 'uncategorized'
+                    ? !item.category?.trim()
+                    : item.category === selectedCategory))
             .filter(item => !professionalTotalSearch || [
                 item.description,
                 item.category,
@@ -1391,6 +1444,16 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                         />
                     </div>
                     <select
+                        value={selectedCategory}
+                        onChange={(event) => setSelectedCategory(event.target.value)}
+                        aria-label="Filtrar por categoria"
+                        className="max-w-52 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                    >
+                        <option value="all">Todas as categorias</option>
+                        <option value="uncategorized">Sem categoria</option>
+                        {availableCategories.map(category => <option key={category} value={category}>{category}</option>)}
+                    </select>
+                    <select
                         value={selectedMonth}
                         onChange={(event) => setSelectedMonth(event.target.value)}
                         aria-label="Filtrar por mês"
@@ -1449,6 +1512,10 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
 
                         filteredTransactions = filteredTransactions
                             .filter(transaction => matchesPeriod(transaction.dueDate || transaction.date))
+                            .filter(transaction => selectedCategory === 'all'
+                                || (selectedCategory === 'uncategorized'
+                                    ? !transaction.category?.trim()
+                                    : transaction.category === selectedCategory))
                             .filter(transaction => xmlProfessionalId === 'all'
                                 || (xmlProfessionalId === 'unassigned'
                                     ? !transaction.professionalId && !transaction.professionalName?.trim()
@@ -1789,7 +1856,14 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                             <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold border border-blue-100">
                                                                 {t.count}x
                                                             </span>
-                                                        ) : t.date}
+                                                        ) : (
+                                                            <div>
+                                                                <div>{t.date}</div>
+                                                                {t.competence && (
+                                                                    <div className="mt-0.5 text-[10px] font-medium text-brand-700">Competência: {t.competence}</div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="py-3 px-4 text-sm text-slate-800 font-medium">{t.description}</td>
                                                     <td className="py-3 px-4 text-sm text-slate-500">
