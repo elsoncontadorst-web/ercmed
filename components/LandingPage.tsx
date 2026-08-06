@@ -11,8 +11,12 @@ import {
     Landmark,
     Layers3,
     Headphones,
+    LockKeyhole,
     LogIn,
+    Mail,
+    MapPin,
     MessageCircle,
+    Phone,
     ReceiptText,
     ShieldCheck,
     Star,
@@ -323,6 +327,28 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                     </div>
                 </section>
 
+                <section id="sobre" className="border-y border-slate-200 bg-white py-20">
+                    <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[.7fr_1.3fr] lg:items-center lg:px-8">
+                        <div>
+                            <p className="text-sm font-bold uppercase tracking-[0.16em] text-teal-700">Sobre o ERCMed</p>
+                            <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                                Tecnologia e gestão trabalhando juntas pela saúde.
+                            </h2>
+                        </div>
+                        <div className="space-y-4 text-lg leading-relaxed text-slate-600">
+                            <p>
+                                O <strong className="text-slate-900">ERCMed</strong> é uma plataforma completa de gestão para clínicas, consultórios e empresas da saúde. Em um único ambiente, integra atendimentos, prontuários, agenda, financeiro, faturamento, repasses, indicadores gerenciais e automação de processos.
+                            </p>
+                            <p>
+                                Desenvolvido pela <strong className="text-slate-900">ERC – Sistemas, Gestão &amp; Contabilidade Estratégica</strong>, o sistema combina tecnologia e experiência em gestão aplicada à saúde para tornar a operação mais organizada, segura e eficiente.
+                            </p>
+                            <p>
+                                Mais do que um software, o ERCMed apoia gestores e equipes na tomada de decisões, reduz tarefas manuais e oferece mais controle para que a empresa cresça de forma sustentável — sem perder o foco no cuidado com o paciente.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
                 <section className="mx-auto grid max-w-7xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:items-center lg:px-8">
                     <div>
                         <p className="text-sm font-bold uppercase tracking-[0.16em] text-teal-700">Módulos do ERP</p>
@@ -455,13 +481,53 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                 </section>
             </main>
 
-            <footer className="border-t border-slate-200 bg-white px-4 py-8 sm:px-6 lg:px-8">
-                <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center text-sm text-slate-500 md:flex-row md:text-left">
-                    <div className="flex items-center gap-3">
-                        <SystemLogo className="h-10" variant="dark" />
-                        <span>ERP de gestão para empresas de saúde com faturamento, financeiro, repasse, BI e operação integrada.</span>
+            <footer className="border-t border-white/10 bg-slate-950 text-slate-300">
+                <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-2 lg:grid-cols-[1.35fr_1fr_1fr_1.1fr] lg:px-8">
+                    <div className="lg:pr-8">
+                        <SystemLogo className="h-14" variant="light" />
+                        <p className="mt-5 max-w-sm leading-relaxed text-slate-400">
+                            ERP completo para empresas de saúde que desejam mais controle, eficiência e crescimento sustentável.
+                        </p>
                     </div>
-                    <span>© {new Date().getFullYear()} ERCMed. Todos os direitos reservados.</span>
+
+                    <div className="lg:border-l lg:border-white/10 lg:pl-8">
+                        <h3 className="text-sm font-black uppercase tracking-[0.16em] text-teal-300">Soluções</h3>
+                        <nav className="mt-5 flex flex-col gap-3 text-sm">
+                            <a href="#solucoes" className="transition hover:text-teal-300">Financeiro e faturamento</a>
+                            <a href="#solucoes" className="transition hover:text-teal-300">BI e dashboards</a>
+                            <a href="#recursos" className="transition hover:text-teal-300">Operação integrada</a>
+                            <a href="#recursos" className="transition hover:text-teal-300">Relatórios executivos</a>
+                        </nav>
+                    </div>
+
+                    <div className="lg:border-l lg:border-white/10 lg:pl-8">
+                        <h3 className="text-sm font-black uppercase tracking-[0.16em] text-teal-300">Empresa</h3>
+                        <nav className="mt-5 flex flex-col gap-3 text-sm">
+                            <a href="#sobre" className="transition hover:text-teal-300">Sobre o ERCMed</a>
+                            <a href="#clientes" className="transition hover:text-teal-300">Quem usa</a>
+                            <a href="#planos" className="transition hover:text-teal-300">Planos</a>
+                            <button onClick={handleWhatsApp} className="text-left transition hover:text-teal-300">Fale com a equipe</button>
+                        </nav>
+                    </div>
+
+                    <div className="lg:border-l lg:border-white/10 lg:pl-8">
+                        <h3 className="text-sm font-black uppercase tracking-[0.16em] text-teal-300">Fale conosco</h3>
+                        <div className="mt-5 space-y-4 text-sm">
+                            <button onClick={handleWhatsApp} className="flex items-center gap-3 transition hover:text-teal-300"><Phone className="h-4 w-4 text-teal-300" /> (79) 98807-8887</button>
+                            <a href="mailto:elsoncontador.st@gmail.com" className="flex items-center gap-3 transition hover:text-teal-300"><Mail className="h-4 w-4 text-teal-300" /> elsoncontador.st@gmail.com</a>
+                            <span className="flex items-start gap-3"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" /> Aracaju - SE e Santaluz - BA</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border-t border-white/10">
+                    <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 text-sm text-slate-400 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
+                        <div className="flex items-center gap-3">
+                            <LockKeyhole className="h-5 w-5 shrink-0 text-teal-300" />
+                            <span>Sua empresa, seus dados, nossa responsabilidade. Ambiente seguro e em conformidade com a LGPD.</span>
+                        </div>
+                        <span className="shrink-0">© {new Date().getFullYear()} ERCMed. Todos os direitos reservados.</span>
+                    </div>
                 </div>
             </footer>
         </div>

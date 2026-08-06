@@ -71,7 +71,7 @@ export const TIER_NAMES: Record<AccountTier, string> = {
     [AccountTier.TRIAL]: 'Trial',
     [AccountTier.SILVER]: 'Professional',
     [AccountTier.GOLD]: 'Advanced',
-    [AccountTier.ENTERPRISE]: 'Enterprise AI',
+  [AccountTier.ENTERPRISE]: 'Enterprise',
     [AccountTier.UNLIMITED]: 'Unlimited'
 };
 
@@ -88,7 +88,7 @@ export const TIER_DESCRIPTIONS: Record<AccountTier, string> = {
     [AccountTier.TRIAL]: 'Período de testes gratuito com acesso à operação assistencial do ERP',
     [AccountTier.SILVER]: 'Organização e controle profissional',
     [AccountTier.GOLD]: 'Crescimento estruturado e escala',
-    [AccountTier.ENTERPRISE]: 'Máxima performance e inteligência',
+  [AccountTier.ENTERPRISE]: 'Máxima performance e automação',
     [AccountTier.UNLIMITED]: 'Zero limites para grandes redes'
 };
 

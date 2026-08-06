@@ -18,7 +18,7 @@ type PaidPlanId = "silver" | "gold" | "enterprise";
 const plans: Record<PaidPlanId, {title: string; price: number}> = {
   silver: {title: "ERCMed Professional", price: 119},
   gold: {title: "ERCMed Advanced", price: 190},
-  enterprise: {title: "ERCMed Enterprise AI", price: 390},
+  enterprise: {title: "ERCMed Enterprise", price: 390},
 };
 
 function isPaidPlan(value: unknown): value is PaidPlanId {
