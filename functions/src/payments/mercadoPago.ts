@@ -98,7 +98,11 @@ async function resolveManager(uid: string) {
 }
 
 export const createMercadoPagoSubscription = onCall(
-  {secrets: [mercadoPagoToken], region: "us-central1"},
+  {
+    secrets: [mercadoPagoToken],
+    region: "us-central1",
+    invoker: "public",
+  },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError(
@@ -224,7 +228,11 @@ async function activateSubscription(subscription: Record<string, unknown>) {
 }
 
 export const mercadoPagoWebhook = onRequest(
-  {secrets: [mercadoPagoToken], region: "us-central1"},
+  {
+    secrets: [mercadoPagoToken],
+    region: "us-central1",
+    invoker: "public",
+  },
   async (request, response) => {
     try {
       const body = request.body as Record<string, unknown> | undefined;
