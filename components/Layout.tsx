@@ -115,11 +115,15 @@ const NavButton = ({
         setView(item.view);
         setMobileMenuOpen(false);
       }}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${
-        active ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+      className={`group relative w-full flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm transition-all ${
+        active
+          ? 'bg-gradient-to-r from-teal-700 to-teal-600 text-white shadow-md shadow-teal-950/20'
+          : 'text-slate-300 hover:bg-slate-800/90 hover:text-white'
       }`}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${active ? 'bg-white/15 text-white' : 'bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-teal-300'}`}>
+        <Icon className="h-4 w-4" />
+      </span>
       <span className="truncate font-medium">{item.label}</span>
     </button>
   );
@@ -245,10 +249,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
     }
   }, [canAccessCurrentView, isAdmin, setView, userLoading, userRole]);
 
-  const mainSections: Array<{ title: string; items: NavItem[] }> = useMemo(
+  const mainSections: Array<{ title: string; icon: React.ComponentType<{ className?: string }>; items: NavItem[] }> = useMemo(
     () => [
       {
         title: 'Operação',
+        icon: ClipboardList,
         items: [
           { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
           { view: AppView.PATIENTS, label: 'Cadastro de Pacientes', icon: Users },
@@ -258,6 +263,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Financeiro',
+        icon: Wallet,
         items: [
           { view: AppView.ACCOUNTS_RECEIVABLE, label: 'Contas a Receber', icon: DollarSign },
           { view: AppView.ACCOUNTS_PAYABLE, label: 'Contas a Pagar', icon: Receipt },
@@ -270,6 +276,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Faturamento',
+        icon: Receipt,
         items: [
           { view: AppView.BILLING_PRODUCTION, label: 'Produção', icon: ClipboardList },
           { view: AppView.BILLING_PRIVATE, label: 'Particular', icon: Receipt },
@@ -281,6 +288,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Profissionais',
+        icon: Users,
         items: [
           { view: AppView.CLINIC_TEAMS, label: 'Equipes por Paciente', icon: Users, activeViews: [AppView.PROFESSIONALS] },
           { view: AppView.PRODUCTION_ENTRY, label: 'Produção', icon: BarChart3, activeViews: [AppView.PROFESSIONAL_PRODUCTION] },
@@ -291,6 +299,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Recursos',
+        icon: Layers3,
         items: [
           { view: AppView.SERVICES_PROCEDURES, label: 'Serviços e Procedimentos', icon: Tags },
           { view: AppView.PRICE_TABLES, label: 'Tabelas de Preços', icon: DollarSign },
@@ -305,6 +314,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Controladoria',
+        icon: BarChart3,
         items: [
           { view: AppView.DRE_MANAGERIAL, label: 'DRE Gerencial', icon: BarChart3 },
           { view: AppView.MANAGERIAL_FLOW, label: 'Fluxo Gerencial', icon: Waypoints },
@@ -316,6 +326,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Contábil e Fiscal',
+        icon: Calculator,
         items: [
           { view: AppView.ACCOUNTANT_MODULE, label: 'Fator R e Painel Fiscal', icon: Calculator },
           { view: AppView.CHART_OF_ACCOUNTS, label: 'Plano de Contas', icon: BookOpen },
@@ -326,6 +337,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Administração',
+        icon: Shield,
         items: [
           { view: AppView.CLINICS, label: 'Empresas e Unidades', icon: Building2, adminOnly: true },
           { view: AppView.USERS_MANAGEMENT, label: 'Usuários', icon: Users, adminOnly: true },
@@ -339,6 +351,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       },
       {
         title: 'Suporte',
+        icon: HelpCircle,
         items: [
           { view: AppView.HOW_TO_USE, label: 'Central de Ajuda', icon: HelpCircle },
           { view: AppView.SUPPORT_DOCUMENTATION, label: 'Documentação', icon: BookOpen },
@@ -422,9 +435,9 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         </span>
       </div>
 
-      <div className="mx-3 mt-3 rounded-lg border border-slate-700/50 bg-slate-800/50 p-2">
+      <div className="mx-3 mt-3 rounded-2xl border border-slate-700/60 bg-gradient-to-br from-slate-800 to-slate-900 p-2.5 shadow-lg shadow-slate-950/20">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-sm font-bold text-brand-400">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500/25 to-blue-500/20 text-sm font-bold text-brand-300 ring-1 ring-white/10">
             {userProfile?.displayName?.charAt(0) || auth.currentUser?.email?.charAt(0).toUpperCase() || <UserIcon className="h-5 w-5" />}
           </div>
           <div className="min-w-0 flex-1">
@@ -457,23 +470,32 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             <button
               type="button"
               onClick={() => toggleSection(section.title)}
-              className="mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-teal-400 hover:bg-slate-800/70 hover:text-teal-300"
+              className="group mt-1 flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-teal-400 transition-colors hover:bg-slate-800/70 hover:text-teal-300"
               aria-expanded={openSections.has(section.title)}
             >
-              <span>{section.title}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-teal-400 ring-1 ring-slate-700/70 transition-colors group-hover:bg-teal-500/10 group-hover:text-teal-300">
+                  {React.createElement(section.icon, { className: 'h-4 w-4' })}
+                </span>
+                <span className="truncate">{section.title}</span>
+              </span>
               <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openSections.has(section.title) ? 'rotate-180' : ''}`} />
             </button>
-            {openSections.has(section.title) && section.items.map((item, index) => (
-              <NavButton
-                key={`${section.title}-${item.label}-${index}`}
-                item={item}
-                currentView={currentView}
-                setView={setView}
-                setMobileMenuOpen={setMobileMenuOpen}
-                registerItemRef={registerItemRef}
-                navScrollRef={desktopNavRef}
-              />
-            ))}
+            {openSections.has(section.title) && (
+              <div className="ml-3 space-y-0.5 border-l border-slate-700/70 pl-2">
+                {section.items.map((item, index) => (
+                  <NavButton
+                    key={`${section.title}-${item.label}-${index}`}
+                    item={item}
+                    currentView={currentView}
+                    setView={setView}
+                    setMobileMenuOpen={setMobileMenuOpen}
+                    registerItemRef={registerItemRef}
+                    navScrollRef={desktopNavRef}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </nav>

@@ -612,7 +612,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
         <section className="grid grid-cols-1 gap-3 xl:grid-cols-4">
           <TaxCard label="RBT12" value={currency(dashboard.factorR.revenue12 || dashboard.rbt12)} detail="Receita acumulada dos últimos 12 meses" />
           <TaxCard label="Fator R" value={dashboard.factorR.factorR === null ? 'Pendente' : `${(dashboard.factorR.factorR * 100).toFixed(2)}%`} detail={dashboard.factorR.annex ? `Anexo ${dashboard.factorR.annex} · ${dashboard.simples.faixa}ª faixa` : 'Anexo pendente de validação'} />
-          <TaxCard label="Alíquota do imposto lançado" value={dashboard.hasTaxExpense && dashboard.allocationBilled > 0 ? `${dashboard.displayedEffectiveRate.toFixed(2)}%` : 'Aguardando'} detail={dashboard.hasTaxExpense ? (dashboard.hasInferredTaxCompetence ? 'Comparada ao faturamento do mês anterior' : `Comparada ao faturamento da competência ${dashboard.taxCompetenceKeys.join(', ')}`) : 'Nenhum imposto lançado para pagamento no mês'} />
+          <TaxCard label="Carga efetiva realizada" value={dashboard.hasTaxExpense && dashboard.allocationBilled > 0 ? `${dashboard.displayedEffectiveRate.toFixed(2)}%` : 'Aguardando'} detail={dashboard.hasTaxExpense ? (dashboard.hasInferredTaxCompetence ? 'Impostos lançados ÷ faturamento do mês anterior' : `Impostos lançados ÷ faturamento das competências ${dashboard.taxCompetenceKeys.join(', ')}`) : 'Nenhum imposto lançado para pagamento no período'} />
           <TaxCard
             label={`Imposto lançado no ${periodView === 'annual' ? 'ano' : 'mês'}`}
             value={dashboard.hasTaxExpense ? currency(dashboard.taxForAllocation) : currency(0)}
