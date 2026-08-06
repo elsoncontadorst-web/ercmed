@@ -21,10 +21,21 @@ const plans: Record<PaidPlanId, {title: string; price: number}> = {
   enterprise: {title: "ERCMed Enterprise", price: 390},
 };
 
+/**
+ * Checks whether a value identifies a paid plan.
+ * @param {unknown} value Candidate plan identifier.
+ * @return {boolean} Whether the value is a paid plan identifier.
+ */
 function isPaidPlan(value: unknown): value is PaidPlanId {
   return typeof value === "string" && value in plans;
 }
 
+/**
+ * Sends an authenticated request to Mercado Pago.
+ * @param {string} path Mercado Pago API path.
+ * @param {RequestInit} init Optional fetch configuration.
+ * @return {Promise<Record<string, unknown>>} Parsed provider response.
+ */
 async function mercadoPagoRequest(path: string, init?: RequestInit) {
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
@@ -45,6 +56,11 @@ async function mercadoPagoRequest(path: string, init?: RequestInit) {
   return body;
 }
 
+/**
+ * Resolves and validates the clinic manager responsible for billing.
+ * @param {string} uid Authenticated user identifier.
+ * @return {Promise<{managerId: string, email: string}>} Billing manager data.
+ */
 async function resolveManager(uid: string) {
   const profileSnap = await db.collection("user_profiles").doc(uid).get();
   const profile = profileSnap.data() || {};
@@ -68,7 +84,10 @@ export const createMercadoPagoSubscription = onCall(
   {secrets: [mercadoPagoToken], region: "us-central1"},
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError("unauthenticated", "Entre na sua conta para continuar.");
+      throw new HttpsError(
+        "unauthenticated",
+        "Entre na sua conta para continuar."
+      );
     }
     const planId = request.data?.planId;
     if (!isPaidPlan(planId)) {
@@ -120,12 +139,20 @@ export const createMercadoPagoSubscription = onCall(
 
     const checkoutUrl = subscription.init_point;
     if (typeof checkoutUrl !== "string") {
-      throw new HttpsError("internal", "O Mercado Pago não retornou o checkout.");
+      throw new HttpsError(
+        "internal",
+        "O Mercado Pago não retornou o checkout."
+      );
     }
     return {checkoutUrl, subscriptionId: subscription.id};
   }
 );
 
+/**
+ * Activates a subscription after validating the provider response.
+ * @param {Record<string, unknown>} subscription Provider subscription data.
+ * @return {Promise<void>} Resolves after synchronizing billing state.
+ */
 async function activateSubscription(subscription: Record<string, unknown>) {
   const reference = String(subscription.external_reference || "");
   const [ownerId, planId, billingId] = reference.split(":");
