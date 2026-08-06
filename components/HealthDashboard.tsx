@@ -10,10 +10,12 @@ import {
   FileUp,
   Gauge,
   Landmark,
+  Info,
   RefreshCw,
   Tags,
   TrendingUp,
   Wallet,
+  X,
 } from 'lucide-react';
 import { AppView } from '../types';
 import { useUser } from '../contexts/UserContext';
@@ -24,7 +26,7 @@ import { getTransactions, SavedTransaction } from '../services/userDataService';
 import { getContracts } from '../services/contractService';
 import { Appointment, Patient } from '../types/health';
 import { ConsultationBilling, Contract, RepasseStatement } from '../types/finance';
-import { calculateExecutiveSimples } from '../services/simplesExecutiveService';
+import { calculateExecutiveSimples, calculateSimplesTaxComposition } from '../services/simplesExecutiveService';
 import { calculateFactorR, FactorRSettings, getFactorRSettings, getRollingMonthKeys, mergeFactorRMonths } from '../services/factorRService';
 import { ACTIVE_CLINIC_CHANGED_EVENT, getActiveClinicScopeId } from '../services/activeClinicStorage';
 import { getClinics } from '../services/clinicService';
@@ -189,6 +191,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [periodView, setPeriodView] = useState<'monthly' | 'annual'>('monthly');
   const [showSimplesAllocation, setShowSimplesAllocation] = useState(false);
+  const [taxExplanation, setTaxExplanation] = useState<'estimated' | 'recorded' | null>(null);
 
   const loadDashboard = async () => {
     if (!user) return;
@@ -600,7 +603,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
           <Metric label="Margem Líquida" value={`${percentage(dashboard.result, dashboard.received || dashboard.billed).toFixed(1)}%`} detail="Resultado sobre receita" tone="green" values={dashboard.daily.map(item => item.income - item.expenses)} />
           <Metric label="Faturamento Clínico" value={currency(dashboard.clinicalBilled)} detail="Produzido no período" tone="teal" values={dashboard.daily.map(item => item.income)} />
           {dashboard.hasLaboratoryRevenue && <Metric label="Faturamento Laboratorial" value={currency(dashboard.laboratoryBilled)} detail="Produzido no período" tone="blue" values={dashboard.daily.map(item => item.income)} />}
-          {!dashboard.hasLaboratoryRevenue && <Metric label="Imposto estimado da competência" value={dashboard.factorR.annex ? currency(dashboard.simples.impostoMensalEstimado) : 'Pendente'} detail={`Estimativa sobre o faturamento ${periodView === 'annual' ? 'do ano' : 'do mês'}`} tone="orange" values={dashboard.daily.map(item => item.income * (dashboard.simples.aliquotaEfetiva || 0) / 100)} />}
+          {!dashboard.hasLaboratoryRevenue && <Metric label="Imposto estimado da competência" value={dashboard.factorR.annex ? currency(dashboard.simples.impostoMensalEstimado) : 'Pendente'} detail={`Estimativa sobre o faturamento ${periodView === 'annual' ? 'do ano' : 'do mês'}`} tone="orange" values={dashboard.daily.map(item => item.income * (dashboard.simples.aliquotaEfetiva || 0) / 100)} action={dashboard.factorR.annex ? 'Entenda seu imposto' : undefined} onAction={() => setTaxExplanation('estimated')} />}
           <Metric label="EBITDA" value={currency(dashboard.ebitda)} detail="Resultado operacional" tone="blue" values={dashboard.daily.map(item => item.income)} />
           <Metric label="Saldo do Período" value={currency(dashboard.cash)} detail="Entradas menos saídas registradas" tone="violet" values={dashboard.daily.map(item => item.income - item.expenses)} />
           <Metric label="Inadimplência" value={`${percentage(dashboard.pending, dashboard.billed).toFixed(1)}%`} detail="Títulos em aberto" tone="orange" values={dashboard.daily.map(item => item.expenses)} />
@@ -616,8 +619,20 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
             detail={dashboard.hasTaxExpense ? (dashboard.hasInferredTaxCompetence ? 'Pagamento referente ao mês anterior; confirme a competência' : `Referente à competência ${dashboard.taxCompetenceKeys.join(', ')}`) : 'Nenhum lançamento em Impostos e Tributos'}
             action={dashboard.hasTaxExpense ? (showSimplesAllocation ? 'Ocultar rateio' : 'Ver rateio') : undefined}
             onAction={() => setShowSimplesAllocation(value => !value)}
+            secondaryAction={dashboard.hasTaxExpense && dashboard.factorR.annex ? 'Entenda seu imposto' : undefined}
+            onSecondaryAction={() => setTaxExplanation('recorded')}
           />
         </section>
+
+        {taxExplanation && (
+          <TaxExplanationModal
+            mode={taxExplanation}
+            simples={dashboard.simples}
+            total={taxExplanation === 'recorded' ? dashboard.taxForAllocation : dashboard.simples.impostoMensalEstimado}
+            competence={taxExplanation === 'recorded' ? dashboard.taxCompetenceKeys.join(', ') : (periodView === 'annual' ? (selectedPeriod || dateMonthKey()).slice(0, 4) : selectedPeriod)}
+            onClose={() => setTaxExplanation(null)}
+          />
+        )}
 
         {showSimplesAllocation && dashboard.hasTaxExpense && (
           <SimplesAllocationPanel
@@ -730,7 +745,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
   );
 };
 
-const Metric = ({ label, value, detail, tone, values }: { label: string; value: string; detail: string; tone: string; values: number[] }) => (
+const Metric = ({ label, value, detail, tone, values, action, onAction }: { label: string; value: string; detail: string; tone: string; values: number[]; action?: string; onAction?: () => void }) => (
   <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
     <div className="flex items-start justify-between">
       <span className={`rounded-lg p-2 ${tone === 'emerald' ? 'bg-emerald-50 text-emerald-600' : ''}${tone === 'teal' ? ' bg-teal-50 text-teal-600' : ''}${tone === 'green' ? ' bg-green-50 text-green-600' : ''}${tone === 'blue' ? ' bg-blue-50 text-blue-600' : ''}${tone === 'violet' ? ' bg-violet-50 text-violet-600' : ''}${tone === 'orange' ? ' bg-orange-50 text-orange-600' : ''}${tone === 'rose' ? ' bg-rose-50 text-rose-600' : ''}`}>
@@ -741,6 +756,7 @@ const Metric = ({ label, value, detail, tone, values }: { label: string; value: 
     <p className="mt-2 text-[11px] font-medium text-slate-500">{label}</p>
     <p className="mt-0.5 text-lg font-bold tracking-tight text-slate-900">{value}</p>
     <p className="mt-1 truncate text-[10px] text-slate-500">{detail}</p>
+    {action && <button type="button" onClick={onAction} className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-700 hover:text-brand-800"><Info className="h-3 w-3" />{action}</button>}
   </article>
 );
 
@@ -966,7 +982,7 @@ const FinancialHealthCard = ({ score, cash, pending, billed, result }: { score: 
   );
 };
 
-const TaxCard = ({ label, value, detail, action, onAction }: { label: string; value: string; detail: string; action?: string; onAction?: () => void }) => (
+const TaxCard = ({ label, value, detail, action, onAction, secondaryAction, onSecondaryAction }: { label: string; value: string; detail: string; action?: string; onAction?: () => void; secondaryAction?: string; onSecondaryAction?: () => void }) => (
   <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
     <div className="flex items-center justify-between gap-2">
       <p className="text-[11px] font-medium text-slate-500">{label}</p>
@@ -974,7 +990,75 @@ const TaxCard = ({ label, value, detail, action, onAction }: { label: string; va
     </div>
     <p className="mt-1 text-lg font-bold text-slate-900">{value}</p>
     <p className="mt-1 text-[10px] text-slate-500">{detail}</p>
+    {secondaryAction && <button type="button" onClick={onSecondaryAction} className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-700 hover:text-brand-800"><Info className="h-3 w-3" />{secondaryAction}</button>}
   </article>
+);
+
+const TaxExplanationModal = ({ mode, simples, total, competence, onClose }: {
+  mode: 'estimated' | 'recorded';
+  simples: ReturnType<typeof calculateExecutiveSimples>;
+  total: number;
+  competence: string;
+  onClose: () => void;
+}) => {
+  const baseComposition = calculateSimplesTaxComposition(simples, total > 0 ? total / Math.max(simples.aliquotaEfetiva / 100, 0.000001) : 0);
+  const composition = baseComposition.map(item => ({
+    ...item,
+    amount: item.applicable ? total * item.sharePercent / 100 : 0,
+  }));
+  const applicable = composition.filter(item => item.applicable);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-label="Entenda seu imposto" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Entenda seu imposto</h2>
+            <p className="mt-1 text-xs text-slate-500">Como o DAS {mode === 'recorded' ? 'lançado' : 'previsto'} é distribuído entre os tributos.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Fechar"><X className="h-5 w-5" /></button>
+        </header>
+
+        <div className="space-y-4 p-5">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <TaxSummary label="DAS total" value={detailedCurrency(total)} />
+            <TaxSummary label="Anexo e faixa" value={`Anexo ${simples.anexo} · ${simples.faixa}ª`} />
+            <TaxSummary label="Alíquota efetiva" value={`${simples.aliquotaEfetiva.toFixed(2)}%`} />
+            <TaxSummary label="Competência" value={competence || 'Não informada'} />
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 bg-slate-900 px-4 py-2 text-[11px] font-bold text-white">
+              <span>Tributo dentro do DAS</span><span>Alíquota efetiva</span><span className="w-28 text-right">Valor</span>
+            </div>
+            {applicable.map(item => (
+              <div key={item.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-t border-slate-100 px-4 py-2.5 text-xs first:border-0">
+                <span className="font-semibold text-slate-700">{item.label}</span>
+                <span className="text-slate-500">{item.effectivePercent.toFixed(2)}%</span>
+                <span className="w-28 text-right font-bold text-slate-900">{detailedCurrency(item.amount)}</span>
+              </div>
+            ))}
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-900">
+              <span>Total</span><span>{simples.aliquotaEfetiva.toFixed(2)}%</span><span className="w-28 text-right">{detailedCurrency(total)}</span>
+            </div>
+          </div>
+
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+            {mode === 'recorded'
+              ? 'A divisão é gerencial: o valor total vem do lançamento em Impostos e Tributos e foi repartido conforme o Anexo e a faixa calculados. O extrato oficial do PGDAS-D prevalece.'
+              : 'Esta é uma estimativa gerencial baseada no RBT12, no Fator R, no Anexo e na faixa atuais. O valor oficial pode variar no fechamento do PGDAS-D.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TaxSummary = ({ label, value }: { label: string; value: string }) => (
+  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <p className="text-[10px] font-medium text-slate-500">{label}</p>
+    <p className="mt-1 text-sm font-bold text-slate-900">{value}</p>
+  </div>
 );
 
 interface SimplesAllocationRow {
