@@ -45,3 +45,6 @@ FIRESTORE_INDEXES.md
 *-firebase-adminsdk-*.json
 healtmed-*.json
 serviceAccountKey.json
+
+# Local payment credentials (NEVER commit)
+token/

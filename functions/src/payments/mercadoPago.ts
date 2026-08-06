@@ -15,7 +15,7 @@ const webhookUrl =
 
 type PaidPlanId = "silver" | "gold" | "enterprise";
 
-const plans: Record<PaidPlanId, {title: string; price: number}> = {
+const defaultPlans: Record<PaidPlanId, {title: string; price: number}> = {
   silver: {title: "ERCMed Professional", price: 119},
   gold: {title: "ERCMed Advanced", price: 190},
   enterprise: {title: "ERCMed Enterprise", price: 390},
@@ -27,7 +27,24 @@ const plans: Record<PaidPlanId, {title: string; price: number}> = {
  * @return {boolean} Whether the value is a paid plan identifier.
  */
 function isPaidPlan(value: unknown): value is PaidPlanId {
-  return typeof value === "string" && value in plans;
+  return typeof value === "string" && value in defaultPlans;
+}
+
+/**
+ * Loads the current server-side price for a paid plan.
+ * @param {PaidPlanId} planId Paid plan identifier.
+ * @return {Promise<{title: string, price: number}>} Trusted plan definition.
+ */
+async function getPlanDefinition(planId: PaidPlanId) {
+  const fallback = defaultPlans[planId];
+  const pricingSnap = await db.collection("public_config")
+    .doc("subscription_plans").get();
+  const configuredPrice = Number(pricingSnap.data()?.[planId]);
+  return {
+    title: fallback.title,
+    price: Number.isFinite(configuredPrice) && configuredPrice >= 1 ?
+      Math.round(configuredPrice * 100) / 100 : fallback.price,
+  };
 }
 
 /**
@@ -103,7 +120,7 @@ export const createMercadoPagoSubscription = onCall(
       );
     }
 
-    const plan = plans[planId];
+    const plan = await getPlanDefinition(planId);
     const billingRef = db.collection("billing_subscriptions").doc();
     const externalReference = `${managerId}:${planId}:${billingRef.id}`;
     const subscription = await mercadoPagoRequest("/preapproval", {
@@ -161,7 +178,6 @@ async function activateSubscription(subscription: Record<string, unknown>) {
     return;
   }
 
-  const expected = plans[planId].price;
   const recurring = subscription.auto_recurring as
     Record<string, unknown> | undefined;
   const amount = Number(recurring?.transaction_amount || 0);
@@ -169,16 +185,19 @@ async function activateSubscription(subscription: Record<string, unknown>) {
   const active = status === "authorized";
   const batch = db.batch();
   const billingRef = db.collection("billing_subscriptions").doc(billingId);
+  const billingSnap = await billingRef.get();
+  const expected = Number(billingSnap.data()?.amount || 0);
+  const amountMatches = expected > 0 && Math.abs(amount - expected) < 0.01;
 
   batch.set(billingRef, {
     providerSubscriptionId: subscription.id,
     status,
     amount,
-    verified: active && amount === expected,
+    verified: active && amountMatches,
     updatedAt: FieldValue.serverTimestamp(),
   }, {merge: true});
 
-  if (active && amount === expected) {
+  if (active && amountMatches) {
     const subscriptionData = {
       accountTier: planId,
       subscriptionStatus: "active",

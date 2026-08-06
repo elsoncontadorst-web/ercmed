@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     ArrowRight,
     BarChart3,
@@ -27,6 +27,7 @@ import {
     WalletCards
 } from 'lucide-react';
 import SystemLogo from './SystemLogo';
+import { DEFAULT_PLAN_PRICING, PlanPricing, subscribeToPlanPricing } from '../services/planPricingService';
 
 interface LandingPageProps {
     onLoginClick: () => void;
@@ -101,6 +102,19 @@ const customerCompanies = [
 ] as const;
 
 const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick }) => {
+    const [pricing, setPricing] = useState<PlanPricing>(DEFAULT_PLAN_PRICING);
+
+    useEffect(() => subscribeToPlanPricing(setPricing), []);
+
+    const pricedPublicPlans = useMemo(() => publicPlans.map(plan => {
+        const dynamicPrice = plan.name === 'Profissional' ? pricing.silver :
+            plan.name === 'Advanced' ? pricing.gold :
+                plan.name === 'Enterprise' ? pricing.enterprise : null;
+        return dynamicPrice === null ? plan : {
+            ...plan,
+            price: dynamicPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+        };
+    }), [pricing]);
     const handleWhatsApp = () => {
         window.open('https://api.whatsapp.com/send?phone=5579988078887&text=Olá%2C%20quero%20conhecer%20o%20novo%20ERCMED%20para%20gestão%20de%20empresas%20de%20saúde.', '_blank', 'noopener,noreferrer');
     };
@@ -432,7 +446,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                         </div>
 
                         <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-                            {publicPlans.map(plan => {
+                            {pricedPublicPlans.map(plan => {
                                 const Icon = plan.icon;
                                 const recommended = 'recommended' in plan && plan.recommended;
                                 return (
@@ -477,7 +491,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                     <thead className="bg-slate-50 text-slate-700">
                                         <tr>
                                             <th className="px-5 py-4 font-black">Comparação rápida</th>
-                                            {publicPlans.map(plan => <th key={plan.name} className="px-4 py-4 text-center font-black">{plan.name}</th>)}
+                                            {pricedPublicPlans.map(plan => <th key={plan.name} className="px-4 py-4 text-center font-black">{plan.name}</th>)}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">

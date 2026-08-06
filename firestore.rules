@@ -137,6 +137,24 @@ service cloud.firestore {
     }
 
     // =============================================
+    // PUBLIC PLAN PRICING (master-managed)
+    // =============================================
+    match /public_config/subscription_plans {
+      allow read: if true;
+      allow create, update: if isMasterAdmin() &&
+        request.resource.data.keys().hasOnly([
+          'silver', 'gold', 'enterprise', 'updatedBy', 'updatedAt'
+        ]) &&
+        request.resource.data.silver is number &&
+        request.resource.data.gold is number &&
+        request.resource.data.enterprise is number &&
+        request.resource.data.silver >= 1 &&
+        request.resource.data.gold >= 1 &&
+        request.resource.data.enterprise >= 1;
+      allow delete: if false;
+    }
+
+    // =============================================
     // BILLING (written only by trusted Cloud Functions)
     // =============================================
     match /billing_subscriptions/{subscriptionId} {

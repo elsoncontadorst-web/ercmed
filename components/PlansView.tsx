@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Check, Info, Crown, Star, Shield, Zap, Building2, HelpCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, Crown, Star, Shield, Zap, Building2, DollarSign, Save, Settings2 } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { AccountTier, TIER_DESCRIPTIONS } from '../types/accountTiers';
 import { openMercadoPagoCheckout, openSalesContact } from '../services/mercadoPagoCheckoutService';
+import { DEFAULT_PLAN_PRICING, PlanPricing, subscribeToPlanPricing, updatePlanPricing } from '../services/planPricingService';
 
 import { AppView } from '../types';
 
@@ -13,9 +14,33 @@ interface PlansViewProps {
 const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
     const { user, userTier, trialDaysRemaining, isTrialExpired } = useUser();
     const [copiedTier, setCopiedTier] = useState<string | null>(null);
+    const [pricing, setPricing] = useState<PlanPricing>(DEFAULT_PLAN_PRICING);
+    const [pricingDraft, setPricingDraft] = useState<PlanPricing>(DEFAULT_PLAN_PRICING);
+    const [savingPricing, setSavingPricing] = useState(false);
+    const [pricingMessage, setPricingMessage] = useState('');
 
     // MasterAdmin functionality (keep existing)
     const isMasterAdmin = user?.email === 'elsoncontador.st@gmail.com';
+
+    useEffect(() => subscribeToPlanPricing(value => {
+        setPricing(value);
+        setPricingDraft(value);
+    }), []);
+
+    const savePricing = async () => {
+        if (!user?.email || !isMasterAdmin) return;
+        setSavingPricing(true);
+        setPricingMessage('');
+        try {
+            await updatePlanPricing(pricingDraft, pricing, user.email);
+            setPricingMessage('Preços atualizados em todos os canais.');
+        } catch (error) {
+            console.error('Erro ao atualizar preços:', error);
+            setPricingMessage('Não foi possível salvar os preços.');
+        } finally {
+            setSavingPricing(false);
+        }
+    };
 
     const handleCopyLink = (tierId: string) => {
         const link = `${window.location.origin}/register?plan=${tierId}`;
@@ -64,7 +89,7 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
         {
             id: AccountTier.SILVER, // Professional
             name: 'Professional',
-            price: '119,00',
+            price: pricing.silver.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
             description: 'Rotina clínica, financeira e profissional organizada.',
             icon: Shield,
             color: 'text-blue-600',
@@ -83,7 +108,7 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
         {
             id: AccountTier.GOLD, // Advanced
             name: 'Advanced',
-            price: '190,00',
+            price: pricing.gold.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
             description: 'Gestão completa, visão fiscal e controle por unidade.',
             icon: Crown,
             color: 'text-indigo-600',
@@ -100,10 +125,10 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             ]
         },
         {
-            id: AccountTier.ENTERPRISE, // Enterprise AI
-            name: 'Enterprise AI',
-            price: '390,00',
-            description: 'Automação e inteligência gerencial para a operação.',
+            id: AccountTier.ENTERPRISE,
+            name: 'Enterprise',
+            price: pricing.enterprise.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+            description: 'Automação e gestão avançada para a operação.',
             icon: Zap,
             color: 'text-purple-600',
             bgColor: 'bg-purple-50',
@@ -113,7 +138,7 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             features: [
                 'Até 20 profissionais',
                 'Tudo do Advanced +:',
-                'Recursos de IA do ERP',
+                'Fluxos operacionais avançados',
                 'Automação de processos',
                 'Suporte prioritário'
             ]
@@ -165,18 +190,46 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
                     </div>
                 </div>
             </div>
+            {isMasterAdmin && (
+                <div className="mx-auto mt-6 max-w-7xl px-4 sm:px-6 lg:px-8">
+                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-950 px-6 py-5 text-white sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className="rounded-xl bg-teal-400/15 p-2.5"><Settings2 className="h-5 w-5 text-teal-300" /></span>
+                                <div><h2 className="font-black">Gestão comercial dos planos</h2><p className="text-sm text-slate-400">Acesso exclusivo do usuário master</p></div>
+                            </div>
+                            <span className="rounded-full bg-teal-400/10 px-3 py-1 text-xs font-bold text-teal-300">Valores mensais</span>
+                        </div>
+                        <div className="grid gap-4 p-6 md:grid-cols-3">
+                            {([['silver', 'Professional'], ['gold', 'Advanced'], ['enterprise', 'Enterprise']] as const).map(([key, label]) => (
+                                <label key={key} className="block rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                    <span className="text-sm font-bold text-slate-700">{label}</span>
+                                    <span className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-100">
+                                        <DollarSign className="h-4 w-4 text-teal-600" /><span className="text-sm font-bold text-slate-500">R$</span>
+                                        <input type="number" min="1" step="0.01" value={pricingDraft[key]} onChange={event => setPricingDraft(current => ({ ...current, [key]: Number(event.target.value) }))} className="min-w-0 flex-1 bg-transparent font-black text-slate-950 outline-none" />
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                        <div className="flex flex-col gap-3 border-t border-slate-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                            <p className={`text-sm font-semibold ${pricingMessage.startsWith('Preços') ? 'text-emerald-700' : 'text-slate-500'}`}>{pricingMessage || 'O checkout sempre usa o preço salvo no servidor.'}</p>
+                            <button onClick={savePricing} disabled={savingPricing} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-black text-white transition hover:bg-teal-700 disabled:opacity-60"><Save className="h-4 w-4" />{savingPricing ? 'Salvando...' : 'Salvar preços'}</button>
+                        </div>
+                    </section>
+                </div>
+            )}
             {/* Header Section */}
             <div className="bg-white border-b border-slate-100">
-                <div className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8 text-center">
+                <div className="max-w-7xl mx-auto px-4 py-10 sm:px-6 lg:px-8 text-center">
                     <span className="inline-block px-4 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-semibold mb-6">
                         Planos Flexíveis
                     </span>
                     <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-6 tracking-tight">
-                        Gestão inteligente para clínicas que<br />
+                        Planos claros para clínicas que<br />
                         querem <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">crescer com segurança</span>
                     </h1>
                     <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-                        Escolha o plano ideal para o seu momento. Comece gratuitamente e evolua suas ferramentas conforme sua clínica expande.
+                        Compare recursos, acompanhe sua assinatura e evolua conforme sua operação crescer.
                     </p>
 
                     <button 
@@ -346,7 +399,7 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
                     {[
                         { title: 'ERP Integrado', desc: 'Gestão clínica e financeira em uma única plataforma.', icon: Building2 },
                         { title: 'Inteligência Fiscal', desc: 'Simuladores PJ vs CLT e IRPF integrados.', icon: Calculator },
-                        { title: 'IA Estratégica', desc: 'Consultoria inteligente aplicada à gestão clínica.', icon: Zap },
+                        { title: 'Automação de Processos', desc: 'Menos tarefas manuais na gestão da clínica.', icon: Zap },
                         { title: 'Feito por Especialistas', desc: 'Desenvolvido por quem entende de clínicas.', icon: Crown }
                     ].map((item, i) => (
                         <div key={i} className="p-6 bg-white rounded-2xl shadow-lg border border-slate-100 hover:shadow-xl transition-all">
