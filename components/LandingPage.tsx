@@ -6,6 +6,7 @@ import {
     Building2,
     CalendarDays,
     CheckCircle2,
+    ChevronDown,
     Clock3,
     Cloud,
     Landmark,
@@ -162,17 +163,54 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                 <nav className="border-b border-slate-200 bg-white/95 backdrop-blur">
                     <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
                         <SystemLogo className="h-14" variant="dark" />
-                        <div className="hidden items-center gap-7 text-sm font-semibold text-slate-700 xl:flex">
-                            <a href="#solucoes" className="transition hover:text-teal-700">Soluções</a>
+                        <div className="hidden h-full items-center gap-8 text-sm font-bold text-slate-700 xl:flex">
+                            <div className="group relative flex h-full items-center">
+                                <button className="flex h-full items-center gap-1.5 border-b-4 border-transparent pt-1 transition group-hover:border-teal-600 group-hover:text-teal-700">
+                                    Soluções <ChevronDown className="h-4 w-4 transition group-hover:rotate-180" />
+                                </button>
+                                <div className="invisible absolute left-1/2 top-[calc(100%-1px)] w-[760px] -translate-x-1/2 translate-y-2 overflow-hidden rounded-b-3xl border border-slate-200 bg-white opacity-0 shadow-2xl shadow-slate-950/15 transition duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+                                    <div className="grid grid-cols-[.9fr_1.15fr_.95fr]">
+                                        <div className="space-y-2 p-7">
+                                            <p className="mb-4 text-xs font-black uppercase tracking-[0.16em] text-teal-700">Simplifique sua gestão</p>
+                                            <a href="#solucoes" className="block rounded-xl bg-teal-50 px-4 py-3 text-slate-900 hover:bg-teal-100">Controle financeiro</a>
+                                            <a href="#solucoes" className="block rounded-xl px-4 py-3 text-slate-700 hover:bg-slate-50">Faturamento e repasses</a>
+                                            <a href="#recursos" className="block rounded-xl px-4 py-3 text-slate-700 hover:bg-slate-50">Indicadores executivos</a>
+                                        </div>
+                                        <div className="border-l border-slate-100 p-7">
+                                            <p className="mb-4 text-xs font-black uppercase tracking-[0.16em] text-slate-400">Principais recursos</p>
+                                            <div className="space-y-4">
+                                                {[
+                                                    [CalendarDays, 'Agenda e atendimentos', 'Organize a rotina da clínica'],
+                                                    [ReceiptText, 'Faturamento integrado', 'Produção, cobrança e repasses'],
+                                                    [BarChart3, 'BI e relatórios', 'Decisões orientadas por dados'],
+                                                    [ShieldCheck, 'Segurança e LGPD', 'Controle de acesso e rastreabilidade']
+                                                ].map(([Icon, title, description]) => {
+                                                    const MenuIcon = Icon as React.ElementType;
+                                                    return <a key={title as string} href="#recursos" className="flex gap-3 rounded-xl p-2 hover:bg-slate-50"><span className="rounded-lg bg-teal-50 p-2"><MenuIcon className="h-4 w-4 text-teal-700" /></span><span><strong className="block text-slate-900">{title as string}</strong><small className="font-medium text-slate-500">{description as string}</small></span></a>;
+                                                })}
+                                            </div>
+                                        </div>
+                                        <div className="bg-gradient-to-br from-teal-50 to-cyan-100 p-7">
+                                            <p className="text-xs font-black uppercase tracking-[0.16em] text-teal-700">Em destaque</p>
+                                            <div className="mt-4 overflow-hidden rounded-xl border border-white bg-white shadow-sm">
+                                                <img src="/assets/dashboard-executivo-real.png" alt="Visão real do Dashboard ERCMed" className="aspect-video w-full object-cover object-left-top" />
+                                            </div>
+                                            <h3 className="mt-5 text-lg font-black text-slate-950">Gestão completa em uma única plataforma</h3>
+                                            <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">Financeiro, operação e indicadores conectados em tempo real.</p>
+                                            <a href="#recursos" className="mt-4 inline-flex items-center gap-2 text-sm font-black text-teal-700">Conhecer recursos <ArrowRight className="h-4 w-4" /></a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <a href="#recursos" className="transition hover:text-teal-700">Recursos</a>
-                            <a href="#clientes" className="transition hover:text-teal-700">Quem usa</a>
+                            <a href="#sobre" className="transition hover:text-teal-700">Sobre o ERCMed</a>
                             <a href="#planos" className="transition hover:text-teal-700">Planos</a>
                         </div>
                         <div className="flex items-center gap-3">
-                            <button onClick={handleWhatsApp} className="hidden items-center gap-2 rounded-xl border border-teal-200 px-4 py-2.5 text-sm font-semibold text-teal-700 transition hover:bg-teal-50 md:flex">
-                                <MessageCircle className="h-4 w-4" /> Falar com especialista
+                            <button onClick={onTrialClick} className="hidden items-center gap-2 rounded-full bg-teal-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-teal-700 md:flex">
+                                Teste grátis
                             </button>
-                            <button onClick={onLoginClick} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800">
+                            <button onClick={onLoginClick} className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:border-teal-600 hover:text-teal-700">
                                 <LogIn className="h-4 w-4" /> Acessar sistema
                             </button>
                         </div>
@@ -223,7 +261,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                     <span className="h-2.5 w-2.5 rounded-full bg-rose-300" /><span className="h-2.5 w-2.5 rounded-full bg-amber-300" /><span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
                                     <span className="ml-3 text-xs font-semibold text-slate-400">Dashboard Executivo ERCMED</span>
                                 </div>
-                                <img src="/assets/dashboard-mockup.png" alt="Dashboard executivo do ERCMED" className="mt-3 w-full rounded-2xl object-cover" />
+                                <img src="/assets/dashboard-executivo-real.png" alt="Tela real do Dashboard Executivo do ERCMed" className="mt-3 aspect-[16/10] w-full rounded-2xl object-cover object-left-top" />
                             </div>
                         </div>
                     </div>
