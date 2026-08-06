@@ -43,7 +43,7 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             id: AccountTier.TRIAL, // Start Free
             name: 'Start Free',
             price: '0,00',
-            description: 'Experiência completa por 15 dias.',
+            description: 'Teste a operação integrada do ERCMED por 15 dias.',
             icon: Star,
             color: 'text-emerald-600',
             bgColor: 'bg-emerald-50',
@@ -54,9 +54,9 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
                 'Acesso completo por 15 dias',
                 'Até 3 profissionais',
                 'Até 10 pacientes',
-                'Agendamento Online',
-                'Prontuário Eletrônico',
-                'Anamnese Mista Avançada',
+                'Agenda e atendimentos',
+                'Financeiro essencial',
+                'Produção e faturamento',
                 'Sem necessidade de cartão'
             ],
             footerText: 'Após 15 dias, escolha seu plano para continuar.'
@@ -65,7 +65,7 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             id: AccountTier.SILVER, // Professional
             name: 'Professional',
             price: '119,00',
-            description: 'Para organização e controle profissional.',
+            description: 'Rotina clínica, financeira e profissional organizada.',
             icon: Shield,
             color: 'text-blue-600',
             bgColor: 'bg-blue-50',
@@ -75,15 +75,16 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             features: [
                 'Até 10 profissionais',
                 'Tudo do Start Free +:',
-                'Relatórios Financeiros',
-                'Gestão de Agenda Avançada'
+                'Dashboard executivo',
+                'Contas a pagar e receber',
+                'Contratos e repasses'
             ]
         },
         {
             id: AccountTier.GOLD, // Advanced
             name: 'Advanced',
             price: '190,00',
-            description: 'Para crescimento estruturado e escala.',
+            description: 'Gestão completa, visão fiscal e controle por unidade.',
             icon: Crown,
             color: 'text-indigo-600',
             bgColor: 'bg-indigo-50',
@@ -93,16 +94,16 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             features: [
                 'Até 20 profissionais',
                 'Tudo do Professional +:',
-                'Gestão Financeira Completa',
-                'Indicadores estratégicos',
-                'Simulações avançadas'
+                'Dashboard mensal e anual',
+                'Fator R e painel fiscal',
+                'Gestão de unidades e relatórios'
             ]
         },
         {
             id: AccountTier.ENTERPRISE, // Enterprise AI
             name: 'Enterprise AI',
             price: '390,00',
-            description: 'Máxima performance e inteligência.',
+            description: 'Automação e inteligência gerencial para a operação.',
             icon: Zap,
             color: 'text-purple-600',
             bgColor: 'bg-purple-50',
@@ -112,9 +113,9 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             features: [
                 'Até 20 profissionais',
                 'Tudo do Advanced +:',
-                'Consultor Clínico com IA',
-                'Suporte Prioritário',
-                'Apoio à decisão estratégica'
+                'Recursos de IA do ERP',
+                'Automação de processos',
+                'Suporte prioritário'
             ]
         },
         {
@@ -131,9 +132,9 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
             features: [
                 'Profissionais ilimitados',
                 'Tudo do Enterprise +:',
-                'Customizações exclusivas',
-                'SLA garantido',
-                'Treinamento personalizado'
+                'Gestão consolidada do grupo',
+                'Integrações personalizadas',
+                'SLA e onboarding dedicados'
             ]
         }
     ];

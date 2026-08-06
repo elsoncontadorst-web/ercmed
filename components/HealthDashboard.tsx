@@ -629,6 +629,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
             mode={taxExplanation}
             simples={dashboard.simples}
             total={taxExplanation === 'recorded' ? dashboard.taxForAllocation : dashboard.simples.impostoMensalEstimado}
+            effectiveRate={taxExplanation === 'recorded' ? dashboard.displayedEffectiveRate : dashboard.simples.aliquotaEfetiva}
             competence={taxExplanation === 'recorded' ? dashboard.taxCompetenceKeys.join(', ') : (periodView === 'annual' ? (selectedPeriod || dateMonthKey()).slice(0, 4) : selectedPeriod)}
             onClose={() => setTaxExplanation(null)}
           />
@@ -994,16 +995,18 @@ const TaxCard = ({ label, value, detail, action, onAction, secondaryAction, onSe
   </article>
 );
 
-const TaxExplanationModal = ({ mode, simples, total, competence, onClose }: {
+const TaxExplanationModal = ({ mode, simples, total, effectiveRate, competence, onClose }: {
   mode: 'estimated' | 'recorded';
   simples: ReturnType<typeof calculateExecutiveSimples>;
   total: number;
+  effectiveRate: number;
   competence: string;
   onClose: () => void;
 }) => {
   const baseComposition = calculateSimplesTaxComposition(simples, total > 0 ? total / Math.max(simples.aliquotaEfetiva / 100, 0.000001) : 0);
   const composition = baseComposition.map(item => ({
     ...item,
+    displayedPercent: item.applicable ? effectiveRate * item.sharePercent / 100 : 0,
     amount: item.applicable ? total * item.sharePercent / 100 : 0,
   }));
   const applicable = composition.filter(item => item.applicable);
@@ -1023,7 +1026,7 @@ const TaxExplanationModal = ({ mode, simples, total, competence, onClose }: {
           <div className="grid gap-2 sm:grid-cols-4">
             <TaxSummary label="DAS total" value={detailedCurrency(total)} />
             <TaxSummary label="Anexo e faixa" value={`Anexo ${simples.anexo} · ${simples.faixa}ª`} />
-            <TaxSummary label="Alíquota efetiva" value={`${simples.aliquotaEfetiva.toFixed(2)}%`} />
+            <TaxSummary label={mode === 'recorded' ? 'Carga efetiva realizada' : 'Alíquota efetiva estimada'} value={`${effectiveRate.toFixed(2)}%`} />
             <TaxSummary label="Competência" value={competence || 'Não informada'} />
           </div>
 
@@ -1034,18 +1037,18 @@ const TaxExplanationModal = ({ mode, simples, total, competence, onClose }: {
             {applicable.map(item => (
               <div key={item.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-t border-slate-100 px-4 py-2.5 text-xs first:border-0">
                 <span className="font-semibold text-slate-700">{item.label}</span>
-                <span className="text-slate-500">{item.effectivePercent.toFixed(2)}%</span>
+                <span className="text-slate-500">{item.displayedPercent.toFixed(2)}%</span>
                 <span className="w-28 text-right font-bold text-slate-900">{detailedCurrency(item.amount)}</span>
               </div>
             ))}
             <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-900">
-              <span>Total</span><span>{simples.aliquotaEfetiva.toFixed(2)}%</span><span className="w-28 text-right">{detailedCurrency(total)}</span>
+              <span>Total</span><span>{effectiveRate.toFixed(2)}%</span><span className="w-28 text-right">{detailedCurrency(total)}</span>
             </div>
           </div>
 
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
             {mode === 'recorded'
-              ? 'A divisão é gerencial: o valor total vem do lançamento em Impostos e Tributos e foi repartido conforme o Anexo e a faixa calculados. O extrato oficial do PGDAS-D prevalece.'
+              ? 'A carga efetiva realizada corresponde ao DAS lançado dividido pelo faturamento da competência. A divisão entre tributos é gerencial, baseada no Anexo e na faixa calculados; o extrato oficial do PGDAS-D prevalece.'
               : 'Esta é uma estimativa gerencial baseada no RBT12, no Fator R, no Anexo e na faixa atuais. O valor oficial pode variar no fechamento do PGDAS-D.'}
           </p>
         </div>

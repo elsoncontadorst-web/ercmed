@@ -27,47 +27,47 @@ const plans: Plan[] = [
         tier: AccountTier.TRIAL,
         name: 'Start',
         tagline: 'Para começar',
-        description: 'Ideal para profissionais que estão organizando seu consultório.',
+        description: 'Experimente a operação integrada do ERCMED antes de contratar.',
         price: 0,
         limit: 'Até 3 profissionais e 10 pacientes',
         icon: Star,
         tone: 'emerald',
-        features: ['Agenda e cadastro de pacientes', 'Agendamento online', 'Prontuário eletrônico', 'Anamnese mista', '15 dias sem cartão']
+        features: ['Agenda e atendimentos', 'Financeiro essencial', 'Produção e faturamento', 'Até 10 pacientes', '15 dias sem cartão']
     },
     {
         tier: AccountTier.SILVER,
         name: 'Professional',
         tagline: 'Para a maioria das clínicas',
-        description: 'Controle a rotina de consultórios e clínicas com até 10 profissionais.',
+        description: 'Organize a rotina clínica, financeira e profissional em um só lugar.',
         price: 119,
         limit: 'Até 10 profissionais',
         icon: Shield,
         tone: 'blue',
         recommended: true,
-        features: ['Tudo do Start', 'Relatórios financeiros', 'Agenda avançada', 'Prontuário completo', 'Suporte por e-mail']
+        features: ['Tudo do Start', 'Dashboard executivo', 'Contas a pagar e receber', 'Contratos e repasses', 'Suporte por e-mail']
     },
     {
         tier: AccountTier.GOLD,
         name: 'Advanced',
         tagline: 'Para clínicas em crescimento',
-        description: 'Gestão completa, indicadores e controle para uma operação em expansão.',
+        description: 'Gestão completa, visão fiscal e controle por unidade para operações em expansão.',
         price: 190,
         limit: 'Até 20 profissionais',
         icon: Crown,
         tone: 'indigo',
-        features: ['Tudo do Professional', 'Gestão financeira completa', 'Indicadores estratégicos', 'Simulações avançadas', 'Gestão de unidades']
+        features: ['Tudo do Professional', 'Dashboard mensal e anual', 'Fator R e painel fiscal', 'Gestão de unidades', 'Relatórios executivos']
     },
     {
         tier: AccountTier.ENTERPRISE,
         name: 'Enterprise AI',
         tagline: 'Inteligência e automação',
-        description: 'Para clínicas que querem automatizar e decidir melhor com apoio de IA.',
+        description: 'Automação, inteligência gerencial e atendimento prioritário para a operação.',
         price: 390,
         limit: 'Até 20 profissionais',
         icon: Zap,
         tone: 'purple',
         ai: true,
-        features: ['Tudo do Advanced', 'Consultor clínico com IA', 'Apoio à decisão estratégica', 'Análise preditiva', 'Suporte prioritário']
+        features: ['Tudo do Advanced', 'Recursos de IA do ERP', 'Automação de processos', 'Análises gerenciais avançadas', 'Suporte prioritário']
     },
     {
         tier: AccountTier.UNLIMITED,
@@ -77,7 +77,7 @@ const plans: Plan[] = [
         limit: 'Profissionais ilimitados',
         icon: Building2,
         tone: 'slate',
-        features: ['Recursos personalizados', 'Integrações avançadas', 'Operação sem limite de profissionais', 'SLA e onboarding dedicados']
+        features: ['Tudo do Enterprise AI', 'Gestão consolidada do grupo', 'Integrações personalizadas', 'Operação sem limite de profissionais', 'SLA e onboarding dedicados']
     }
 ];
 
