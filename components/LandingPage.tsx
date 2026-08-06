@@ -70,12 +70,12 @@ const publicPlans = [
         accent: 'indigo'
     },
     {
-        name: 'Enterprise AI',
-        subtitle: 'Inteligência e automação',
+        name: 'Enterprise',
+        subtitle: 'Automação e performance',
         price: '390,00',
         limit: 'Até 20 profissionais',
-        description: 'Para operações que buscam automação, inteligência gerencial e prioridade no atendimento.',
-        features: ['Tudo do Advanced', 'Recursos de IA do ERP', 'Automação de processos', 'Análises gerenciais avançadas', 'Suporte prioritário'],
+        description: 'Para operações que buscam automação, gestão avançada e prioridade no atendimento.',
+        features: ['Tudo do Advanced', 'Fluxos operacionais avançados', 'Automação de processos', 'Análises gerenciais avançadas', 'Suporte prioritário'],
         action: 'Testar 15 dias grátis',
         icon: Zap,
         accent: 'purple'
@@ -405,9 +405,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
 
                     <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-100 to-teal-50 p-8 shadow-sm sm:p-10">
                         <BrainCircuit className="h-10 w-10 text-teal-700" />
-                        <h3 className="mt-6 text-2xl font-black">Gestão com inteligência e governança.</h3>
+                        <h3 className="mt-6 text-2xl font-black">Gestão avançada e governança.</h3>
                         <p className="mt-4 leading-relaxed text-slate-600">
-                            Permissões por perfil, rastreabilidade dos lançamentos, visão por unidade, centros de resultado, metas, BI e apoio de IA tornam a operação mais segura e a diretoria mais rápida para decidir.
+                            Permissões por perfil, rastreabilidade dos lançamentos, visão por unidade, centros de resultado, metas, BI e automação tornam a operação mais segura e a diretoria mais rápida para decidir.
                         </p>
                         <button onClick={handleWhatsApp} className="mt-7 inline-flex items-center gap-2 font-bold text-teal-700 hover:text-teal-800">
                             Conversar sobre minha operação <ArrowRight className="h-4 w-4" />
@@ -482,7 +482,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         <tr><td className="px-5 py-4 font-semibold">Profissionais</td><td className="text-center">Até 3</td><td className="text-center">Até 10</td><td className="text-center">Até 20</td><td className="text-center">Até 20</td><td className="text-center">Ilimitados</td></tr>
-                                        <tr><td className="px-5 py-4 font-semibold">Gestão financeira</td><td className="text-center">Básica</td><td className="text-center">Relatórios</td><td className="text-center">Completa</td><td className="text-center">Completa + IA</td><td className="text-center">Personalizada</td></tr>
+                                        <tr><td className="px-5 py-4 font-semibold">Gestão financeira</td><td className="text-center">Básica</td><td className="text-center">Relatórios</td><td className="text-center">Completa</td><td className="text-center">Completa + automação</td><td className="text-center">Personalizada</td></tr>
                                         <tr><td className="px-5 py-4 font-semibold">Suporte</td><td className="text-center">E-mail</td><td className="text-center">E-mail</td><td className="text-center">Chat</td><td className="text-center">Prioritário</td><td className="text-center">Dedicado</td></tr>
                                     </tbody>
                                 </table>
