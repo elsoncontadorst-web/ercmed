@@ -4,8 +4,13 @@ import {
     BarChart3,
     BrainCircuit,
     Building2,
+    CalendarDays,
     CheckCircle2,
+    Clock3,
+    Cloud,
     Landmark,
+    Layers3,
+    Headphones,
     LogIn,
     MessageCircle,
     ReceiptText,
@@ -133,74 +138,107 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900">
-            <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
-                <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-                    <SystemLogo className="h-14" variant="dark" />
-                    <div className="flex items-center gap-3">
-                        <a href="#planos" className="hidden rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 lg:block">
-                            Planos
-                        </a>
-                        <button onClick={handleWhatsApp} className="hidden items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50 md:flex">
-                            <MessageCircle className="h-4 w-4" /> Falar com especialista
-                        </button>
-                        <button onClick={onLoginClick} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800">
-                            <LogIn className="h-4 w-4" /> Acessar sistema
-                        </button>
+            <header className="sticky top-0 z-50 shadow-sm">
+                <div className="hidden bg-slate-950 text-white md:block">
+                    <div className="mx-auto flex h-9 max-w-7xl items-center justify-between px-6 text-xs font-medium lg:px-8">
+                        <div className="flex items-center gap-5">
+                            <span className="flex items-center gap-1.5"><Headphones className="h-3.5 w-3.5 text-teal-300" /> Suporte especializado</span>
+                            <span className="h-4 w-px bg-white/20" />
+                            <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-teal-300" /> Segunda a sexta, das 8h às 18h</span>
+                            <span className="h-4 w-px bg-white/20" />
+                            <span className="flex items-center gap-1.5"><MessageCircle className="h-3.5 w-3.5 text-teal-300" /> Atendimento via WhatsApp</span>
+                        </div>
+                        <div className="flex items-center gap-5">
+                            <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-teal-300" /> Privacidade e proteção de dados</span>
+                            <span className="h-4 w-px bg-white/20" />
+                            <span className="flex items-center gap-1.5"><Cloud className="h-3.5 w-3.5 text-teal-300" /> Plataforma em nuvem</span>
+                        </div>
                     </div>
                 </div>
-            </nav>
+                <nav className="border-b border-slate-200 bg-white/95 backdrop-blur">
+                    <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+                        <SystemLogo className="h-14" variant="dark" />
+                        <div className="hidden items-center gap-7 text-sm font-semibold text-slate-700 xl:flex">
+                            <a href="#solucoes" className="transition hover:text-teal-700">Soluções</a>
+                            <a href="#recursos" className="transition hover:text-teal-700">Recursos</a>
+                            <a href="#clientes" className="transition hover:text-teal-700">Quem usa</a>
+                            <a href="#planos" className="transition hover:text-teal-700">Planos</a>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button onClick={handleWhatsApp} className="hidden items-center gap-2 rounded-xl border border-teal-200 px-4 py-2.5 text-sm font-semibold text-teal-700 transition hover:bg-teal-50 md:flex">
+                                <MessageCircle className="h-4 w-4" /> Falar com especialista
+                            </button>
+                            <button onClick={onLoginClick} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800">
+                                <LogIn className="h-4 w-4" /> Acessar sistema
+                            </button>
+                        </div>
+                    </div>
+                </nav>
+            </header>
 
             <main>
-                <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 py-20 text-white lg:py-28">
-                    <div className="absolute -right-24 top-0 h-96 w-96 rounded-full bg-teal-400/15 blur-3xl" />
-                    <div className="absolute -bottom-28 left-0 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
-                    <div className="relative mx-auto grid max-w-7xl gap-14 px-4 sm:px-6 lg:grid-cols-[1.1fr_.9fr] lg:items-center lg:px-8">
+                <section id="inicio" className="relative overflow-hidden bg-white py-14 lg:py-20">
+                    <div className="absolute -right-36 top-8 h-96 w-96 rounded-full bg-teal-200/40 blur-3xl" />
+                    <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-cyan-100/50 blur-3xl" />
+                    <div className="relative mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[.9fr_1.1fr] lg:items-center lg:px-8">
                         <div>
-                            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-teal-300/20 bg-teal-300/10 px-4 py-2 text-sm font-semibold text-teal-100">
-                                <Building2 className="h-4 w-4" /> ERP de gestão para empresas de saúde
+                            <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-teal-50 px-4 py-2 text-sm font-bold uppercase tracking-wide text-teal-700">
+                                <Building2 className="h-4 w-4" /> ERP completo para empresas da saúde
                             </div>
-                            <h1 className="max-w-3xl text-4xl font-black leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-                                O novo ERCMED foi criado para <span className="text-teal-300">gestão empresarial em saúde</span>, não apenas para atendimento clínico.
+                            <h1 className="max-w-3xl text-4xl font-black leading-[1.08] tracking-tight text-slate-950 sm:text-5xl lg:text-[3.55rem]">
+                                Gestão inteligente para clínicas e empresas da saúde <span className="text-teal-600">crescerem com controle</span>
                             </h1>
-                            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-slate-300">
-                                Organize faturamento, financeiro, repasse, contratos, estoque, patrimônio, fiscal, BI e operação em uma única plataforma com visão executiva.
+                            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-slate-600">
+                                Integre operação, faturamento, financeiro, profissionais, recursos e gestão fiscal em uma única plataforma, com mais clareza para decidir e crescer.
                             </p>
-                            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                                <button onClick={onTrialClick} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-400 px-6 py-4 font-bold text-slate-950 transition hover:bg-teal-300">
+                            <div className="mt-7 grid max-w-xl grid-cols-2 gap-3 text-sm font-semibold text-slate-700">
+                                {[
+                                    ['Dashboard executivo', BarChart3],
+                                    ['Financeiro integrado', Landmark],
+                                    ['Gestão fiscal', ShieldCheck],
+                                    ['Suporte especializado', Headphones]
+                                ].map(([label, Icon]) => {
+                                    const BenefitIcon = Icon as React.ElementType;
+                                    return <div key={label as string} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3"><BenefitIcon className="h-5 w-5 text-teal-600" />{label as string}</div>;
+                                })}
+                            </div>
+                            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                                <button onClick={onTrialClick} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-6 py-4 font-bold text-white shadow-lg shadow-teal-600/20 transition hover:bg-teal-700">
                                     Conhecer o sistema <ArrowRight className="h-5 w-5" />
                                 </button>
-                                <button onClick={handleWhatsApp} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-6 py-4 font-bold text-white transition hover:bg-white/10">
-                                    <MessageCircle className="h-5 w-5" /> Solicitar demonstração
+                                <button onClick={handleWhatsApp} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-4 font-bold text-slate-800 transition hover:border-teal-300 hover:bg-teal-50">
+                                    <CalendarDays className="h-5 w-5" /> Agendar demonstração
                                 </button>
                             </div>
                         </div>
 
-                        <div className="rounded-3xl border border-white/10 bg-white/10 p-6 shadow-2xl backdrop-blur-sm">
-                            <p className="text-sm font-bold uppercase tracking-[0.18em] text-teal-200">Estrutura do novo sistema</p>
-                            <div className="mt-6 grid gap-4">
-                                {[
-                                    ['Dashboard executivo', BarChart3],
-                                    ['Financeiro e controladoria', Landmark],
-                                    ['Faturamento e repasse', ReceiptText],
-                                    ['Portal do profissional', UsersRound],
-                                    ['Fiscal, XML e patrimônio', ShieldCheck]
-                                ].map(([label, Icon]) => {
-                                    const FeatureIcon = Icon as React.ElementType;
-                                    return (
-                                        <div key={label as string} className="flex items-center gap-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
-                                            <div className="rounded-xl bg-teal-400/15 p-2.5">
-                                                <FeatureIcon className="h-5 w-5 text-teal-300" />
-                                            </div>
-                                            <span className="font-semibold text-slate-100">{label as string}</span>
-                                        </div>
-                                    );
-                                })}
+                        <div className="relative">
+                            <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-teal-200/60 to-cyan-100/20 blur-2xl" />
+                            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/15">
+                                <div className="flex items-center gap-1.5 border-b border-slate-100 px-2 pb-3">
+                                    <span className="h-2.5 w-2.5 rounded-full bg-rose-300" /><span className="h-2.5 w-2.5 rounded-full bg-amber-300" /><span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+                                    <span className="ml-3 text-xs font-semibold text-slate-400">Dashboard Executivo ERCMED</span>
+                                </div>
+                                <img src="/assets/dashboard-mockup.png" alt="Dashboard executivo do ERCMED" className="mt-3 w-full rounded-2xl object-cover" />
                             </div>
+                        </div>
+                    </div>
+                    <div className="relative mx-auto mt-14 max-w-7xl px-4 sm:px-6 lg:px-8">
+                        <div className="grid overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+                            {[
+                                ['15 dias', 'Teste completo para conhecer a plataforma', CalendarDays],
+                                ['5 planos', 'Opções para diferentes portes de operação', Layers3],
+                                ['Gestão integrada', 'Operação, financeiro e fiscal conectados', ShieldCheck],
+                                ['Na nuvem', 'Acesso online com dados centralizados', Cloud]
+                            ].map(([value, description, Icon], index) => {
+                                const MetricIcon = Icon as React.ElementType;
+                                return <div key={value as string} className={`flex items-center gap-4 p-6 ${index ? 'border-t border-slate-200 sm:border-l sm:border-t-0' : ''}`}><div className="rounded-xl bg-teal-100 p-3"><MetricIcon className="h-6 w-6 text-teal-700" /></div><div><p className="text-xl font-black text-slate-950">{value as string}</p><p className="mt-1 text-sm leading-snug text-slate-600">{description as string}</p></div></div>;
+                            })}
                         </div>
                     </div>
                 </section>
 
-                <section className="border-b border-slate-200 bg-white py-14">
+                <section id="clientes" className="border-b border-slate-200 bg-white py-14">
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div className="text-center">
                             <p className="text-sm font-bold uppercase tracking-[0.16em] text-teal-700">Quem usa o ERCMed</p>
@@ -222,7 +260,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                     </div>
                 </section>
 
-                <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+                <section id="solucoes" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
                     <div className="max-w-2xl">
                         <p className="text-sm font-bold uppercase tracking-[0.16em] text-teal-700">Posicionamento do produto</p>
                         <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Um ERP vertical para operação, faturamento e crescimento.</h2>
@@ -243,7 +281,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                     </div>
                 </section>
 
-                <section className="bg-white py-20">
+                <section id="recursos" className="bg-white py-20">
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
                             <div className="rounded-3xl bg-teal-950 p-8 text-white sm:p-10">
