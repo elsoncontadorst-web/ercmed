@@ -193,7 +193,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                         <div className="bg-gradient-to-br from-teal-50 to-cyan-100 p-7">
                                             <p className="text-xs font-black uppercase tracking-[0.16em] text-teal-700">Em destaque</p>
                                             <div className="mt-4 overflow-hidden rounded-xl border border-white bg-white shadow-sm">
-                                                <img src="/assets/dashboard-executivo-real.png" alt="Visão real do Dashboard ERCMed" className="aspect-video w-full object-cover object-left-top" />
+                                                <img src="/assets/dashboard-executivo-anonimo.png" alt="Visão real do Dashboard ERCMed" className="aspect-video w-full object-cover object-left-top" />
                                             </div>
                                             <h3 className="mt-5 text-lg font-black text-slate-950">Gestão completa em uma única plataforma</h3>
                                             <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">Financeiro, operação e indicadores conectados em tempo real.</p>
@@ -261,7 +261,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                     <span className="h-2.5 w-2.5 rounded-full bg-rose-300" /><span className="h-2.5 w-2.5 rounded-full bg-amber-300" /><span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
                                     <span className="ml-3 text-xs font-semibold text-slate-400">Dashboard Executivo ERCMED</span>
                                 </div>
-                                <img src="/assets/dashboard-executivo-real.png" alt="Tela real do Dashboard Executivo do ERCMed" className="mt-3 aspect-[16/10] w-full rounded-2xl object-cover object-left-top" />
+                                <img src="/assets/dashboard-executivo-anonimo.png" alt="Tela real do Dashboard Executivo do ERCMed" className="mt-3 aspect-[16/10] w-full rounded-2xl object-cover object-left-top" />
                             </div>
                         </div>
                     </div>
