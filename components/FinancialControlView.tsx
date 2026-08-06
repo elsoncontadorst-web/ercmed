@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, FileSpreadsheet, Plus, Filter, Download, Trash2, CheckCircle, XCircle, Calendar, DollarSign, TrendingUp, TrendingDown, Save, Loader2, X, Pencil, Search, Archive, Users } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { auth } from '../services/firebase';
-import { saveTransactions, getTransactions, SavedTransaction, saveCustomCategories, getCustomCategories, updateTransactionStatus } from '../services/userDataService';
+import { getTransactions, SavedTransaction, saveCustomCategories, getCustomCategories, updateTransactionStatus, syncTransactions } from '../services/userDataService';
 import { getAllBillingRecords, deleteBillingRecord, updateBillingPaymentStatus, getAllProfessionals } from '../services/repasseService';
 import { useUser } from '../contexts/UserContext';
 import { ConsultationBilling } from '../types/finance';
@@ -92,7 +92,6 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
     const [isSaving, setIsSaving] = useState(false);
     const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
     const [isImporting, setIsImporting] = useState(false);
-    const [dataLoaded, setDataLoaded] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [repeatMonthly, setRepeatMonthly] = useState(false);
     const [repeatMonths, setRepeatMonths] = useState(12);
@@ -204,7 +203,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 const clinics = await getClinics(ownerId);
 
                 // Load Transactions
-                const transactionsData = await getTransactions(ownerId);
+                const transactionsData = await getTransactions(ownerId, true);
                 if (transactionsData) {
                     const { unique: uniqueTransactions, removed } = removeDuplicateFiscalImports(transactionsData);
                     const scopedTransactions = uniqueTransactions.filter(item => recordMatchesClinicScope(item, activeClinicId, clinics));
@@ -212,7 +211,10 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                     loadedScopeTransactionIdsRef.current = new Set(scopedTransactions.map(item => item.id));
                     setTransactions(scopedTransactions);
                     if (removed > 0) {
-                        await saveTransactions(ownerId, uniqueTransactions);
+                        const uniqueIds = new Set(uniqueTransactions.map(item => item.id));
+                        const duplicateIds = transactionsData.filter(item => !uniqueIds.has(item.id)).map(item => item.id);
+                        const saved = await syncTransactions(ownerId, [], duplicateIds);
+                        if (!saved) throw new Error('Não foi possível remover importações duplicadas no Firebase.');
                         console.info(`[FINANCE] ${removed} importação(ões) fiscal(is) duplicada(s) removida(s).`);
                     }
                 }
@@ -254,9 +256,9 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 ].filter(Boolean))));
             } catch (error) {
                 console.error("Erro ao carregar dados:", error);
+                alert('Não foi possível carregar os lançamentos do Firebase. Atualize a página ou verifique o acesso deste usuário. Nenhum lançamento novo foi gravado sobre os dados existentes.');
             } finally {
                 setIsLoading(false);
-                setDataLoaded(true);
             }
         };
 
@@ -356,32 +358,15 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
 
     const persistScopedTransactions = async (ownerId: string, scopedTransactions: Transaction[]) => {
         const previousScopeIds = loadedScopeTransactionIdsRef.current;
+        const nextScopeIds = new Set(scopedTransactions.map(transaction => transaction.id));
+        const removedIds = Array.from(previousScopeIds).filter(id => !nextScopeIds.has(id));
+        const saved = await syncTransactions(ownerId, scopedTransactions, removedIds);
+        if (!saved) throw new Error('Firebase recusou a gravação dos lançamentos.');
         const preservedTransactions = allTransactionsRef.current.filter(transaction => !previousScopeIds.has(transaction.id));
         const mergedTransactions = [...preservedTransactions, ...scopedTransactions];
-        await saveTransactions(ownerId, mergedTransactions);
         allTransactionsRef.current = mergedTransactions;
         loadedScopeTransactionIdsRef.current = new Set(scopedTransactions.map(transaction => transaction.id));
     };
-
-    // Save transactions whenever they change (with debounce)
-    useEffect(() => {
-        const currentUser = auth.currentUser;
-        if (!currentUser || !dataLoaded) return;
-
-        const timeoutId = setTimeout(async () => {
-            setIsSaving(true);
-            try {
-                const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
-                await persistScopedTransactions(ownerId, transactions);
-            } catch (error) {
-                console.error("Erro ao salvar transações:", error);
-            } finally {
-                setIsSaving(false);
-            }
-        }, 1500);
-
-        return () => clearTimeout(timeoutId);
-    }, [transactions]);
 
     const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
     const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
@@ -921,11 +906,12 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
             await Promise.all(Array.from(files).map(file => readFile(file)));
             
             if (allNewTransactions.length > 0) {
-                // Prepend so they appear at the top
-                setTransactions(prev => [...allNewTransactions, ...prev]);
                 if (ownerId) {
-                    await saveTransactions(ownerId, [...allNewTransactions, ...persistedTransactions]);
+                    const saved = await syncTransactions(ownerId, allNewTransactions);
+                    if (!saved) throw new Error('O Firebase recusou a gravação das notas importadas.');
                 }
+                // Exiba somente depois de confirmar a persistência.
+                setTransactions(prev => [...allNewTransactions, ...prev]);
                 alert(`${allNewTransactions.length} notas importadas. ${duplicateCount} duplicadas foram ignoradas.${archiveFailureCount ? ` Atenção: ${archiveFailureCount} XML(s) foram lançados, mas não puderam ser arquivados para download.` : ''}`);
             } else if (duplicateCount > 0) {
                 alert(`Nenhuma nota nova foi importada. ${duplicateCount} arquivos já existiam no financeiro.`);
@@ -941,10 +927,25 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         }
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (window.confirm('Tem certeza que deseja excluir este lançamento?')) {
-            setTransactions(prev => prev.filter(t => t.id !== id));
-            setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
+            const currentUser = auth.currentUser;
+            if (!currentUser) return;
+            setIsSaving(true);
+            try {
+                const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
+                const saved = await syncTransactions(ownerId, [], [id]);
+                if (!saved) throw new Error('Falha ao excluir no Firebase.');
+                setTransactions(prev => prev.filter(t => t.id !== id));
+                setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
+                loadedScopeTransactionIdsRef.current.delete(id);
+                allTransactionsRef.current = allTransactionsRef.current.filter(item => item.id !== id);
+            } catch (error) {
+                console.error('Erro ao excluir lançamento:', error);
+                alert('Não foi possível excluir o lançamento. Nenhum dado foi removido da tela.');
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
@@ -960,11 +961,28 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         setIsModalOpen(true);
     };
 
-    const handleBulkDelete = () => {
+    const handleBulkDelete = async () => {
         if (selectedIds.length === 0) return;
         if (window.confirm(`Tem certeza que deseja excluir os ${selectedIds.length} lançamentos selecionados?`)) {
-            setTransactions(prev => prev.filter(t => !selectedIds.includes(t.id)));
-            setSelectedIds([]);
+            const currentUser = auth.currentUser;
+            if (!currentUser) return;
+            const idsToDelete = [...selectedIds];
+            setIsSaving(true);
+            try {
+                const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
+                const saved = await syncTransactions(ownerId, [], idsToDelete);
+                if (!saved) throw new Error('Falha ao excluir no Firebase.');
+                const removed = new Set(idsToDelete);
+                setTransactions(prev => prev.filter(t => !removed.has(t.id)));
+                setSelectedIds([]);
+                idsToDelete.forEach(id => loadedScopeTransactionIdsRef.current.delete(id));
+                allTransactionsRef.current = allTransactionsRef.current.filter(item => !removed.has(item.id));
+            } catch (error) {
+                console.error('Erro ao excluir lançamentos:', error);
+                alert('Não foi possível excluir os lançamentos. Nenhum dado foi removido da tela.');
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
@@ -1041,10 +1059,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
             updatedTransactions = [transactionData, ...transactions];
         }
 
-        setTransactions(updatedTransactions);
-
-        // Grave imediatamente para que uma atualização da página logo após
-        // clicar em salvar não restaure a categoria anterior.
+        // Atualize a tela somente depois da confirmação do Firebase.
         const currentUser = auth.currentUser;
         if (currentUser) {
             try {
@@ -1059,6 +1074,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 setIsSaving(false);
             }
         }
+        setTransactions(updatedTransactions);
         
         setIsModalOpen(false);
         setRepeatMonthly(false);
@@ -1103,7 +1119,9 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 : item
             );
             if (ownerId) {
-                await saveTransactions(ownerId, updatedTransactions);
+                const changedTransactions = updatedTransactions.filter(item => eligible.some(note => note.id === item.id));
+                const saved = await syncTransactions(ownerId, changedTransactions);
+                if (!saved) throw new Error('O Firebase recusou o vínculo das notas.');
                 await Promise.all(eligible
                     .filter(item => item.sourceFiscalFileId)
                     .map(item => updateFiscalFileProfessional(ownerId, item.sourceFiscalFileId!, {

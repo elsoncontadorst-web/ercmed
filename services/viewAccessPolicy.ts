@@ -58,6 +58,11 @@ export const canAccessView = (
   if (isAdmin) return true;
   if (SUPPORT_VIEWS.has(view)) return true;
 
+  // Financial entry screens are available to every authenticated clinic user.
+  if ([AppView.ACCOUNTS_RECEIVABLE, AppView.ACCOUNTS_PAYABLE, AppView.CASH_ACCOUNTS].includes(view)) {
+    return true;
+  }
+
   if (role && PROFESSIONAL_ROLES.has(role)) {
     return PROFESSIONAL_VIEWS.has(view);
   }

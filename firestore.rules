@@ -26,7 +26,10 @@ service cloud.firestore {
     function isClinicMember(managerId) {
       return isAuthenticated() && (
         request.auth.uid == managerId ||
-        get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.managerId == managerId
+        (exists(/databases/$(database)/documents/user_profiles/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.get('managerId', '') == managerId) ||
+        (exists(/databases/$(database)/documents/system_users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/system_users/$(request.auth.uid)).data.get('managerId', '') == managerId)
       );
     }
 

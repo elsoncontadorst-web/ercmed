@@ -182,7 +182,7 @@ export const saveTransactions = async (uid: string, transactions: SavedTransacti
     }
 };
 
-export const getTransactions = async (uid: string): Promise<SavedTransaction[]> => {
+export const getTransactions = async (uid: string, throwOnError = false): Promise<SavedTransaction[]> => {
     try {
         const docRef = doc(db, "users", uid, "financial_control", "transactions");
         const snap = await getDoc(docRef);
@@ -193,6 +193,7 @@ export const getTransactions = async (uid: string): Promise<SavedTransaction[]> 
         return [];
     } catch (error) {
         console.error("Erro ao buscar transações:", error);
+        if (throwOnError) throw error;
         return [];
     }
 };
@@ -222,6 +223,41 @@ export const addTransaction = async (uid: string, transaction: Omit<SavedTransac
     } catch (error) {
         console.error("Erro ao adicionar transação:", error);
         return null;
+    }
+};
+
+// Applies changes against the latest Firestore version so an older browser
+// session cannot replace entries created by another clinic user.
+export const syncTransactions = async (
+    uid: string,
+    upserts: SavedTransaction[],
+    removedIds: string[] = []
+): Promise<boolean> => {
+    try {
+        const docRef = doc(db, "users", uid, "financial_control", "transactions");
+        await runTransaction(db, async (firestoreTransaction) => {
+            const snapshot = await firestoreTransaction.get(docRef);
+            const existing = snapshot.exists() && Array.isArray(snapshot.data().items)
+                ? snapshot.data().items as SavedTransaction[]
+                : [];
+            const removed = new Set(removedIds);
+            const changes = new Map(upserts.map(item => [item.id, item]));
+            const updated = existing
+                .filter(item => !removed.has(item.id))
+                .map(item => changes.get(item.id) || item);
+            const existingIds = new Set(existing.map(item => item.id));
+            upserts.forEach(item => {
+                if (!existingIds.has(item.id) && !removed.has(item.id)) updated.unshift(item);
+            });
+            firestoreTransaction.set(docRef, {
+                items: updated,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        });
+        return true;
+    } catch (error) {
+        console.error("Erro ao sincronizar transacoes:", error);
+        return false;
     }
 };
 
