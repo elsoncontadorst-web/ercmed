@@ -15,6 +15,21 @@ const webhookUrl =
 
 type PaidPlanId = "silver" | "gold" | "enterprise";
 
+/**
+ * Returns a validated Mercado Pago production token.
+ * @return {string} Sanitized provider access token.
+ */
+function getMercadoPagoToken(): string {
+  const token = mercadoPagoToken.value().trim();
+  if (!/^APP_USR-[A-Za-z0-9-]+$/.test(token)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "A credencial do Mercado Pago está inválida ou malformada."
+    );
+  }
+  return token;
+}
+
 const defaultPlans: Record<PaidPlanId, {title: string; price: number}> = {
   silver: {title: "ERCMed Professional", price: 119},
   gold: {title: "ERCMed Advanced", price: 190},
@@ -57,7 +72,7 @@ async function mercadoPagoRequest(path: string, init?: RequestInit) {
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
     headers: {
-      "Authorization": `Bearer ${mercadoPagoToken.value()}`,
+      "Authorization": `Bearer ${getMercadoPagoToken()}`,
       "Content-Type": "application/json",
       ...init?.headers,
     },
