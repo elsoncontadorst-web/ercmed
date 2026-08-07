@@ -1,31 +1,112 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Crown, Star, Shield, Zap, Building2, DollarSign, Save, Settings2 } from 'lucide-react';
+import {
+    Building2, Check, ChevronDown, Crown, DollarSign, Headphones,
+    Infinity, Save, Settings2, Shield, Sparkles, Star, Zap
+} from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
-import { AccountTier, TIER_DESCRIPTIONS } from '../types/accountTiers';
+import { AccountTier } from '../types/accountTiers';
 import { openMercadoPagoCheckout, openSalesContact } from '../services/mercadoPagoCheckoutService';
 import { DEFAULT_PLAN_PRICING, PlanPricing, subscribeToPlanPricing, updatePlanPricing } from '../services/planPricingService';
-
 import { AppView } from '../types';
 
 interface PlansViewProps {
     setView?: (view: AppView) => void;
 }
 
+type Plan = {
+    id: AccountTier;
+    name: string;
+    price: string;
+    description: string;
+    icon: React.ElementType;
+    tone: 'emerald' | 'blue' | 'indigo' | 'purple';
+    features: string[];
+};
+
+const tierOrder: AccountTier[] = [
+    AccountTier.TRIAL,
+    AccountTier.SILVER,
+    AccountTier.GOLD,
+    AccountTier.ENTERPRISE,
+    AccountTier.UNLIMITED
+];
+
+const tones = {
+    emerald: { border: 'border-emerald-200', soft: 'bg-emerald-50', text: 'text-emerald-600', button: 'bg-emerald-600 hover:bg-emerald-700' },
+    blue: { border: 'border-blue-200', soft: 'bg-blue-50', text: 'text-blue-600', button: 'bg-blue-600 hover:bg-blue-700' },
+    indigo: { border: 'border-indigo-200', soft: 'bg-indigo-50', text: 'text-indigo-600', button: 'bg-indigo-600 hover:bg-indigo-700' },
+    purple: { border: 'border-purple-200', soft: 'bg-purple-50', text: 'text-purple-600', button: 'bg-purple-600 hover:bg-purple-700' }
+};
+
+const comparison = [
+    ['Agenda e atendimentos', true, true, true, true],
+    ['Prontuário eletrônico', true, true, true, true],
+    ['Financeiro completo', 'Básico', true, true, true],
+    ['Contas a pagar e receber', false, true, true, true],
+    ['Contratos e repasses', false, true, true, true],
+    ['Dashboard executivo', false, true, true, true],
+    ['Fator R e painel fiscal', false, false, true, true],
+    ['Gestão de unidades', false, false, true, true],
+    ['Relatórios consolidados', false, false, false, true],
+    ['Suporte prioritário', false, false, false, true]
+] as const;
+
 const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
     const { user, userTier, trialDaysRemaining, isTrialExpired } = useUser();
-    const [copiedTier, setCopiedTier] = useState<string | null>(null);
     const [pricing, setPricing] = useState<PlanPricing>(DEFAULT_PLAN_PRICING);
     const [pricingDraft, setPricingDraft] = useState<PlanPricing>(DEFAULT_PLAN_PRICING);
     const [savingPricing, setSavingPricing] = useState(false);
     const [pricingMessage, setPricingMessage] = useState('');
-
-    // MasterAdmin functionality (keep existing)
+    const [showComparison, setShowComparison] = useState(true);
     const isMasterAdmin = user?.email === 'elsoncontador.st@gmail.com';
 
     useEffect(() => subscribeToPlanPricing(value => {
         setPricing(value);
         setPricingDraft(value);
     }), []);
+
+    const plans: Plan[] = [
+        {
+            id: AccountTier.TRIAL,
+            name: 'Start Free',
+            price: '0,00',
+            description: 'Teste grátis por 15 dias para conhecer o ERCMED.',
+            icon: Star,
+            tone: 'emerald',
+            features: ['Até 3 profissionais', 'Até 10 pacientes', 'Agenda e atendimentos', 'Financeiro essencial', 'Produção e faturamento', 'Sem necessidade de cartão']
+        },
+        {
+            id: AccountTier.SILVER,
+            name: 'Professional',
+            price: pricing.silver.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+            description: 'Rotina clínica, financeira e profissional organizada.',
+            icon: Shield,
+            tone: 'blue',
+            features: ['Até 10 profissionais', 'Tudo do Start Free', 'Dashboard executivo', 'Contas a pagar e receber', 'Contratos e repasses', 'Suporte por e-mail']
+        },
+        {
+            id: AccountTier.GOLD,
+            name: 'Advanced',
+            price: pricing.gold.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+            description: 'Gestão completa, visão fiscal e controle por unidade.',
+            icon: Crown,
+            tone: 'indigo',
+            features: ['Até 20 profissionais', 'Tudo do Professional', 'Dashboard mensal e anual', 'Fator R e painel fiscal', 'Gestão de unidades', 'Relatórios gerenciais']
+        },
+        {
+            id: AccountTier.ENTERPRISE,
+            name: 'Enterprise',
+            price: pricing.enterprise.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+            description: 'Recursos avançados para operações de maior complexidade.',
+            icon: Zap,
+            tone: 'purple',
+            features: ['Até 20 profissionais', 'Tudo do Advanced', 'Fluxos operacionais avançados', 'Relatórios consolidados', 'Suporte prioritário', 'Onboarding assistido']
+        }
+    ];
+
+    const currentTier = userTier || AccountTier.TRIAL;
+    const currentPlan = plans.find(plan => plan.id === currentTier);
+    const currentPrice = currentPlan?.price || 'Sob consulta';
 
     const savePricing = async () => {
         if (!user?.email || !isMasterAdmin) return;
@@ -42,414 +123,115 @@ const PlansView: React.FC<PlansViewProps> = ({ setView }) => {
         }
     };
 
-    const handleCopyLink = (tierId: string) => {
-        const link = `${window.location.origin}/register?plan=${tierId}`;
-        navigator.clipboard.writeText(link);
-        setCopiedTier(tierId);
-        setTimeout(() => setCopiedTier(null), 2000);
-    };
-
     const handleAction = (planId: AccountTier) => {
+        if (planId === currentTier && !isTrialExpired) return;
         if (planId === AccountTier.TRIAL) {
             setView?.(AppView.HEALTH_DASHBOARD);
             return;
         }
-
         if (planId === AccountTier.UNLIMITED) {
             openSalesContact();
             return;
         }
-
         openMercadoPagoCheckout(planId);
     };
 
-    const plans = [
-        {
-            id: AccountTier.TRIAL, // Start Free
-            name: 'Start Free',
-            price: '0,00',
-            description: 'Teste a operação integrada do ERCMED por 15 dias.',
-            icon: Star,
-            color: 'text-emerald-600',
-            bgColor: 'bg-emerald-50',
-            borderColor: 'border-emerald-200',
-            buttonColor: 'bg-emerald-600 hover:bg-emerald-700',
-            popular: false,
-            features: [
-                'Acesso completo por 15 dias',
-                'Até 3 profissionais',
-                'Até 10 pacientes',
-                'Agenda e atendimentos',
-                'Financeiro essencial',
-                'Produção e faturamento',
-                'Sem necessidade de cartão'
-            ],
-            footerText: 'Após 15 dias, escolha seu plano para continuar.'
-        },
-        {
-            id: AccountTier.SILVER, // Professional
-            name: 'Professional',
-            price: pricing.silver.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-            description: 'Rotina clínica, financeira e profissional organizada.',
-            icon: Shield,
-            color: 'text-blue-600',
-            bgColor: 'bg-blue-50',
-            borderColor: 'border-blue-200',
-            buttonColor: 'bg-blue-600 hover:bg-blue-700',
-            popular: true,
-            features: [
-                'Até 10 profissionais',
-                'Tudo do Start Free +:',
-                'Dashboard executivo',
-                'Contas a pagar e receber',
-                'Contratos e repasses'
-            ]
-        },
-        {
-            id: AccountTier.GOLD, // Advanced
-            name: 'Advanced',
-            price: pricing.gold.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-            description: 'Gestão completa, visão fiscal e controle por unidade.',
-            icon: Crown,
-            color: 'text-indigo-600',
-            bgColor: 'bg-indigo-50',
-            borderColor: 'border-indigo-200',
-            buttonColor: 'bg-indigo-600 hover:bg-indigo-700',
-            popular: false,
-            features: [
-                'Até 20 profissionais',
-                'Tudo do Professional +:',
-                'Dashboard mensal e anual',
-                'Fator R e painel fiscal',
-                'Gestão de unidades e relatórios'
-            ]
-        },
-        {
-            id: AccountTier.ENTERPRISE,
-            name: 'Enterprise',
-            price: pricing.enterprise.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-            description: 'Automação e gestão avançada para a operação.',
-            icon: Zap,
-            color: 'text-purple-600',
-            bgColor: 'bg-purple-50',
-            borderColor: 'border-purple-200',
-            buttonColor: 'bg-purple-600 hover:bg-purple-700',
-            popular: false,
-            features: [
-                'Até 20 profissionais',
-                'Tudo do Advanced +:',
-                'Fluxos operacionais avançados',
-                'Automação de processos',
-                'Suporte prioritário'
-            ]
-        },
-        {
-            id: AccountTier.UNLIMITED, // Unlimited
-            name: 'Unlimited',
-            price: 'Sob Consulta',
-            description: 'Para grandes redes e franquias.',
-            icon: Building2,
-            color: 'text-slate-600',
-            bgColor: 'bg-slate-50',
-            borderColor: 'border-slate-300',
-            buttonColor: 'bg-slate-800 hover:bg-slate-900',
-            popular: false,
-            features: [
-                'Profissionais ilimitados',
-                'Tudo do Enterprise +:',
-                'Gestão consolidada do grupo',
-                'Integrações personalizadas',
-                'SLA e onboarding dedicados'
-            ]
-        }
-    ];
-
-    const currentTier = userTier || AccountTier.TRIAL;
-    const currentPlan = plans.find(plan => plan.id === currentTier) || plans[0];
+    const actionLabel = (planId: AccountTier) => {
+        if (planId === currentTier && !isTrialExpired) return 'Plano atual';
+        if (planId === AccountTier.TRIAL) return currentTier === AccountTier.TRIAL ? 'Continuar teste' : 'Teste já utilizado';
+        return tierOrder.indexOf(planId) > tierOrder.indexOf(currentTier) ? 'Fazer upgrade' : 'Alterar plano';
+    };
 
     return (
-        <div className="min-h-full bg-slate-50/50 pb-20">
-            <div className="max-w-7xl mx-auto px-4 pt-8 sm:px-6 lg:px-8">
-                <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                            <div className="flex flex-wrap items-center gap-3">
-                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-700">Assinatura vigente</span>
-                                <span className={`rounded-full px-3 py-1 text-xs font-bold ${isTrialExpired ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{isTrialExpired ? 'Expirado' : 'Ativo'}</span>
+        <div className="min-h-full bg-slate-50/60 pb-16">
+            <main className="mx-auto max-w-[1540px] space-y-7 px-4 py-7 sm:px-6 lg:px-8">
+                <header>
+                    <h1 className="text-3xl font-black tracking-tight text-slate-950">Assinatura e Faturamento</h1>
+                    <p className="mt-1 text-slate-600">Gerencie seu plano, cobrança e recursos contratados.</p>
+                </header>
+
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="grid divide-y divide-slate-200 lg:grid-cols-[1.1fr_1fr] lg:divide-x lg:divide-y-0">
+                        <div className="p-6">
+                            <div className="flex items-start gap-4">
+                                <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-100"><Crown className="h-8 w-8" /></span>
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-500">Seu plano atual</p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-3">
+                                        <h2 className="text-2xl font-black text-blue-700">{currentPlan?.name || 'Unlimited'}</h2>
+                                        <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ${isTrialExpired ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{isTrialExpired ? 'Expirado' : 'Ativo'}</span>
+                                    </div>
+                                    <p className="mt-1 font-black text-slate-950">{currentTier === AccountTier.TRIAL ? 'Teste gratuito por 15 dias' : currentTier === AccountTier.UNLIMITED ? 'Valor personalizado' : `R$ ${currentPrice}/mês`}</p>
+                                    <p className="mt-2 max-w-xl text-sm text-slate-600">{currentPlan?.description || 'Plano personalizado para redes e grandes operações.'}</p>
+                                    {currentTier === AccountTier.TRIAL && trialDaysRemaining !== undefined && <p className="mt-2 text-sm font-bold text-emerald-700">{trialDaysRemaining} dia(s) restante(s) no teste</p>}
+                                </div>
                             </div>
-                            <h2 className="mt-3 text-3xl font-extrabold text-slate-900">Plano {currentPlan.name}</h2>
-                            <p className="mt-1 text-slate-600">{currentPlan.description}</p>
-                            {currentTier === AccountTier.TRIAL && trialDaysRemaining !== undefined && <p className="mt-2 text-sm font-semibold text-slate-700">{trialDaysRemaining} dia(s) restante(s) no período gratuito</p>}
                         </div>
-                        <div className="min-w-0 lg:max-w-2xl">
-                            <p className="mb-2 text-sm font-bold text-slate-800">Recursos contratados</p>
-                            <div className="flex flex-wrap gap-2">
-                                {currentPlan.features.map(feature => <span key={feature} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700"><Check className="h-4 w-4 text-emerald-600" />{feature}</span>)}
+                        <div className="p-6">
+                            <p className="text-sm font-black text-slate-900">Recursos contratados</p>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                {(currentPlan?.features || ['Profissionais e unidades sob medida', 'Gestão consolidada', 'Integrações personalizadas', 'Suporte dedicado']).slice(0, 6).map(feature => (
+                                    <span key={feature} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700"><Check className="h-4 w-4 shrink-0 text-emerald-600" />{feature}</span>
+                                ))}
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-            {isMasterAdmin && (
-                <div className="mx-auto mt-6 max-w-7xl px-4 sm:px-6 lg:px-8">
+                </section>
+
+                {isMasterAdmin && (
                     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-950 px-6 py-5 text-white sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className="rounded-xl bg-teal-400/15 p-2.5"><Settings2 className="h-5 w-5 text-teal-300" /></span>
-                                <div><h2 className="font-black">Gestão comercial dos planos</h2><p className="text-sm text-slate-400">Acesso exclusivo do usuário master</p></div>
-                            </div>
+                        <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-950 px-6 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-3"><Settings2 className="h-5 w-5 text-teal-300" /><div><h2 className="font-black">Gestão comercial dos planos</h2><p className="text-xs text-slate-400">Acesso exclusivo do usuário master</p></div></div>
                             <span className="rounded-full bg-teal-400/10 px-3 py-1 text-xs font-bold text-teal-300">Valores mensais</span>
                         </div>
-                        <div className="grid gap-4 p-6 md:grid-cols-3">
+                        <div className="grid gap-4 p-5 md:grid-cols-3">
                             {([['silver', 'Professional'], ['gold', 'Advanced'], ['enterprise', 'Enterprise']] as const).map(([key, label]) => (
-                                <label key={key} className="block rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <label key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                     <span className="text-sm font-bold text-slate-700">{label}</span>
-                                    <span className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-100">
-                                        <DollarSign className="h-4 w-4 text-teal-600" /><span className="text-sm font-bold text-slate-500">R$</span>
-                                        <input type="number" min="1" step="0.01" value={pricingDraft[key]} onChange={event => setPricingDraft(current => ({ ...current, [key]: Number(event.target.value) }))} className="min-w-0 flex-1 bg-transparent font-black text-slate-950 outline-none" />
-                                    </span>
+                                    <span className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 focus-within:border-teal-500"><DollarSign className="h-4 w-4 text-teal-600" /><b className="text-sm text-slate-500">R$</b><input type="number" min="1" step="0.01" value={pricingDraft[key]} onChange={event => setPricingDraft(current => ({ ...current, [key]: Number(event.target.value) }))} className="min-w-0 flex-1 bg-transparent font-black outline-none" /></span>
                                 </label>
                             ))}
                         </div>
-                        <div className="flex flex-col gap-3 border-t border-slate-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-                            <p className={`text-sm font-semibold ${pricingMessage.startsWith('Preços') ? 'text-emerald-700' : 'text-slate-500'}`}>{pricingMessage || 'O checkout sempre usa o preço salvo no servidor.'}</p>
-                            <button onClick={savePricing} disabled={savingPricing} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-black text-white transition hover:bg-teal-700 disabled:opacity-60"><Save className="h-4 w-4" />{savingPricing ? 'Salvando...' : 'Salvar preços'}</button>
-                        </div>
+                        <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm font-semibold text-slate-500">{pricingMessage || 'O checkout usa sempre o preço salvo no servidor.'}</p><button onClick={savePricing} disabled={savingPricing} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-black text-white hover:bg-teal-700 disabled:opacity-60"><Save className="h-4 w-4" />{savingPricing ? 'Salvando...' : 'Salvar preços'}</button></div>
                     </section>
-                </div>
-            )}
-            {/* Header Section */}
-            <div className="bg-white border-b border-slate-100">
-                <div className="max-w-7xl mx-auto px-4 py-10 sm:px-6 lg:px-8 text-center">
-                    <span className="inline-block px-4 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-semibold mb-6">
-                        Planos Flexíveis
-                    </span>
-                    <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-6 tracking-tight">
-                        Planos claros para clínicas que<br />
-                        querem <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">crescer com segurança</span>
-                    </h1>
-                    <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-                        Compare recursos, acompanhe sua assinatura e evolua conforme sua operação crescer.
-                    </p>
+                )}
 
-                    <button 
-                        onClick={() => handleAction(AccountTier.TRIAL)}
-                        className="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 hover:shadow-xl hover:-translate-y-1"
-                    >
-                        Começar Gratuitamente
-                    </button>
-                    <p className="mt-4 text-sm text-slate-500 flex items-center justify-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-500" /> Sem cartão de crédito necessário
-                        <span className="mx-2">•</span>
-                        <Check className="w-4 h-4 text-emerald-500" /> Cancelamento a qualquer momento
-                    </p>
-                </div>
-            </div>
-
-            {/* Pricing Cards */}
-            <div className="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 -mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                    {plans.map((plan) => (
-                        <div
-                            key={plan.id}
-                            className={`
-                                relative flex flex-col bg-white rounded-2xl border transition-all duration-300
-                                ${plan.borderColor}
-                                ${plan.popular ? 'shadow-xl scale-105 z-10 border-2' : 'shadow-lg hover:shadow-xl hover:-translate-y-1'}
-                            `}
-                        >
-                            {plan.popular && (
-                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-500 to-blue-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-md uppercase tracking-wide whitespace-nowrap">
-                                    Mais Popular
-                                </div>
-                            )}
-                            {plan.id === currentTier && (
-                                <div className="absolute right-3 top-3 rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow">Seu plano</div>
-                            )}
-
-                            <div className={`p-6 ${plan.bgColor} rounded-t-2xl border-b ${plan.borderColor}`}>
-                                <div className={`w-12 h-12 rounded-xl bg-white flex items-center justify-center mb-4 shadow-sm ${plan.color}`}>
-                                    <plan.icon className="w-6 h-6" />
-                                </div>
-                                <h3 className="text-xl font-bold text-slate-900">{plan.name}</h3>
-                                <p className="text-sm text-slate-500 mt-2 h-10 leading-snug">{plan.description}</p>
-                            </div>
-
-                            <div className="p-6 flex-1 flex flex-col">
-                                <div className="mb-6">
-                                    <div className="flex items-baseline gap-1">
-                                        {plan.price !== 'Sob Consulta' && <span className="text-sm text-slate-500 font-medium">R$</span>}
-                                        <span className="text-4xl font-extrabold text-slate-900 tracking-tight">{plan.price}</span>
-                                        {plan.price !== 'Sob Consulta' && <span className="text-slate-500 font-medium self-end mb-1">/mês</span>}
+                <section>
+                    <div className="mb-5 text-center"><h2 className="text-2xl font-black text-slate-950">Compare os planos</h2><p className="mt-1 text-sm text-slate-600">Encontre o plano ideal conforme sua clínica cresce.</p><span className="mt-3 inline-flex rounded-full bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700">Cobrança mensal</span></div>
+                    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                        {plans.map(plan => {
+                            const tone = tones[plan.tone];
+                            const isCurrent = plan.id === currentTier && !isTrialExpired;
+                            const Icon = plan.icon;
+                            return (
+                                <article key={plan.id} className={`relative flex min-h-[520px] flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${isCurrent ? 'border-blue-600 ring-4 ring-blue-50' : tone.border}`}>
+                                    {isCurrent && <span className="absolute right-3 top-3 rounded-full bg-blue-600 px-3 py-1 text-xs font-black uppercase text-white">✓ Plano atual</span>}
+                                    <div className={`border-b p-5 ${tone.soft}`}><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm"><Icon className={`h-6 w-6 ${tone.text}`} /></span><h3 className={`mt-4 text-xl font-black ${isCurrent ? 'text-blue-700' : 'text-slate-950'}`}>{plan.name}</h3><p className="mt-2 min-h-[42px] text-sm leading-5 text-slate-600">{plan.description}</p></div>
+                                    <div className="flex flex-1 flex-col p-5">
+                                        <div>{plan.id === AccountTier.TRIAL ? <><p className="text-2xl font-black text-slate-950">Teste grátis</p><p className="text-sm font-semibold text-slate-500">R$ 0 durante 15 dias</p></> : <p><span className="text-sm font-semibold text-slate-500">R$</span> <span className="text-3xl font-black text-slate-950">{plan.price}</span><span className="text-sm text-slate-500">/mês</span></p>}</div>
+                                        <ul className="my-6 flex-1 space-y-3">{plan.features.map(feature => <li key={feature} className="flex gap-2 text-sm text-slate-700"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${tone.soft}`}><Check className={`h-3.5 w-3.5 ${tone.text}`} /></span>{feature}</li>)}</ul>
+                                        <button onClick={() => handleAction(plan.id)} disabled={isCurrent || (plan.id === AccountTier.TRIAL && currentTier !== AccountTier.TRIAL)} className={`w-full rounded-xl py-3 text-sm font-black transition ${isCurrent ? 'cursor-default bg-blue-600 text-white' : plan.id === AccountTier.TRIAL && currentTier !== AccountTier.TRIAL ? 'cursor-not-allowed bg-slate-100 text-slate-400' : `${tone.button} text-white`}`}>{actionLabel(plan.id)}</button>
                                     </div>
-                                </div>
-
-                                <ul className="space-y-4 mb-8 flex-1">
-                                    {plan.features.map((feature, idx) => (
-                                        <li key={idx} className="flex items-start gap-3 text-sm text-slate-700">
-                                            <div className={`mt-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center ${plan.color.replace('text-', 'bg-').replace('600', '100')}`}>
-                                                <Check className={`w-3 h-3 ${plan.color}`} strokeWidth={3} />
-                                            </div>
-                                            <span className="leading-snug">{feature}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-
-                                <div className="mt-auto space-y-3">
-                                    {plan.footerText && (
-                                        <p className="text-xs text-slate-500 text-center italic border-t border-slate-100 pt-3 mb-3">
-                                            {plan.footerText}
-                                        </p>
-                                    )}
-                                    <button 
-                                        onClick={() => handleAction(plan.id)}
-                                        disabled={plan.id === currentTier && !isTrialExpired}
-                                        className={`w-full py-3 rounded-xl font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-95 disabled:cursor-default disabled:bg-emerald-600 ${plan.buttonColor}`}
-                                    >
-                                        {plan.id === AccountTier.UNLIMITED ? 'Solicitar Proposta' : 'Começar Agora'}
-                                    </button>
-
-                                    {isMasterAdmin && (
-                                        <button
-                                            onClick={() => handleCopyLink(plan.id)}
-                                            className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-slate-400 hover:text-blue-600 transition-colors"
-                                        >
-                                            {copiedTier === plan.id ? 'Copiado!' : 'Copiar Link'}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Rules Section */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24">
-                <div className="bg-slate-900 rounded-3xl overflow-hidden shadow-2xl">
-                    <div className="grid md:grid-cols-2">
-                        <div className="p-10 md:p-14 bg-gradient-to-br from-slate-800 to-slate-900 text-white">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-blue-500/20 rounded-lg">
-                                    <Crown className="w-6 h-6 text-blue-400" />
-                                </div>
-                                <h3 className="text-2xl font-bold">Gestor da Clínica</h3>
-                            </div>
-                            <p className="text-slate-300 mb-8 leading-relaxed">
-                                Todo usuário que se cadastra no plano Start Free é automaticamente definido como Gestor.
-                            </p>
-                            <ul className="space-y-4">
-                                {[
-                                    'Cadastrar novos usuários',
-                                    'Gerenciar profissionais',
-                                    'Controlar configurações financeiras',
-                                    'Acesso a relatórios gerenciais'
-                                ].map((item, i) => (
-                                    <li key={i} className="flex items-center gap-3 text-slate-200">
-                                        <Check className="w-5 h-5 text-blue-400" />
-                                        {item}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-
-                        <div className="p-10 md:p-14 bg-white">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-emerald-100 rounded-lg">
-                                    <UserIcon />
-                                </div>
-                                <h3 className="text-2xl font-bold text-slate-900">Profissional da Clínica</h3>
-                            </div>
-                            <p className="text-slate-600 mb-8 leading-relaxed">
-                                Usuários adicionados pelo gestor para atuar no atendimento.
-                            </p>
-                            <ul className="space-y-4">
-                                <li className="flex items-center gap-3 text-slate-700">
-                                    <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
-                                        <Check className="w-3 h-3 text-emerald-600" />
-                                    </div>
-                                    Foco total no atendimento clínico
-                                </li>
-                                <li className="flex items-center gap-3 text-slate-700">
-                                    <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
-                                        <span className="text-red-600 font-bold text-xs">✕</span>
-                                    </div>
-                                    Não podem cadastrar novos usuários
-                                </li>
-                                <li className="flex items-center gap-3 text-slate-700">
-                                    <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
-                                        <Check className="w-3 h-3 text-emerald-600" />
-                                    </div>
-                                    Acesso restrito às suas funções
-                                </li>
-                            </ul>
-                        </div>
+                                </article>
+                            );
+                        })}
                     </div>
-                </div>
-            </div>
+                </section>
 
-            {/* Differentiators Grid */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24">
-                <div className="text-center mb-16">
-                    <h2 className="text-3xl font-bold text-slate-900">Por que o ERCMed é diferente?</h2>
-                    <p className="text-slate-600 mt-4">Gestão clínica pensada como negócio.</p>
-                </div>
+                <section className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-white p-6 sm:flex-row sm:items-center">
+                    <div className="flex gap-4"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white"><Infinity className="h-7 w-7" /></span><div><h2 className="font-black text-purple-800">Precisa de uma solução para grandes redes?</h2><p className="mt-1 text-sm text-slate-600">Profissionais, unidades e recursos ilimitados com gestão consolidada.</p></div></div>
+                    <button onClick={openSalesContact} className="w-full rounded-xl bg-purple-600 px-6 py-3 text-sm font-black text-white hover:bg-purple-700 sm:w-auto">Conhecer o ERCMED Unlimited</button>
+                </section>
 
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {[
-                        { title: 'ERP Integrado', desc: 'Gestão clínica e financeira em uma única plataforma.', icon: Building2 },
-                        { title: 'Inteligência Fiscal', desc: 'Simuladores PJ vs CLT e IRPF integrados.', icon: Calculator },
-                        { title: 'Automação de Processos', desc: 'Menos tarefas manuais na gestão da clínica.', icon: Zap },
-                        { title: 'Feito por Especialistas', desc: 'Desenvolvido por quem entende de clínicas.', icon: Crown }
-                    ].map((item, i) => (
-                        <div key={i} className="p-6 bg-white rounded-2xl shadow-lg border border-slate-100 hover:shadow-xl transition-all">
-                            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4 text-blue-600">
-                                <item.icon className="w-6 h-6" />
-                            </div>
-                            <h3 className="font-bold text-slate-900 mb-2">{item.title}</h3>
-                            <p className="text-sm text-slate-600">{item.desc}</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <button onClick={() => setShowComparison(value => !value)} className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"><div><h2 className="text-xl font-black text-slate-950">Compare todos os recursos</h2><p className="mt-1 text-sm text-slate-500">Veja em detalhes o que cada plano oferece.</p></div><span className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-blue-700">{showComparison ? 'Recolher' : 'Expandir'}<ChevronDown className={`h-4 w-4 transition ${showComparison ? 'rotate-180' : ''}`} /></span></button>
+                    {showComparison && <div className="overflow-x-auto border-t border-slate-200"><table className="min-w-[760px] w-full text-sm"><thead className="bg-slate-50"><tr>{['Recurso', 'Start Free', 'Professional', 'Advanced', 'Enterprise'].map(label => <th key={label} className="px-4 py-3 text-left text-xs font-black text-slate-600">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{comparison.map(row => <tr key={row[0]}>{row.map((cell, index) => <td key={`${row[0]}-${index}`} className={`px-4 py-3 ${index === 0 ? 'font-semibold text-slate-800' : 'text-center text-slate-600'}`}>{cell === true ? <Check className="mx-auto h-4 w-4 text-emerald-600" /> : cell === false ? '—' : cell}</td>)}</tr>)}</tbody></table></div>}
+                </section>
 
-            {/* Trust Signals */}
-            <div className="bg-white border-t border-slate-200 mt-24 py-16">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-                        {[
-                            'Sem taxa de implantação',
-                            'Sem fidelidade obrigatória',
-                            'Suporte humano especializado',
-                            'Conformidade LGPD'
-                        ].map((text, i) => (
-                            <div key={i} className="flex flex-col items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                                    <Check className="w-5 h-5 text-green-600" />
-                                </div>
-                                <span className="font-medium text-slate-700">{text}</span>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="mt-16 text-center">
-                        <p className="text-2xl font-medium text-slate-800 italic">
-                            "Menos improviso, mais previsibilidade."
-                        </p>
-                    </div>
-                </div>
-            </div>
+                <section className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-blue-200 bg-blue-50/50 p-6 sm:flex-row sm:items-center"><div className="flex gap-4"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-blue-600 shadow-sm"><Headphones className="h-6 w-6" /></span><div><h2 className="font-black text-blue-950">Dúvidas sobre planos ou cobrança?</h2><p className="mt-1 text-sm text-slate-600">Nossa equipe está pronta para ajudar você.</p></div></div><button onClick={openSalesContact} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-6 py-3 text-sm font-black text-blue-700 shadow-sm hover:bg-blue-50 sm:w-auto"><Sparkles className="h-4 w-4" />Falar com o suporte</button></section>
+            </main>
         </div>
     );
 };
-
-// Helper Icons
-const UserIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-emerald-600"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-);
-
-const Calculator = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2" /><line x1="8" x2="16" y1="6" y2="6" /><line x1="16" x2="16" y1="14" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></svg>
-);
 
 export default PlansView;
