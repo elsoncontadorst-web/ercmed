@@ -9,6 +9,7 @@ import {
     ChevronDown,
     Clock3,
     Cloud,
+    FileCheck2,
     Landmark,
     Layers3,
     Headphones,
@@ -131,6 +132,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
             description: 'Transforme produção em faturamento, acompanhe convênios, glosas, contratos e regras de repasse com segurança operacional.'
         },
         {
+            icon: FileCheck2,
+            title: 'Emissor NFS-e integrado',
+            description: 'Emita notas fiscais de serviços pelo Sistema Nacional, com certificado A1, configuração fiscal por unidade, histórico, XML e DANFSe em PDF.'
+        },
+        {
             icon: BarChart3,
             title: 'BI, controladoria e visão executiva',
             description: 'Acompanhe DRE, EBITDA, margem, centros de resultado, metas e indicadores empresariais em tempo real.'
@@ -152,6 +158,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
         'Repasse médico e produção por profissional',
         'Compras, estoque, patrimônio e fornecedores',
         'Fiscal, XML, contabilidade e apoio tributário',
+        'Emissor NFS-e com certificado A1, XML e DANFSe',
         'CRM, comercial, unidades, acessos e integrações'
     ];
 
@@ -188,6 +195,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                             <p className="mb-4 text-xs font-black uppercase tracking-[0.16em] text-teal-700">Simplifique sua gestão</p>
                                             <a href="#solucoes" className="block rounded-xl bg-teal-50 px-4 py-3 text-slate-900 hover:bg-teal-100">Controle financeiro</a>
                                             <a href="#solucoes" className="block rounded-xl px-4 py-3 text-slate-700 hover:bg-slate-50">Faturamento e repasses</a>
+                                            <a href="#solucoes" className="block rounded-xl px-4 py-3 text-slate-700 hover:bg-slate-50">Emissor NFS-e</a>
                                             <a href="#recursos" className="block rounded-xl px-4 py-3 text-slate-700 hover:bg-slate-50">Indicadores executivos</a>
                                         </div>
                                         <div className="border-l border-slate-100 p-7">
@@ -196,6 +204,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                                 {[
                                                     [CalendarDays, 'Agenda e atendimentos', 'Organize a rotina da clínica'],
                                                     [ReceiptText, 'Faturamento integrado', 'Produção, cobrança e repasses'],
+                                                    [FileCheck2, 'Emissor NFS-e', 'Certificado A1, XML e DANFSe'],
                                                     [BarChart3, 'BI e relatórios', 'Decisões orientadas por dados'],
                                                     [ShieldCheck, 'Segurança e LGPD', 'Controle de acesso e rastreabilidade']
                                                 ].map(([Icon, title, description]) => {
@@ -251,7 +260,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                                 {[
                                     ['Dashboard executivo', BarChart3],
                                     ['Financeiro integrado', Landmark],
-                                    ['Gestão fiscal', ShieldCheck],
+                                    ['Emissor NFS-e', FileCheck2],
                                     ['Suporte especializado', Headphones]
                                 ].map(([label, Icon]) => {
                                     const BenefitIcon = Icon as React.ElementType;
@@ -324,7 +333,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                             O ERCMED agora foi reposicionado para empresas de saúde que precisam de gestão integrada, governança operacional e visão financeira clara.
                         </p>
                     </div>
-                    <div className="mt-10 grid gap-6 md:grid-cols-3">
+                    <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
                         {pillars.map(({ icon: Icon, title, description }) => (
                             <article key={title} className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
                                 <div className="inline-flex rounded-xl bg-teal-50 p-3">
@@ -546,6 +555,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onTrialClick })
                         <h3 className="text-sm font-black uppercase tracking-[0.16em] text-teal-300">Soluções</h3>
                         <nav className="mt-5 flex flex-col gap-3 text-sm">
                             <a href="#solucoes" className="transition hover:text-teal-300">Financeiro e faturamento</a>
+                            <a href="#solucoes" className="transition hover:text-teal-300">Emissor NFS-e</a>
                             <a href="#solucoes" className="transition hover:text-teal-300">BI e dashboards</a>
                             <a href="#recursos" className="transition hover:text-teal-300">Operação integrada</a>
                             <a href="#recursos" className="transition hover:text-teal-300">Relatórios executivos</a>
