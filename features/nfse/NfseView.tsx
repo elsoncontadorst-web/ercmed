@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     Building2, CheckCircle2, Download, FileCheck2, FileKey2, History,
-    RefreshCw, Save, Send, ShieldCheck, TestTube2, UserRound
+    Loader2, RefreshCw, Save, Send, ShieldCheck, TestTube2, UserRound
 } from 'lucide-react';
 import { getClinics } from '../../services/clinicService';
 import { getAllPatients } from '../../services/healthService';
 import { auth } from '../../services/firebase';
 import { getManagerIdForUser } from '../../services/accessControlService';
 import { getClients, saveClient } from '../../services/clientService';
+import { fetchCnpjInfo } from '../../services/brasilApi';
 import type { Client } from '../../types/client';
 import { getActiveClinicScopeId, setStoredActiveClinicId } from '../../services/activeClinicStorage';
 import type { Clinic } from '../../types/clinic';
@@ -84,7 +85,16 @@ const NfseView: React.FC = () => {
                 getNfseCertificateStatus(clinicId),
                 listNationalNfse(clinicId)
             ]);
-            setProfile(savedProfile ? { ...emptyProfile(clinic), ...savedProfile, competence } : emptyProfile(clinic));
+            let nextProfile = savedProfile ? { ...emptyProfile(clinic), ...savedProfile, competence } : emptyProfile(clinic);
+            const providerDocument = digits(clinic?.cnpj || nextProfile.providerDocument);
+            if (providerDocument.length === 14 && !/^\d{7}$/.test(nextProfile.issuerCityCode)) {
+                try {
+                    const company = await fetchCnpjInfo(providerDocument);
+                    const cityCode = digits(String(company.codigo_municipio_ibge || ''));
+                    nextProfile = { ...nextProfile, providerDocument, issuerCityCode: /^\d{7}$/.test(cityCode) ? cityCode : nextProfile.issuerCityCode, defaultServiceCityCode: /^\d{7}$/.test(cityCode) ? cityCode : nextProfile.defaultServiceCityCode };
+                } catch { /* Mantém o preenchimento manual quando a base pública estiver indisponível. */ }
+            } else if (providerDocument) nextProfile = { ...nextProfile, providerDocument };
+            setProfile(nextProfile);
             setCertificate(cert);
             setHistory(documents);
         } catch (error) {
@@ -94,7 +104,7 @@ const NfseView: React.FC = () => {
         }
     };
 
-    useEffect(() => { void loadUnitData(); }, [clinicId, competence]);
+    useEffect(() => { void loadUnitData(); }, [clinicId, competence, clinic?.cnpj]);
 
     useEffect(() => {
         const currentUser = auth.currentUser;
@@ -174,6 +184,21 @@ const NfseView: React.FC = () => {
         } finally { setBusy(''); }
     };
 
+    const syncCnpj = async () => {
+        const providerDocument = digits(clinic?.cnpj || profile.providerDocument);
+        if (providerDocument.length !== 14) return setMessage({ tone: 'error', text: 'Cadastre um CNPJ válido na clínica antes de sincronizar.' });
+        setBusy('sync-cnpj');
+        try {
+            const company = await fetchCnpjInfo(providerDocument);
+            const cityCode = digits(String(company.codigo_municipio_ibge || ''));
+            if (!/^\d{7}$/.test(cityCode)) throw new Error('A base pública não retornou o código IBGE completo do município.');
+            setProfile(current => ({ ...current, providerDocument, issuerCityCode: cityCode, defaultServiceCityCode: cityCode }));
+            setMessage({ tone: 'success', text: `CNPJ sincronizado: ${company.municipio}/${company.uf} — IBGE ${cityCode}.` });
+        } catch (error) {
+            setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Não foi possível sincronizar o CNPJ.' });
+        } finally { setBusy(''); }
+    };
+
     const saveCertificate = async () => {
         if (!clinicId || !certificateFile || !certificatePassword) return setMessage({ tone: 'error', text: 'Selecione o certificado A1 e informe a senha.' });
         setBusy('certificate');
@@ -246,7 +271,15 @@ const NfseView: React.FC = () => {
                 <section className="grid gap-5 lg:grid-cols-2">
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 p-2.5 text-teal-700"><Building2/></span><div><h2 className="font-black text-slate-950">Configuração fiscal</h2><p className="text-xs text-slate-500">Dados exclusivos de {clinic?.name}</p></div></div><button onClick={saveProfile} disabled={busy === 'profile'} className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-black text-white hover:bg-teal-700 disabled:opacity-50"><Save size={16}/>{busy === 'profile' ? 'Salvando...' : 'Salvar'}</button></div>
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2"><label><span className="mb-1 block text-xs font-bold text-slate-500">REGIME</span><div className={`${input} bg-slate-50 font-semibold text-slate-700`}>Simples Nacional</div></label><Field label="CNPJ/CPF DO PRESTADOR" value={profile.providerDocument} onChange={value => setProfile(current => ({ ...current, providerDocument: digits(value) }))}/><Field label="INSCRIÇÃO MUNICIPAL" value={profile.municipalRegistration || ''} onChange={value => setProfile(current => ({ ...current, municipalRegistration: digits(value) }))}/><Field label="MUNICÍPIO EMISSOR (IBGE)" value={profile.issuerCityCode} onChange={value => setProfile(current => ({ ...current, issuerCityCode: digits(value).slice(0, 7), defaultServiceCityCode: current.defaultServiceCityCode || digits(value).slice(0, 7) }))}/><label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-500">CÓDIGO DE TRIBUTAÇÃO NACIONAL</span><NationalTaxCodeSearch className={input} value={profile.nationalTaxCode} onChange={value => setProfile(current => ({ ...current, nationalTaxCode: value }))}/></label><Field label="ALÍQUOTA ISS (%)" value={profile.issRate?.toString() || ''} onChange={value => setProfile(current => ({ ...current, issRate: value ? Number(value.replace(',', '.')) : undefined }))}/><Field label="ALÍQUOTA EFETIVA TOTAL DO SIMPLES (%)" value={profile.simpleNationalTotalTaxRate?.toString() || ''} placeholder="Informe para esta competência" onChange={value => setProfile(current => ({ ...current, simpleNationalTotalTaxRate: value ? Number(value.replace(',', '.')) : undefined }))}/></div>
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <label><span className="mb-1 block text-xs font-bold text-slate-500">REGIME</span><div className={`${input} bg-slate-50 font-semibold text-slate-700`}>Simples Nacional</div></label>
+                            <label><span className="mb-1 block text-xs font-bold text-slate-500">CNPJ DO PRESTADOR</span><div className="flex gap-2"><input className={`${input} min-w-0 bg-slate-50`} value={profile.providerDocument} readOnly/><button type="button" onClick={syncCnpj} disabled={busy === 'sync-cnpj'} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-teal-300 bg-white px-3 text-xs font-black text-teal-700 disabled:opacity-50">{busy === 'sync-cnpj' ? <Loader2 className="animate-spin" size={15}/> : <RefreshCw size={15}/>} Sincronizar</button></div></label>
+                            <Field label="INSCRIÇÃO MUNICIPAL" value={profile.municipalRegistration || ''} onChange={value => setProfile(current => ({ ...current, municipalRegistration: digits(value) }))}/>
+                            <Field label="MUNICÍPIO EMISSOR (IBGE)" value={profile.issuerCityCode} onChange={value => setProfile(current => ({ ...current, issuerCityCode: digits(value).slice(0, 7), defaultServiceCityCode: current.defaultServiceCityCode || digits(value).slice(0, 7) }))}/>
+                            <label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-500">CÓDIGO DE TRIBUTAÇÃO NACIONAL</span><NationalTaxCodeSearch className={input} value={profile.nationalTaxCode} onChange={value => setProfile(current => ({ ...current, nationalTaxCode: value }))}/></label>
+                            <DecimalField label="ALÍQUOTA ISS (%)" value={profile.issRate} min={2} max={5} placeholder="Ex.: 5,00" onChange={value => setProfile(current => ({ ...current, issRate: value }))}/>
+                            <DecimalField label="ALÍQUOTA EFETIVA TOTAL DO SIMPLES (%)" value={profile.simpleNationalTotalTaxRate} min={0} max={99.99} placeholder="Ex.: 6,01" onChange={value => setProfile(current => ({ ...current, simpleNationalTotalTaxRate: value }))}/>
+                        </div>
                     </article>
 
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -274,5 +307,19 @@ const NfseView: React.FC = () => {
 };
 
 const Field = ({ label, value, onChange, placeholder = '' }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) => <label><span className="mb-1 block text-xs font-bold text-slate-500">{label}</span><input className={input} value={value} placeholder={placeholder} onChange={event => onChange(event.target.value)}/></label>;
+
+const DecimalField = ({ label, value, onChange, min, max, placeholder }: { label: string; value?: number; onChange: (value?: number) => void; min: number; max: number; placeholder: string }) => {
+    const [text, setText] = useState(value == null ? '' : String(value).replace('.', ','));
+    useEffect(() => setText(value == null ? '' : String(value).replace('.', ',')), [value]);
+    const commit = () => {
+        if (!text.trim()) return onChange(undefined);
+        const parsed = Number(text.replace(',', '.'));
+        if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
+            onChange(Math.round(parsed * 100) / 100);
+            setText(parsed.toFixed(2).replace('.', ','));
+        }
+    };
+    return <label><span className="mb-1 block text-xs font-bold text-slate-500">{label}</span><input className={input} inputMode="decimal" value={text} placeholder={placeholder} onChange={event => { const next = event.target.value; if (/^\d{0,2}([,.]\d{0,2})?$/.test(next)) setText(next); }} onBlur={commit}/><span className="mt-1 block text-xs text-slate-500">Aceita vírgula e duas casas decimais.</span></label>;
+};
 
 export default NfseView;

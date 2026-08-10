@@ -216,6 +216,7 @@ export interface CnpjData {
   bairro: string;
   municipio: string;
   uf: string;
+  codigo_municipio_ibge?: string | number;
   qsa?: Array<{ nome_socio: string; qualificacao_socio: string }>;
 }
 

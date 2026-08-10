@@ -314,7 +314,9 @@ export const emitirNfseHomologacao = onCall(
       }, {merge: true});
       return {id: documentId, status: response.authorizedXml ? "autorizada" : "recebida", authorizedXml: response.authorizedXml, response: response.data};
     } catch (error) {
-      const message = safeError(error);
+      const originalMessage = safeError(error);
+      const message = originalMessage.includes("E0037") ?
+        `${originalMessage} O municipio pode nao estar habilitado na base de testes do Emissor Nacional, mesmo estando autorizado em producao. Confirme o IBGE pelo CNPJ antes da emissao real.` : originalMessage;
       console.error("Falha na transmissao da DPS para a SEFIN", JSON.stringify({
         status: isAxiosError(error) ? error.response?.status : undefined,
         response: isAxiosError(error) ? error.response?.data : undefined,
