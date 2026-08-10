@@ -78,19 +78,23 @@ export async function downloadNationalDanfse(clinicId: string, id: string): Prom
 }
 
 export async function printNationalDanfse(clinicId: string, id: string): Promise<void> {
-    const result = (await callable<{ clinicId: string; id: string }, { pdfBase64: string; accessKey: string }>('obterDanfseNacional')({ clinicId, id })).data;
-    const bytes = Uint8Array.from(atob(result.pdfBase64), character => character.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-    const printWindow = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!printWindow) {
-        URL.revokeObjectURL(url);
-        throw new Error('Permita a abertura de pop-ups para imprimir o DANFSe.');
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) throw new Error('Permita a abertura de pop-ups para imprimir o DANFSe.');
+    printWindow.document.write('<!doctype html><title>Preparando DANFSe...</title><p style="font:16px sans-serif;padding:24px">Carregando o DANFSe oficial...</p>');
+    try {
+        const result = (await callable<{ clinicId: string; id: string }, { pdfBase64: string; accessKey: string }>('obterDanfseNacional')({ clinicId, id })).data;
+        const bytes = Uint8Array.from(atob(result.pdfBase64), character => character.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        printWindow.location.replace(url);
+        window.setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+        }, 2500);
+        window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+    } catch (error) {
+        printWindow.close();
+        throw error;
     }
-    window.setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-        window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-    }, 1200);
 }
 
 export async function verifyNationalNfse(clinicId: string, id: string) {
