@@ -220,7 +220,7 @@ const NfseView: React.FC = () => {
 
     return <div className="min-h-full bg-slate-50 p-4 md:p-6">
         <div className="mx-auto max-w-6xl space-y-5">
-            <header className="overflow-hidden rounded-3xl border border-slate-700 bg-[#071a2f] p-7 text-white shadow-xl">
+            <header style={{ backgroundColor: '#071a2f' }} className="overflow-hidden rounded-3xl border border-slate-700 p-7 text-white shadow-xl">
                 <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
                     <div><span className="inline-flex items-center gap-2 rounded-full border border-teal-300/30 bg-teal-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-teal-200"><FileCheck2 size={14}/> Emissor Nacional</span><h1 className="mt-3 text-3xl font-black text-white">Emissor NFS-e</h1><p className="mt-2 max-w-2xl text-sm font-medium text-slate-200">Emita notas de serviços da clínica com certificado A1, validação prévia e histórico por unidade.</p></div>
                     <label className="min-w-72"><span className="mb-1 block text-xs font-bold text-teal-200">CLÍNICA / UNIDADE EMISSORA</span><select className="w-full rounded-xl border border-white/15 bg-white px-3 py-3 text-sm font-bold text-slate-900" value={clinicId} onChange={event => { setClinicId(event.target.value); setStoredActiveClinicId(event.target.value); setPreparation(null); }}><option value="">Selecione uma unidade</option>{clinics.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
