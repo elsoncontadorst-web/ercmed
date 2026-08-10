@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     Building2, CheckCircle2, Download, FileCheck2, FileKey2, History,
-    Loader2, RefreshCw, Save, Send, ShieldCheck, TestTube2, UserRound
+    Loader2, Printer, RefreshCw, Save, Send, ShieldCheck, TestTube2, Trash2, UserRound
 } from 'lucide-react';
 import { getClinics } from '../../services/clinicService';
 import { getAllPatients } from '../../services/healthService';
@@ -16,8 +16,8 @@ import type { Patient } from '../../types/health';
 import { NationalTaxCodeSearch } from './NationalTaxCodeSearch';
 import type { NfseCertificateStatus, NfseDraft, NfseFiscalProfile, NfseHistoryItem, NfsePreparationResult } from './types';
 import {
-    configureNfseCertificate, downloadNationalDanfse, downloadNationalNfseXml, getNfseCertificateStatus,
-    getNfseFiscalProfile, issueNfse, listNationalNfse, prepareNationalNfse,
+    configureNfseCertificate, deleteRejectedNationalNfse, downloadNationalDanfse, downloadNationalNfseXml, getNfseCertificateStatus,
+    getNfseFiscalProfile, issueNfse, listNationalNfse, prepareNationalNfse, printNationalDanfse,
     saveNfseFiscalProfile, verifyNationalNfse
 } from './nfseService';
 
@@ -266,6 +266,18 @@ const NfseView: React.FC = () => {
         } finally { setBusy(''); }
     };
 
+    const removeRejected = async (item: NfseHistoryItem) => {
+        if (!clinicId || item.status !== 'rejeitada' || !window.confirm('Remover esta nota rejeitada do histórico?')) return;
+        setBusy(`delete-${item.id}`);
+        try {
+            await deleteRejectedNationalNfse(clinicId, item.id);
+            setHistory(current => current.filter(document => document.id !== item.id));
+            setMessage({ tone: 'success', text: 'Nota rejeitada removida do histórico.' });
+        } catch (error) {
+            setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Não foi possível excluir a nota rejeitada.' });
+        } finally { setBusy(''); }
+    };
+
     return <div className="min-h-full bg-slate-50 p-4 md:p-6">
         <div className="mx-auto max-w-6xl space-y-5">
             <header style={{ backgroundColor: '#071a2f' }} className="overflow-hidden rounded-3xl border border-slate-700 p-7 text-white shadow-xl">
@@ -308,7 +320,7 @@ const NfseView: React.FC = () => {
 
                 <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-3"><History className="text-teal-600"/><div><h2 className="font-black text-slate-950">Histórico da unidade</h2><p className="text-xs text-slate-500">Últimas notas emitidas ou transmitidas</p></div></div><button onClick={loadUnitData} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><RefreshCw size={18}/></button></div>
-                    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">DPS</th><th className="px-4 py-3">Tomador</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Ambiente</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Documentos</th></tr></thead><tbody className="divide-y divide-slate-100">{history.length ? history.map(item => <tr key={item.id}><td className="px-4 py-3 text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '—'}</td><td className="px-4 py-3 font-semibold">{item.series}/{item.number}</td><td className="px-4 py-3 text-slate-600">{item.customerName || item.customerDocument || 'Não informado'}</td><td className="px-4 py-3 font-semibold">{Number(item.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td className="px-4 py-3 text-slate-600">{item.environment === 'producao' ? 'Produção' : 'Teste'}</td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusTone[item.status] || 'bg-slate-100 text-slate-600'}`}>{item.status}</span>{item.error && <p className="mt-1 max-w-xs text-xs text-red-600">{item.error}</p>}</td><td className="px-4 py-3"><div className="flex items-center gap-1"><button onClick={() => downloadNationalNfseXml(clinicId, item.id)} className="rounded-lg p-2 text-blue-600 hover:bg-blue-50" title="Baixar XML"><Download size={17}/></button>{item.status === 'autorizada' && <button onClick={() => downloadNationalDanfse(clinicId, item.id)} className="rounded-lg px-2 py-1 text-xs font-bold text-teal-700 hover:bg-teal-50">PDF</button>}{item.environment === 'producao' && item.status !== 'autorizada' && <button onClick={() => verify(item)} disabled={busy === `verify-${item.id}`} className="rounded-lg px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Verificar</button>}</div></td></tr>) : <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Nenhuma NFS-e emitida nesta unidade.</td></tr>}</tbody></table></div>
+                    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">DPS</th><th className="px-4 py-3">Tomador</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Ambiente</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Documentos</th></tr></thead><tbody className="divide-y divide-slate-100">{history.length ? history.map(item => <tr key={item.id}><td className="px-4 py-3 text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '—'}</td><td className="px-4 py-3 font-semibold">{item.series}/{item.number}</td><td className="px-4 py-3 text-slate-600">{item.customerName || item.customerDocument || 'Não informado'}</td><td className="px-4 py-3 font-semibold">{Number(item.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td className="px-4 py-3 text-slate-600">{item.environment === 'producao' ? 'Produção' : 'Teste'}</td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusTone[item.status] || 'bg-slate-100 text-slate-600'}`}>{item.status}</span>{item.error && <p className="mt-1 max-w-xs text-xs text-red-600">{item.error}</p>}</td><td className="px-4 py-3"><div className="flex items-center gap-1"><button onClick={() => downloadNationalNfseXml(clinicId, item.id)} className="rounded-lg p-2 text-blue-600 hover:bg-blue-50" title="Baixar XML"><Download size={17}/></button>{item.status === 'autorizada' && <><button onClick={() => downloadNationalDanfse(clinicId, item.id)} className="rounded-lg px-2 py-1 text-xs font-bold text-teal-700 hover:bg-teal-50">PDF</button><button onClick={() => printNationalDanfse(clinicId, item.id)} className="rounded-lg p-2 text-slate-700 hover:bg-slate-100" title="Imprimir DANFSe oficial"><Printer size={17}/></button></>}{item.environment === 'producao' && item.status !== 'autorizada' && <button onClick={() => verify(item)} disabled={busy === `verify-${item.id}`} className="rounded-lg px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Verificar</button>}{item.status === 'rejeitada' && <button onClick={() => removeRejected(item)} disabled={busy === `delete-${item.id}`} className="rounded-lg p-2 text-red-600 hover:bg-red-50 disabled:opacity-50" title="Excluir nota rejeitada"><Trash2 size={17}/></button>}</div></td></tr>) : <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Nenhuma NFS-e emitida nesta unidade.</td></tr>}</tbody></table></div>
                 </section>
             </>}
         </div>

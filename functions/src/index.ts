@@ -13,6 +13,7 @@ export {
   consultarPerfilFiscalNfse,
   emitirNfseHomologacao,
   emitirNfseProducao,
+  excluirNfseRejeitada,
   listarNfseNacional,
   obterNfseNacional,
   obterDanfseNacional,

@@ -508,7 +508,7 @@ export const listarNfseNacional = onCall(
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
     const {ownerId, clinicId} = await companyAccess(request.auth.uid, request.data?.clinicId);
     const snapshot = await db.collection("nfse_documents").where("ownerId", "==", ownerId).where("clinicId", "==", clinicId).limit(100).get();
-    const documents = snapshot.docs.map((item) => {
+    const documents = snapshot.docs.filter((item) => !item.data().deletedAt).map((item) => {
       const data = item.data();
       return {
         id: item.id,
@@ -527,6 +527,32 @@ export const listarNfseNacional = onCall(
       };
     }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return {documents};
+  },
+);
+
+export const excluirNfseRejeitada = onCall(
+  {region: "us-central1"},
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
+    const id = String(request.data?.id || "");
+    if (!id) throw new HttpsError("invalid-argument", "Identificador da NFS-e nao informado.");
+    const {ownerId, clinicId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    if (!canConfigure) throw new HttpsError("permission-denied", "Apenas gestores podem excluir notas rejeitadas.");
+    const documentRef = db.collection("nfse_documents").doc(id);
+    const snapshot = await documentRef.get();
+    const data = snapshot.data();
+    if (!snapshot.exists || data?.ownerId !== ownerId || data?.clinicId !== clinicId) {
+      throw new HttpsError("not-found", "Documento fiscal nao encontrado.");
+    }
+    if (data?.status !== "rejeitada") {
+      throw new HttpsError("failed-precondition", "Somente notas rejeitadas podem ser excluidas.");
+    }
+    await documentRef.set({
+      deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+      deletedBy: request.auth.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+    return {deleted: true};
   },
 );
 
