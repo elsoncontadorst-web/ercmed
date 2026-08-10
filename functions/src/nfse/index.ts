@@ -580,12 +580,15 @@ export const obterNfseNacional = onCall(
 );
 
 export const obterDanfseNacional = onCall(
-  {region: "us-central1", timeoutSeconds: 60},
+  {region: "us-central1", timeoutSeconds: 60, memory: "512MiB", secrets: [NFSE_CERTIFICATE_KEY]},
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
     const id = String(request.data?.id || "");
-    const {ownerId, clinicId} = await companyAccess(request.auth.uid, request.data?.clinicId);
-    const snapshot = await db.collection("nfse_documents").doc(id).get();
+    const {ownerId, clinicId, scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const [snapshot, configSnapshot] = await Promise.all([
+      db.collection("nfse_documents").doc(id).get(),
+      db.collection("nfse_private_config").doc(scopeId).get(),
+    ]);
     if (!snapshot.exists || snapshot.data()?.ownerId !== ownerId || snapshot.data()?.clinicId !== clinicId) {
       throw new HttpsError("not-found", "Documento fiscal nao encontrado.");
     }
@@ -593,8 +596,16 @@ export const obterDanfseNacional = onCall(
     if (!/^\d{50}$/.test(accessKey)) {
       throw new HttpsError("failed-precondition", "O PDF fica disponivel somente depois da autorizacao da NFS-e.");
     }
+    if (!configSnapshot.exists) throw new HttpsError("failed-precondition", "Certificado A1 nao encontrado para esta unidade.");
+    const config = configSnapshot.data() || {};
+    const secret = NFSE_CERTIFICATE_KEY.value();
+    const pfx = decryptValue(config.encryptedPfx, secret);
+    const password = decryptValue(config.encryptedPassword, secret).toString("utf8");
     try {
-      const pdf = await downloadDanfseProduction(accessKey);
+      const pdf = await downloadDanfseProduction(accessKey, pfx, password);
+      if (pdf.length < 4 || pdf.subarray(0, 4).toString("ascii") !== "%PDF") {
+        throw new Error("O Emissor Nacional nao retornou um arquivo PDF valido.");
+      }
       return {pdfBase64: pdf.toString("base64"), accessKey};
     } catch (error) {
       throw new HttpsError("internal", safeError(error));

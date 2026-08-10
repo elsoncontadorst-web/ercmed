@@ -57,10 +57,11 @@ export async function transmitDpsProduction(
   return {data: body, authorizedXml: decodeGzipBase64(encodedXml)};
 }
 
-export async function downloadDanfseProduction(accessKey: string): Promise<Buffer> {
+export async function downloadDanfseProduction(accessKey: string, pfx: Buffer, password: string): Promise<Buffer> {
+  const agent = new https.Agent({pfx, passphrase: password, rejectUnauthorized: true});
   const response = await axios.get(
     `${PRODUCTION_DANFSE_URL}/${encodeURIComponent(accessKey)}`,
-    {responseType: "arraybuffer", timeout: 45000},
+    {httpsAgent: agent, responseType: "arraybuffer", timeout: 45000},
   );
   return Buffer.from(response.data);
 }
