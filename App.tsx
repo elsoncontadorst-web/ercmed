@@ -69,6 +69,7 @@ const ProductionEntryView = safeLazy(() => import('./components/ProductionEntryV
 const EMRView = safeLazy(() => import('./components/EMRView'), 'emr');
 const InventoryView = safeLazy(() => import('./components/InventoryView'), 'inventory');
 const PatientsView = safeLazy(() => import('./components/PatientsView'), 'patients');
+const ClientsView = safeLazy(() => import('./components/ClientsView'), 'clients');
 const ClinicsView = safeLazy(() => import('./components/ClinicsView'), 'clinics');
 const BillingView = safeLazy(() => import('./components/BillingView'), 'billing');
 const OnboardingView = safeLazy(() => import('./components/OnboardingView'), 'onboarding');
@@ -269,6 +270,8 @@ function App() {
               return <RoleAwareDashboard setView={setView} />;
             case AppView.PATIENTS:
               return <PatientsView setView={setView} />;
+            case AppView.CLIENTS:
+              return <ClientsView />;
             case AppView.APPOINTMENTS:
               return <AppointmentsView />;
             case AppView.ATTENDANCES:

@@ -26,6 +26,7 @@ export enum AppView {
   // Health Management Views
   HEALTH_DASHBOARD = 'health_dashboard',
   PATIENTS = 'patients',
+  CLIENTS = 'clients',
   APPOINTMENTS = 'appointments',
   ATTENDANCES = 'attendances',
   PRODUCTION_ENTRY = 'production_entry',

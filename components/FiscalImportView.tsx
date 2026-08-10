@@ -13,6 +13,7 @@ import {
 import { FiscalCounterparty, FiscalDocument, FiscalDocumentDraft } from '../types/clinicErp';
 import { getClinics } from '../services/clinicService';
 import { getActiveClinicScopeId } from '../services/activeClinicStorage';
+import { saveClientFromFiscalDraft } from '../services/clientService';
 
 const currency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 const taxId = (value?: string) => {
@@ -33,6 +34,7 @@ const FiscalImportView: React.FC = () => {
   const [directionWarning, setDirectionWarning] = useState('');
   const [counterparties, setCounterparties] = useState<FiscalCounterparty[]>([]);
   const [search, setSearch] = useState('');
+  const [saveAsClient, setSaveAsClient] = useState(true);
 
   const loadCounterparties = async () => {
     if (!user) return;
@@ -105,11 +107,13 @@ const FiscalImportView: React.FC = () => {
       const clinics = await getClinics();
       const activeClinicId = getActiveClinicScopeId();
       const activeClinic = activeClinicId ? clinics.find(clinic => clinic.id === activeClinicId) : undefined;
-      await saveFiscalDocument(managerId, user.uid, draft, classification, costCenter, {
+      const clinicContext = {
         clinicId: activeClinic?.id,
         unitName: activeClinic?.name
-      });
-      setMessage('Documento arquivado, conta a pagar criada e cadastro fiscal atualizado.');
+      };
+      const documentId = await saveFiscalDocument(managerId, user.uid, draft, classification, costCenter, clinicContext);
+      if (saveAsClient) await saveClientFromFiscalDraft(managerId, draft, draft.suggestedEntryType || 'review', clinicContext, documentId);
+      setMessage(`Documento arquivado e cadastro fiscal atualizado${saveAsClient ? '; cliente salvo quando identificado' : ''}.`);
       setDraft(null);
       setDirectionWarning('');
       await loadCounterparties();
@@ -200,6 +204,7 @@ const FiscalImportView: React.FC = () => {
                 <Edit label="Valor total" type="number" value={String(draft.totalValue || '')} onChange={value => updateDraft('totalValue', Number(value))} />
                 <label className="text-sm font-medium text-slate-700">Classificação<select value={classification} onChange={event => setClassification(event.target.value as FiscalDocument['classification'])} className="mt-1 w-full rounded-lg border border-slate-200 p-2.5"><option value="expense">Despesa / consumo</option><option value="inventory">Estoque</option><option value="asset">Ativo imobilizado</option><option value="tax">Tributos</option></select></label>
                 <label className="text-sm font-medium text-slate-700 sm:col-span-2">Centro de custo<input value={costCenter} onChange={event => setCostCenter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2.5" /></label>
+                <label className="flex items-center gap-3 rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm font-semibold text-teal-900 sm:col-span-2"><input type="checkbox" checked={saveAsClient} onChange={event => setSaveAsClient(event.target.checked)} className="h-4 w-4"/>Salvar o destinatário identificado no cadastro de clientes</label>
               </div>
               <button disabled={saving || draft.suggestedEntryType === 'income'} onClick={confirm} className="mt-5 flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-3 font-bold text-white disabled:opacity-60">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}

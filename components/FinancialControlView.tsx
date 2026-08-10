@@ -13,6 +13,7 @@ import { ACTIVE_CLINIC_CHANGED_EVENT, getActiveClinicScopeId } from '../services
 import { recordMatchesClinicScope } from '../services/clinicScopeService';
 import { archiveFiscalXml, downloadAllFiscalXml, updateFiscalFileProfessional } from '../services/fiscalFileArchiveService';
 import { Professional } from '../types/finance';
+import { saveClientFromFiscalDraft } from '../services/clientService';
 
 // Reusing the interface from service or defining compatible one
 interface Transaction extends SavedTransaction { }
@@ -122,6 +123,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
     const [selectedYear, setSelectedYear] = useState('all');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [xmlClassMode, setXmlClassMode] = useState<'auto' | 'income' | 'expense'>('auto');
+    const [saveXmlClients, setSaveXmlClients] = useState(true);
     const [xmlProfessionalId, setXmlProfessionalId] = useState('all');
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [isDownloadingXml, setIsDownloadingXml] = useState(false);
@@ -781,6 +783,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                 detectedType,
                                 { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }
                             );
+                            if (saveXmlClients) await saveClientFromFiscalDraft(ownerId, draft, detectedType, { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }, fingerprint);
                         }
                     } catch (error) {
                         console.error('Erro ao ler PDF:', file.name, error);
@@ -886,6 +889,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                         detectedType,
                                         { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }
                                     );
+                                    if (saveXmlClients) await saveClientFromFiscalDraft(ownerId, { ...fiscalDraft, suggestedEntryType: detectedType }, detectedType, { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }, fingerprint);
                                 }
                             }
                         }
@@ -1274,6 +1278,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                             {isImporting ? 'Lendo...' : 'Importar XML/PDF'}
                         </button>
                     </div>
+                    <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600" title="Em notas de receita, cadastra o destinatário como cliente"><input type="checkbox" checked={saveXmlClients} onChange={e => setSaveXmlClients(e.target.checked)} className="h-4 w-4"/>Salvar clientes do XML</label>
                     <input
                         type="file"
                         ref={fileInputRef}

@@ -59,6 +59,8 @@ export interface NfseHistoryItem {
     number: number;
     amount: number;
     customerDocument?: string;
+    customerName?: string;
+    customerEmail?: string;
     accessKey?: string;
     error?: string;
     createdAt?: string;
@@ -66,7 +68,7 @@ export interface NfseHistoryItem {
 }
 
 export interface NfseFiscalProfile {
-    regime: 'mei' | 'simples';
+    regime: 'simples';
     providerDocument: string;
     municipalRegistration?: string;
     issuerCityCode: string;

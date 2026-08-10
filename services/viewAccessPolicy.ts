@@ -13,6 +13,7 @@ const PROFESSIONAL_VIEWS = new Set<AppView>([
   AppView.HEALTH_DASHBOARD,
   AppView.APPOINTMENTS,
   AppView.PATIENTS,
+  AppView.CLIENTS,
   AppView.ATTENDANCES,
   AppView.PRODUCTION_ENTRY,
 ]);
@@ -22,6 +23,7 @@ const RECEPTION_VIEWS = new Set<AppView>([
   AppView.HEALTH_DASHBOARD,
   AppView.APPOINTMENTS,
   AppView.PATIENTS,
+  AppView.CLIENTS,
   AppView.BILLING_PRIVATE,
   AppView.BILLING_INSURANCE,
   AppView.BILLING_GUIDES,
@@ -76,7 +78,7 @@ export const canAccessView = (
   }
 
   if ([AppView.APPOINTMENTS].includes(view)) return permissions.canManageAppointments;
-  if ([AppView.PATIENTS, AppView.ATTENDANCES].includes(view)) return permissions.canManagePatients;
+  if ([AppView.PATIENTS, AppView.CLIENTS, AppView.ATTENDANCES].includes(view)) return permissions.canManagePatients;
   if ([
     AppView.ACCOUNTS_RECEIVABLE, AppView.ACCOUNTS_PAYABLE, AppView.CASH_ACCOUNTS,
     AppView.BANKS, AppView.CASH_FLOW, AppView.BANK_RECONCILIATION, AppView.COLLECTIONS,

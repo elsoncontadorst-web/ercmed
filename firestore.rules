@@ -343,6 +343,10 @@ service cloud.firestore {
         allow read, write: if isAuthenticated() && isClinicMember(userId);
       }
 
+      match /clients/{docId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
+
       match /fiscal_files/{docId} {
         allow read, write: if isAuthenticated() && isClinicMember(userId);
 

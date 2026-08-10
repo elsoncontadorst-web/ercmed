@@ -42,6 +42,7 @@ import {
   Sun,
   Tags,
   User as UserIcon,
+  UserRound,
   Users,
   Wallet,
   Waypoints,
@@ -257,6 +258,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         items: [
           { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
           { view: AppView.PATIENTS, label: 'Cadastro de Pacientes', icon: Users },
+          { view: AppView.CLIENTS, label: 'Clientes', icon: UserRound },
           { view: AppView.ATTENDANCES, label: 'Controle de Atendimentos', icon: ClipboardList },
           { view: AppView.PRODUCTION_ENTRY, label: 'Portal de Produção Profissional', icon: Briefcase },
         ],

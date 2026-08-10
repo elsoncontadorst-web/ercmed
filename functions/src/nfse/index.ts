@@ -16,7 +16,7 @@ const NFSE_CERTIFICATE_KEY = defineSecret("NFSE_CERTIFICATE_KEY");
 const db = admin.firestore();
 
 type NfseCompanyProfile = {
-  regime: "mei" | "simples";
+  regime: "simples";
   providerDocument: string;
   municipalRegistration?: string;
   issuerCityCode: string;
@@ -93,7 +93,7 @@ function accessKeyFromXml(xml?: string): string | null {
 }
 
 function cleanProfile(value: Partial<NfseCompanyProfile>): NfseCompanyProfile {
-  const regime = value.regime === "mei" ? "mei" : "simples";
+  const regime = "simples" as const;
   const issRate = value.issRate == null || value.issRate === ("" as unknown) ? undefined : Number(value.issRate);
   if (issRate != null && (!Number.isFinite(issRate) || issRate < 2 || issRate > 5)) {
     throw new HttpsError("invalid-argument", "A aliquota do ISS deve estar entre 2% e 5%.");
@@ -108,8 +108,8 @@ function cleanProfile(value: Partial<NfseCompanyProfile>): NfseCompanyProfile {
     defaultServiceCityCode: String(value.defaultServiceCityCode || "").replace(/\D/g, ""),
     nationalTaxCode: String(value.nationalTaxCode || "").replace(/\D/g, ""),
     municipalTaxCode: String(value.municipalTaxCode || "") || undefined,
-    simpleNationalTaxRegime: regime === "simples" ? (Number(value.simpleNationalTaxRegime || 1) as 1 | 2 | 3) : undefined,
-    issRate: regime === "mei" ? undefined : issRate,
+    simpleNationalTaxRegime: Number(value.simpleNationalTaxRegime || 1) as 1 | 2 | 3,
+    issRate,
     competence,
   };
 }
@@ -154,7 +154,7 @@ export const salvarPerfilFiscalNfse = onCall(
       companyRef.collection("competences").doc(profile.competence).set({
         competence: profile.competence,
         issRate: profile.issRate ?? null,
-        source: profile.regime === "mei" ? "mei_das_fixo" : profile.issRate == null ? "parametrizacao_municipal" : "manual_confirmada",
+        source: profile.issRate == null ? "parametrizacao_municipal" : "manual_confirmada",
         confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
         confirmedBy: request.auth.uid,
       }, {merge: true}),
@@ -279,6 +279,8 @@ export const emitirNfseHomologacao = onCall(
         number: restrictedDraft.number,
         providerDocument: restrictedDraft.provider.cpfCnpj,
         customerDocument: restrictedDraft.customer?.cpfCnpj || null,
+        customerName: restrictedDraft.customer?.name || null,
+        customerEmail: restrictedDraft.customer?.email || null,
         amount: restrictedDraft.service.amount,
         signedDpsXml: signedXml,
         createdAt: previous.exists ? previous.data()?.createdAt : admin.firestore.FieldValue.serverTimestamp(),
@@ -403,6 +405,8 @@ export const emitirNfseProducao = onCall(
         number: productionDraft.number,
         providerDocument: productionDraft.provider.cpfCnpj,
         customerDocument: productionDraft.customer?.cpfCnpj || null,
+        customerName: productionDraft.customer?.name || null,
+        customerEmail: productionDraft.customer?.email || null,
         amount: productionDraft.service.amount,
         signedDpsXml: signedXml,
         createdAt: previous.exists ? previous.data()?.createdAt : admin.firestore.FieldValue.serverTimestamp(),
@@ -456,6 +460,8 @@ export const listarNfseNacional = onCall(
         number: data.number,
         amount: data.amount,
         customerDocument: data.customerDocument,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
         accessKey: data.accessKey,
         error: data.error,
         environment: data.environment || "producao_restrita",
