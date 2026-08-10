@@ -63,6 +63,8 @@ const NfseView: React.FC = () => {
     const [busy, setBusy] = useState('');
     const [message, setMessage] = useState<{ tone: 'success' | 'error' | 'info'; text: string } | null>(null);
     const clinic = clinics.find(item => item.id === clinicId);
+    const clinicTaxRegime = clinic?.taxRegime || 'simples_nacional';
+    const clinicTaxRegimeLabel = clinicTaxRegime === 'lucro_presumido' ? 'Lucro Presumido' : clinicTaxRegime === 'lucro_real' ? 'Lucro Real' : 'Simples Nacional';
     const competence = form.competenceDate.slice(0, 7);
 
     useEffect(() => {
@@ -174,6 +176,7 @@ const NfseView: React.FC = () => {
 
     const saveProfile = async () => {
         if (!clinicId) return;
+        if (clinicTaxRegime !== 'simples_nacional') return setMessage({ tone: 'error', text: `O emissor atual está configurado para o Simples Nacional. A unidade está cadastrada como ${clinicTaxRegimeLabel}.` });
         setBusy('profile');
         try {
             const saved = await saveNfseFiscalProfile(clinicId, { ...profile, competence });
@@ -214,6 +217,7 @@ const NfseView: React.FC = () => {
 
     const prepare = async () => {
         if (!clinicId) return;
+        if (clinicTaxRegime !== 'simples_nacional') return setMessage({ tone: 'error', text: `A emissão para ${clinicTaxRegimeLabel} ainda não está habilitada. Revise o regime no cadastro da clínica.` });
         setBusy('prepare');
         setPreparation(null);
         try {
@@ -226,8 +230,13 @@ const NfseView: React.FC = () => {
     };
 
     const transmit = async () => {
-        if (!clinicId || !preparation?.validation.valid || !certificate?.configured) return;
-        if (environment === 'producao' && !window.confirm('Esta NFS-e terá validade fiscal. Confirma a emissão em produção?')) return;
+        if (!clinicId || !preparation?.validation.valid) return;
+        if (environment === 'homologacao') {
+            setMessage({ tone: 'success', text: 'Teste concluído: dados e XML validados. Nenhuma nota fiscal real foi transmitida.' });
+            return;
+        }
+        if (!certificate?.configured) return setMessage({ tone: 'error', text: 'Configure o certificado A1 antes da emissão em produção.' });
+        if (!window.confirm('Esta NFS-e terá validade fiscal. Confirma a emissão em produção?')) return;
         setBusy('send');
         try {
             const result = await issueNfse(clinicId, draft);
@@ -272,7 +281,7 @@ const NfseView: React.FC = () => {
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 p-2.5 text-teal-700"><Building2/></span><div><h2 className="font-black text-slate-950">Configuração fiscal</h2><p className="text-xs text-slate-500">Dados exclusivos de {clinic?.name}</p></div></div><button onClick={saveProfile} disabled={busy === 'profile'} className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-black text-white hover:bg-teal-700 disabled:opacity-50"><Save size={16}/>{busy === 'profile' ? 'Salvando...' : 'Salvar'}</button></div>
                         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                            <label><span className="mb-1 block text-xs font-bold text-slate-500">REGIME</span><div className={`${input} bg-slate-50 font-semibold text-slate-700`}>Simples Nacional</div></label>
+                            <label><span className="mb-1 block text-xs font-bold text-slate-500">REGIME SINCRONIZADO DA CLÍNICA</span><div className={`${input} bg-slate-50 font-semibold text-slate-700`}>{clinicTaxRegimeLabel}</div></label>
                             <label><span className="mb-1 block text-xs font-bold text-slate-500">CNPJ DO PRESTADOR</span><div className="flex gap-2"><input className={`${input} min-w-0 bg-slate-50`} value={profile.providerDocument} readOnly/><button type="button" onClick={syncCnpj} disabled={busy === 'sync-cnpj'} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-teal-300 bg-white px-3 text-xs font-black text-teal-700 disabled:opacity-50">{busy === 'sync-cnpj' ? <Loader2 className="animate-spin" size={15}/> : <RefreshCw size={15}/>} Sincronizar</button></div></label>
                             <Field label="INSCRIÇÃO MUNICIPAL" value={profile.municipalRegistration || ''} onChange={value => setProfile(current => ({ ...current, municipalRegistration: digits(value) }))}/>
                             <Field label="MUNICÍPIO EMISSOR (IBGE)" value={profile.issuerCityCode} onChange={value => setProfile(current => ({ ...current, issuerCityCode: digits(value).slice(0, 7), defaultServiceCityCode: current.defaultServiceCityCode || digits(value).slice(0, 7) }))}/>
@@ -294,7 +303,7 @@ const NfseView: React.FC = () => {
                     {environment === 'producao' && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">Atenção: a nota emitida neste ambiente possui validade fiscal.</p>}
                     <div className="mt-5 grid gap-4 md:grid-cols-2"><label><span className="mb-1 block text-xs font-bold text-slate-500">CLIENTE — NOME, CPF OU CNPJ</span><input list="nfse-clients" className={input} value={form.customerName} placeholder="Digite para localizar ou cadastrar" onChange={event => chooseClient(event.target.value)}/><datalist id="nfse-clients">{clients.map(item => <option key={item.id} value={item.name}>{item.taxId || ''}</option>)}</datalist></label><label><span className="mb-1 block text-xs font-bold text-slate-500">PACIENTE (OPCIONAL)</span><select className={input} value={form.patientId} onChange={event => choosePatient(event.target.value)}><option value="">Não vincular paciente</option>{patients.filter(item => !item.clinicId || item.clinicId === clinicId).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><Field label="CPF/CNPJ DO TOMADOR" value={form.customerDocument} onChange={value => chooseClient(value)}/><Field label="E-MAIL" value={form.customerEmail} onChange={value => setForm(current => ({ ...current, customerEmail: value }))}/><button type="button" onClick={useLastCustomer} className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700">Usar cliente da última nota</button><label><span className="mb-1 block text-xs font-bold text-slate-500">COMPETÊNCIA</span><input type="date" className={input} value={form.competenceDate} onChange={event => setForm(current => ({ ...current, competenceDate: event.target.value }))}/></label><Field label="VALOR DO SERVIÇO" value={form.amount} placeholder="0,00" onChange={value => setForm(current => ({ ...current, amount: value.replace(/[^\d,.]/g, '') }))}/><label className="md:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-500">DESCRIÇÃO DO SERVIÇO</span><textarea rows={4} className={input} value={form.description} placeholder="Ex.: Atendimento clínico realizado..." onChange={event => setForm(current => ({ ...current, description: event.target.value }))}/></label><label><span className="mb-1 block text-xs font-bold text-slate-500">RETENÇÃO DE ISS</span><select className={input} value={form.issWithholding} onChange={event => setForm(current => ({ ...current, issWithholding: event.target.value }))}><option value="1">Não retido</option><option value="2">Retido pelo tomador</option></select></label><div className="grid grid-cols-2 gap-3"><Field label="IRRF RETIDO" value={form.irrfAmount} placeholder="0,00" onChange={value => setForm(current => ({ ...current, irrfAmount: value }))}/><Field label="INSS RETIDO" value={form.inssAmount} placeholder="0,00" onChange={value => setForm(current => ({ ...current, inssAmount: value }))}/></div></div>
                     {preparation && <div className={`mt-5 rounded-xl border p-4 ${preparation.validation.valid ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}><div className="flex items-center gap-2 font-black">{preparation.validation.valid ? <CheckCircle2 className="text-emerald-600"/> : <FileCheck2 className="text-red-600"/>}{preparation.validation.valid ? 'Dados validados para transmissão' : 'Corrija os dados indicados'}</div>{preparation.validation.errors.length > 0 && <ul className="mt-2 list-disc pl-6 text-sm text-red-700">{preparation.validation.errors.map(error => <li key={error}>{error}</li>)}</ul>}</div>}
-                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end"><button onClick={prepare} disabled={!!busy} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><FileCheck2 size={17}/>{busy === 'prepare' ? 'Validando...' : 'Revisar nota'}</button><button onClick={transmit} disabled={!preparation?.validation.valid || !certificate?.configured || !!busy} className={`inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40 ${environment === 'producao' ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'}`}><Send size={17}/>{busy === 'send' ? 'Transmitindo...' : environment === 'producao' ? 'Emitir NFS-e real' : 'Enviar nota de teste'}</button></div>
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end"><button onClick={prepare} disabled={!!busy} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><FileCheck2 size={17}/>{busy === 'prepare' ? 'Validando...' : 'Revisar nota'}</button><button onClick={transmit} disabled={!preparation?.validation.valid || (environment === 'producao' && !certificate?.configured) || !!busy} className={`inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40 ${environment === 'producao' ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'}`}><Send size={17}/>{busy === 'send' ? 'Transmitindo...' : environment === 'producao' ? 'Emitir NFS-e real' : 'Concluir teste sem emitir'}</button></div>
                 </section>
 
                 <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

@@ -18,6 +18,7 @@ export interface Clinic {
     email?: string;
     specialty: string;
     cnpj?: string;
+    taxRegime?: 'simples_nacional' | 'lucro_presumido' | 'lucro_real';
     cnes?: string;
     managerId: string; // Owner/Manager ID
     createdAt: Timestamp;

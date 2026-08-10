@@ -22,6 +22,7 @@ const EMPTY_FORM: ClinicFormData = {
   email: '',
   specialty: '',
   cnpj: '',
+  taxRegime: 'simples_nacional',
   cnes: '',
 };
 
@@ -145,6 +146,7 @@ const ClinicsView: React.FC = () => {
       email: clinic.email,
       specialty: clinic.specialty,
       cnpj: clinic.cnpj,
+      taxRegime: clinic.taxRegime || 'simples_nacional',
       cnes: clinic.cnes,
     });
     setShowModal(true);
@@ -373,6 +375,21 @@ const ClinicsView: React.FC = () => {
                     onChange={e => setFormData({ ...formData, cnes: e.target.value })}
                     className="mt-1 w-full rounded-lg border border-gray-300 p-2.5 outline-none focus:ring-2 focus:ring-brand-500"
                   />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-sm font-medium text-slate-700">Regime tributário *</label>
+                  <select
+                    value={formData.taxRegime || 'simples_nacional'}
+                    onChange={e => setFormData({ ...formData, taxRegime: e.target.value as ClinicFormData['taxRegime'] })}
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500"
+                    required
+                  >
+                    <option value="simples_nacional">Simples Nacional</option>
+                    <option value="lucro_presumido">Lucro Presumido</option>
+                    <option value="lucro_real">Lucro Real</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">Este regime será usado automaticamente na configuração do Emissor NFS-e.</p>
                 </div>
               </div>
 
