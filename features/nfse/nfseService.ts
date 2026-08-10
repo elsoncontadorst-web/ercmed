@@ -8,6 +8,7 @@ import type {
     NfseHistoryItem,
     NfsePreparationResult
 } from './types';
+import { createDanfsePdf } from './danfsePdf';
 
 const callable = <Request, Response>(name: string) =>
     httpsCallable<Request, Response>(getCloudFunctions(), name);
@@ -67,14 +68,19 @@ export async function downloadNationalNfseXml(clinicId: string, id: string): Pro
 }
 
 export async function downloadNationalDanfse(clinicId: string, id: string): Promise<void> {
-    const result = (await callable<{ clinicId: string; id: string }, { pdfBase64: string; accessKey: string }>('obterDanfseNacional')({ clinicId, id })).data;
-    const bytes = Uint8Array.from(atob(result.pdfBase64), character => character.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const document = (await callable<{ clinicId: string; id: string }, { authorizedXml?: string; accessKey?: string }>('obterNfseNacional')({ clinicId, id })).data;
+    if (!document.authorizedXml) throw new Error('O XML autorizado ainda não está disponível para gerar o PDF.');
+    const result = await createDanfsePdf(document.authorizedXml, document.accessKey || id);
+    const url = URL.createObjectURL(result.blob);
     const link = window.document.createElement('a');
     link.href = url;
-    link.download = `danfse-${result.accessKey}.pdf`;
+    link.download = `DANFSe-${result.accessKey}.pdf`;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    window.document.body.appendChild(link);
     link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function printNationalDanfse(clinicId: string, id: string): Promise<void> {
@@ -82,9 +88,10 @@ export async function printNationalDanfse(clinicId: string, id: string): Promise
     if (!printWindow) throw new Error('Permita a abertura de pop-ups para imprimir o DANFSe.');
     printWindow.document.write('<!doctype html><title>Preparando DANFSe...</title><p style="font:16px sans-serif;padding:24px">Carregando o DANFSe oficial...</p>');
     try {
-        const result = (await callable<{ clinicId: string; id: string }, { pdfBase64: string; accessKey: string }>('obterDanfseNacional')({ clinicId, id })).data;
-        const bytes = Uint8Array.from(atob(result.pdfBase64), character => character.charCodeAt(0));
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        const document = (await callable<{ clinicId: string; id: string }, { authorizedXml?: string; accessKey?: string }>('obterNfseNacional')({ clinicId, id })).data;
+        if (!document.authorizedXml) throw new Error('O XML autorizado ainda não está disponível para gerar o PDF.');
+        const result = await createDanfsePdf(document.authorizedXml, document.accessKey || id);
+        const url = URL.createObjectURL(result.blob);
         printWindow.location.replace(url);
         window.setTimeout(() => {
             printWindow.focus();
