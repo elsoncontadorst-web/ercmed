@@ -16,6 +16,7 @@ export interface NfseDraft {
   provider: NfseParty & {
     simpleNationalOption: 1 | 2 | 3;
     simpleNationalTaxRegime?: 1 | 2 | 3;
+    simpleNationalTotalTaxRate?: number;
     specialTaxRegime: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 9;
   };
   customer?: NfseParty;

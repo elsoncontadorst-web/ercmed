@@ -6,6 +6,7 @@ import * as zlib from "zlib";
 // Endpoint publicado no Portal Nacional da NFS-e para produção restrita.
 const RESTRICTED_BASE_URL = "https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional";
 const PRODUCTION_BASE_URL = "https://sefin.nfse.gov.br/SefinNacional";
+const PRODUCTION_DANFSE_URL = "https://adn.nfse.gov.br/danfse";
 
 export interface SefinResponse {
   data: unknown;
@@ -56,6 +57,14 @@ export async function transmitDpsProduction(
   return {data: body, authorizedXml: decodeGzipBase64(encodedXml)};
 }
 
+export async function downloadDanfseProduction(accessKey: string): Promise<Buffer> {
+  const response = await axios.get(
+    `${PRODUCTION_DANFSE_URL}/${encodeURIComponent(accessKey)}`,
+    {responseType: "arraybuffer", timeout: 45000},
+  );
+  return Buffer.from(response.data);
+}
+
 export async function checkDpsProduction(
   dpsId: string,
   pfx: Buffer,
@@ -70,4 +79,19 @@ export async function checkDpsProduction(
   }
   const response = await axios.get(url, {httpsAgent: agent, timeout: 30000});
   return {exists: true, data: response.data};
+}
+
+export async function getNfseProduction(
+  accessKey: string,
+  pfx: Buffer,
+  password: string,
+): Promise<SefinResponse> {
+  const agent = new https.Agent({pfx, passphrase: password, rejectUnauthorized: true});
+  const response = await axios.get(
+    `${PRODUCTION_BASE_URL}/nfse/${encodeURIComponent(accessKey)}`,
+    {httpsAgent: agent, timeout: 30000},
+  );
+  const body = response.data as Record<string, unknown>;
+  const encodedXml = body?.nfseXmlGZipB64 || body?.xmlGZipB64;
+  return {data: body, authorizedXml: decodeGzipBase64(encodedXml)};
 }

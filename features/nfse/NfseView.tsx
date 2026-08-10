@@ -15,9 +15,9 @@ import type { Patient } from '../../types/health';
 import { NationalTaxCodeSearch } from './NationalTaxCodeSearch';
 import type { NfseCertificateStatus, NfseDraft, NfseFiscalProfile, NfseHistoryItem, NfsePreparationResult } from './types';
 import {
-    configureNfseCertificate, downloadNationalNfseXml, getNfseCertificateStatus,
+    configureNfseCertificate, downloadNationalDanfse, downloadNationalNfseXml, getNfseCertificateStatus,
     getNfseFiscalProfile, issueNfse, listNationalNfse, prepareNationalNfse,
-    saveNfseFiscalProfile
+    saveNfseFiscalProfile, verifyNationalNfse
 } from './nfseService';
 
 const digits = (value?: string) => (value || '').replace(/\D/g, '');
@@ -34,6 +34,7 @@ const emptyProfile = (clinic?: Clinic): NfseFiscalProfile => ({
     nationalTaxCode: '',
     municipalTaxCode: '',
     simpleNationalTaxRegime: 1,
+    simpleNationalTotalTaxRate: undefined,
     competence: today().slice(0, 7)
 });
 
@@ -112,6 +113,7 @@ const NfseView: React.FC = () => {
             municipalRegistration: digits(profile.municipalRegistration) || undefined,
             simpleNationalOption: 3,
             simpleNationalTaxRegime: profile.simpleNationalTaxRegime || 1,
+            simpleNationalTotalTaxRate: profile.simpleNationalTotalTaxRate,
             specialTaxRegime: 0
         },
         customer: form.customerDocument || form.customerName ? {
@@ -218,6 +220,18 @@ const NfseView: React.FC = () => {
         } finally { setBusy(''); }
     };
 
+    const verify = async (item: NfseHistoryItem) => {
+        if (!clinicId) return;
+        setBusy(`verify-${item.id}`);
+        try {
+            const result = await verifyNationalNfse(clinicId, item.id);
+            setMessage({ tone: result.authorized ? 'success' : 'info', text: result.authorized ? 'NFS-e localizada e autorizada no Emissor Nacional.' : 'A DPS ainda não foi autorizada no Emissor Nacional.' });
+            setHistory(await listNationalNfse(clinicId));
+        } catch (error) {
+            setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Não foi possível verificar a DPS.' });
+        } finally { setBusy(''); }
+    };
+
     return <div className="min-h-full bg-slate-50 p-4 md:p-6">
         <div className="mx-auto max-w-6xl space-y-5">
             <header style={{ backgroundColor: '#071a2f' }} className="overflow-hidden rounded-3xl border border-slate-700 p-7 text-white shadow-xl">
@@ -232,7 +246,7 @@ const NfseView: React.FC = () => {
                 <section className="grid gap-5 lg:grid-cols-2">
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 p-2.5 text-teal-700"><Building2/></span><div><h2 className="font-black text-slate-950">Configuração fiscal</h2><p className="text-xs text-slate-500">Dados exclusivos de {clinic?.name}</p></div></div><button onClick={saveProfile} disabled={busy === 'profile'} className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-black text-white hover:bg-teal-700 disabled:opacity-50"><Save size={16}/>{busy === 'profile' ? 'Salvando...' : 'Salvar'}</button></div>
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2"><label><span className="mb-1 block text-xs font-bold text-slate-500">REGIME</span><div className={`${input} bg-slate-50 font-semibold text-slate-700`}>Simples Nacional</div></label><Field label="CNPJ/CPF DO PRESTADOR" value={profile.providerDocument} onChange={value => setProfile(current => ({ ...current, providerDocument: digits(value) }))}/><Field label="INSCRIÇÃO MUNICIPAL" value={profile.municipalRegistration || ''} onChange={value => setProfile(current => ({ ...current, municipalRegistration: digits(value) }))}/><Field label="MUNICÍPIO EMISSOR (IBGE)" value={profile.issuerCityCode} onChange={value => setProfile(current => ({ ...current, issuerCityCode: digits(value).slice(0, 7), defaultServiceCityCode: current.defaultServiceCityCode || digits(value).slice(0, 7) }))}/><label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-500">CÓDIGO DE TRIBUTAÇÃO NACIONAL</span><NationalTaxCodeSearch className={input} value={profile.nationalTaxCode} onChange={value => setProfile(current => ({ ...current, nationalTaxCode: value }))}/></label><Field label="ALÍQUOTA ISS (%)" value={profile.issRate?.toString() || ''} onChange={value => setProfile(current => ({ ...current, issRate: value ? Number(value.replace(',', '.')) : undefined }))}/></div>
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2"><label><span className="mb-1 block text-xs font-bold text-slate-500">REGIME</span><div className={`${input} bg-slate-50 font-semibold text-slate-700`}>Simples Nacional</div></label><Field label="CNPJ/CPF DO PRESTADOR" value={profile.providerDocument} onChange={value => setProfile(current => ({ ...current, providerDocument: digits(value) }))}/><Field label="INSCRIÇÃO MUNICIPAL" value={profile.municipalRegistration || ''} onChange={value => setProfile(current => ({ ...current, municipalRegistration: digits(value) }))}/><Field label="MUNICÍPIO EMISSOR (IBGE)" value={profile.issuerCityCode} onChange={value => setProfile(current => ({ ...current, issuerCityCode: digits(value).slice(0, 7), defaultServiceCityCode: current.defaultServiceCityCode || digits(value).slice(0, 7) }))}/><label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-500">CÓDIGO DE TRIBUTAÇÃO NACIONAL</span><NationalTaxCodeSearch className={input} value={profile.nationalTaxCode} onChange={value => setProfile(current => ({ ...current, nationalTaxCode: value }))}/></label><Field label="ALÍQUOTA ISS (%)" value={profile.issRate?.toString() || ''} onChange={value => setProfile(current => ({ ...current, issRate: value ? Number(value.replace(',', '.')) : undefined }))}/><Field label="ALÍQUOTA EFETIVA TOTAL DO SIMPLES (%)" value={profile.simpleNationalTotalTaxRate?.toString() || ''} placeholder="Informe para esta competência" onChange={value => setProfile(current => ({ ...current, simpleNationalTotalTaxRate: value ? Number(value.replace(',', '.')) : undefined }))}/></div>
                     </article>
 
                     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -250,7 +264,10 @@ const NfseView: React.FC = () => {
                     <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end"><button onClick={prepare} disabled={!!busy} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><FileCheck2 size={17}/>{busy === 'prepare' ? 'Validando...' : 'Revisar nota'}</button><button onClick={transmit} disabled={!preparation?.validation.valid || !certificate?.configured || !!busy} className={`inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40 ${environment === 'producao' ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'}`}><Send size={17}/>{busy === 'send' ? 'Transmitindo...' : environment === 'producao' ? 'Emitir NFS-e real' : 'Enviar nota de teste'}</button></div>
                 </section>
 
-                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-3"><History className="text-teal-600"/><div><h2 className="font-black text-slate-950">Histórico da unidade</h2><p className="text-xs text-slate-500">Últimas notas emitidas ou transmitidas</p></div></div><button onClick={loadUnitData} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><RefreshCw size={18}/></button></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">DPS</th><th className="px-4 py-3">Tomador</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Ambiente</th><th className="px-4 py-3">Status</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y divide-slate-100">{history.length ? history.map(item => <tr key={item.id}><td className="px-4 py-3 text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '—'}</td><td className="px-4 py-3 font-semibold">{item.series}/{item.number}</td><td className="px-4 py-3 text-slate-600">{item.customerDocument || 'Não informado'}</td><td className="px-4 py-3 font-semibold">{Number(item.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td className="px-4 py-3 text-slate-600">{item.environment === 'producao' ? 'Produção' : 'Teste'}</td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusTone[item.status] || 'bg-slate-100 text-slate-600'}`}>{item.status}</span>{item.error && <p className="mt-1 max-w-xs text-xs text-red-600">{item.error}</p>}</td><td className="px-4 py-3"><button onClick={() => downloadNationalNfseXml(clinicId, item.id)} className="rounded-lg p-2 text-blue-600 hover:bg-blue-50" title="Baixar XML"><Download size={17}/></button></td></tr>) : <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Nenhuma NFS-e emitida nesta unidade.</td></tr>}</tbody></table></div></section>
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-3"><History className="text-teal-600"/><div><h2 className="font-black text-slate-950">Histórico da unidade</h2><p className="text-xs text-slate-500">Últimas notas emitidas ou transmitidas</p></div></div><button onClick={loadUnitData} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><RefreshCw size={18}/></button></div>
+                    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">DPS</th><th className="px-4 py-3">Tomador</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Ambiente</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Documentos</th></tr></thead><tbody className="divide-y divide-slate-100">{history.length ? history.map(item => <tr key={item.id}><td className="px-4 py-3 text-slate-600">{item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '—'}</td><td className="px-4 py-3 font-semibold">{item.series}/{item.number}</td><td className="px-4 py-3 text-slate-600">{item.customerName || item.customerDocument || 'Não informado'}</td><td className="px-4 py-3 font-semibold">{Number(item.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td className="px-4 py-3 text-slate-600">{item.environment === 'producao' ? 'Produção' : 'Teste'}</td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusTone[item.status] || 'bg-slate-100 text-slate-600'}`}>{item.status}</span>{item.error && <p className="mt-1 max-w-xs text-xs text-red-600">{item.error}</p>}</td><td className="px-4 py-3"><div className="flex items-center gap-1"><button onClick={() => downloadNationalNfseXml(clinicId, item.id)} className="rounded-lg p-2 text-blue-600 hover:bg-blue-50" title="Baixar XML"><Download size={17}/></button>{item.status === 'autorizada' && <button onClick={() => downloadNationalDanfse(clinicId, item.id)} className="rounded-lg px-2 py-1 text-xs font-bold text-teal-700 hover:bg-teal-50">PDF</button>}{item.environment === 'producao' && item.status !== 'autorizada' && <button onClick={() => verify(item)} disabled={busy === `verify-${item.id}`} className="rounded-lg px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Verificar</button>}</div></td></tr>) : <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Nenhuma NFS-e emitida nesta unidade.</td></tr>}</tbody></table></div>
+                </section>
             </>}
         </div>
     </div>;

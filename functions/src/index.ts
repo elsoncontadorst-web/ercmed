@@ -15,7 +15,9 @@ export {
   emitirNfseProducao,
   listarNfseNacional,
   obterNfseNacional,
+  obterDanfseNacional,
   prepararNfseNacional,
   reenviarNfseProducaoPendente,
   salvarPerfilFiscalNfse,
+  verificarDpsNfseProducao,
 } from "./nfse/index.js";

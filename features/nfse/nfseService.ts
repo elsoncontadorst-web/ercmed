@@ -55,13 +55,28 @@ export async function listNationalNfse(clinicId: string): Promise<NfseHistoryIte
 }
 
 export async function downloadNationalNfseXml(clinicId: string, id: string): Promise<void> {
-    const document = (await callable<{ clinicId: string; id: string }, { authorizedXml?: string; signedDpsXml?: string }>('obterNfseNacional')({ clinicId, id })).data;
+    const document = (await callable<{ clinicId: string; id: string }, { authorizedXml?: string; signedDpsXml?: string; accessKey?: string }>('obterNfseNacional')({ clinicId, id })).data;
     const content = document.authorizedXml || document.signedDpsXml;
     if (!content) throw new Error('XML ainda não está disponível.');
     const url = URL.createObjectURL(new Blob([content], { type: 'application/xml;charset=utf-8' }));
     const link = window.document.createElement('a');
     link.href = url;
-    link.download = `nfse-${id}.xml`;
+    link.download = `nfse-${document.accessKey || id}.xml`;
     link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function downloadNationalDanfse(clinicId: string, id: string): Promise<void> {
+    const result = (await callable<{ clinicId: string; id: string }, { pdfBase64: string; accessKey: string }>('obterDanfseNacional')({ clinicId, id })).data;
+    const bytes = Uint8Array.from(atob(result.pdfBase64), character => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = `danfse-${result.accessKey}.pdf`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function verifyNationalNfse(clinicId: string, id: string) {
+    return (await callable<{ clinicId: string; id: string }, { authorized: boolean; status: string; accessKey?: string }>('verificarDpsNfseProducao')({ clinicId, id })).data;
 }

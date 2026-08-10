@@ -7,7 +7,7 @@ import {isAxiosError} from "axios";
 import {buildDpsXml, validateNfseDraft} from "./dps";
 import {decryptValue, encryptValue, readCertificate} from "./certificateVault";
 import {signDpsXml} from "./signer";
-import {checkDpsProduction, transmitDpsProduction, transmitDpsRestricted} from "./sefinClient";
+import {checkDpsProduction, downloadDanfseProduction, getNfseProduction, transmitDpsProduction, transmitDpsRestricted} from "./sefinClient";
 import {NfseDraft} from "./types";
 
 if (!admin.apps.length) admin.initializeApp();
@@ -24,6 +24,7 @@ type NfseCompanyProfile = {
   nationalTaxCode: string;
   municipalTaxCode?: string;
   simpleNationalTaxRegime?: 1 | 2 | 3;
+  simpleNationalTotalTaxRate?: number;
   issRate?: number;
   competence: string;
 };
@@ -66,6 +67,12 @@ async function companyAccess(uid: string, clinicIdValue: unknown): Promise<{
 
 function safeError(error: unknown): string {
   if (isAxiosError(error)) {
+    if (!error.response) {
+      return "A API Nacional nao respondeu no prazo. Verifique a DPS antes de tentar novamente.";
+    }
+    if ([502, 504].includes(error.response?.status || 0)) {
+      return `A API do Emissor Nacional esta temporariamente indisponivel (HTTP ${error.response?.status}). Nenhuma NFS-e foi autorizada. Aguarde alguns minutos e tente novamente.`;
+    }
     if (error.response?.status === 503) {
       return "O Emissor Nacional está temporariamente indisponível (HTTP 503). Nenhuma NFS-e foi autorizada. Aguarde alguns minutos e tente novamente.";
     }
@@ -95,8 +102,12 @@ function accessKeyFromXml(xml?: string): string | null {
 function cleanProfile(value: Partial<NfseCompanyProfile>): NfseCompanyProfile {
   const regime = "simples" as const;
   const issRate = value.issRate == null || value.issRate === ("" as unknown) ? undefined : Number(value.issRate);
+  const simpleNationalTotalTaxRate = value.simpleNationalTotalTaxRate == null || value.simpleNationalTotalTaxRate === ("" as unknown) ? undefined : Number(value.simpleNationalTotalTaxRate);
   if (issRate != null && (!Number.isFinite(issRate) || issRate < 2 || issRate > 5)) {
     throw new HttpsError("invalid-argument", "A aliquota do ISS deve estar entre 2% e 5%.");
+  }
+  if (simpleNationalTotalTaxRate == null || !Number.isFinite(simpleNationalTotalTaxRate) || simpleNationalTotalTaxRate < 0 || simpleNationalTotalTaxRate > 99.99) {
+    throw new HttpsError("invalid-argument", "Informe a aliquota efetiva total do Simples Nacional da competencia.");
   }
   const competence = String(value.competence || "");
   if (!/^\d{4}-\d{2}$/.test(competence)) throw new HttpsError("invalid-argument", "Competencia mensal invalida.");
@@ -109,6 +120,7 @@ function cleanProfile(value: Partial<NfseCompanyProfile>): NfseCompanyProfile {
     nationalTaxCode: String(value.nationalTaxCode || "").replace(/\D/g, ""),
     municipalTaxCode: String(value.municipalTaxCode || "") || undefined,
     simpleNationalTaxRegime: Number(value.simpleNationalTaxRegime || 1) as 1 | 2 | 3,
+    simpleNationalTotalTaxRate,
     issRate,
     competence,
   };
@@ -154,6 +166,7 @@ export const salvarPerfilFiscalNfse = onCall(
       companyRef.collection("competences").doc(profile.competence).set({
         competence: profile.competence,
         issRate: profile.issRate ?? null,
+        simpleNationalTotalTaxRate: profile.simpleNationalTotalTaxRate ?? null,
         source: profile.issRate == null ? "parametrizacao_municipal" : "manual_confirmada",
         confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
         confirmedBy: request.auth.uid,
@@ -282,6 +295,7 @@ export const emitirNfseHomologacao = onCall(
         customerName: restrictedDraft.customer?.name || null,
         customerEmail: restrictedDraft.customer?.email || null,
         amount: restrictedDraft.service.amount,
+        competenceDate: restrictedDraft.competenceDate,
         signedDpsXml: signedXml,
         createdAt: previous.exists ? previous.data()?.createdAt : admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -408,6 +422,7 @@ export const emitirNfseProducao = onCall(
         customerName: productionDraft.customer?.name || null,
         customerEmail: productionDraft.customer?.email || null,
         amount: productionDraft.service.amount,
+        competenceDate: productionDraft.competenceDate,
         signedDpsXml: signedXml,
         createdAt: previous.exists ? previous.data()?.createdAt : admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -445,6 +460,46 @@ export const emitirNfseProducao = onCall(
   },
 );
 
+export const verificarDpsNfseProducao = onCall(
+  {region: "us-central1", timeoutSeconds: 60, memory: "512MiB", secrets: [NFSE_CERTIFICATE_KEY]},
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
+    const id = String(request.data?.id || "");
+    const {ownerId, clinicId, scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const documentRef = db.collection("nfse_documents").doc(id);
+    const [documentSnapshot, configSnapshot] = await Promise.all([
+      documentRef.get(),
+      db.collection("nfse_private_config").doc(scopeId).get(),
+    ]);
+    const document = documentSnapshot.data();
+    if (!documentSnapshot.exists || document?.ownerId !== ownerId || document?.clinicId !== clinicId) {
+      throw new HttpsError("not-found", "DPS nao encontrada.");
+    }
+    if (!configSnapshot.exists) throw new HttpsError("failed-precondition", "Certificado A1 nao encontrado.");
+    const signedXml = String(document?.signedDpsXml || "");
+    const dpsId = signedXml.match(/Id="(DPS\d+)"/)?.[1];
+    if (!dpsId) throw new HttpsError("failed-precondition", "Identificador da DPS nao encontrado.");
+    const config = configSnapshot.data() || {};
+    const secret = NFSE_CERTIFICATE_KEY.value();
+    const pfx = decryptValue(config.encryptedPfx, secret);
+    const password = decryptValue(config.encryptedPassword, secret).toString("utf8");
+    try {
+      const check = await checkDpsProduction(dpsId, pfx, password);
+      if (!check.exists) {
+        await documentRef.set({status: "nao_autorizada", error: "DPS nao localizada no Emissor Nacional.", updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
+        return {authorized: false, status: "nao_autorizada"};
+      }
+      const accessKey = JSON.stringify(check.data || {}).match(/\d{50}/)?.[0];
+      if (!accessKey) throw new Error("A DPS foi localizada, mas a chave da NFS-e nao foi retornada.");
+      const nfse = await getNfseProduction(accessKey, pfx, password);
+      await documentRef.set({status: "autorizada", accessKey, authorizedXml: nfse.authorizedXml || null, sefinResponse: nfse.data, error: null, updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
+      return {authorized: true, status: "autorizada", accessKey};
+    } catch (error) {
+      throw new HttpsError("internal", safeError(error));
+    }
+  },
+);
+
 export const listarNfseNacional = onCall(
   {region: "us-central1"},
   async (request) => {
@@ -459,6 +514,7 @@ export const listarNfseNacional = onCall(
         series: data.series,
         number: data.number,
         amount: data.amount,
+        competenceDate: data.competenceDate || null,
         customerDocument: data.customerDocument,
         customerName: data.customerName,
         customerEmail: data.customerEmail,
@@ -492,5 +548,28 @@ export const obterNfseNacional = onCall(
       signedDpsXml: data.signedDpsXml || null,
       error: data.error || null,
     };
+  },
+);
+
+export const obterDanfseNacional = onCall(
+  {region: "us-central1", timeoutSeconds: 60},
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
+    const id = String(request.data?.id || "");
+    const {ownerId, clinicId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const snapshot = await db.collection("nfse_documents").doc(id).get();
+    if (!snapshot.exists || snapshot.data()?.ownerId !== ownerId || snapshot.data()?.clinicId !== clinicId) {
+      throw new HttpsError("not-found", "Documento fiscal nao encontrado.");
+    }
+    const accessKey = String(snapshot.data()?.accessKey || "");
+    if (!/^\d{50}$/.test(accessKey)) {
+      throw new HttpsError("failed-precondition", "O PDF fica disponivel somente depois da autorizacao da NFS-e.");
+    }
+    try {
+      const pdf = await downloadDanfseProduction(accessKey);
+      return {pdfBase64: pdf.toString("base64"), accessKey};
+    } catch (error) {
+      throw new HttpsError("internal", safeError(error));
+    }
   },
 );

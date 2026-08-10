@@ -41,6 +41,13 @@ export function validateNfseDraft(draft: NfseDraft): NfseValidationResult {
   if (draft.provider.simpleNationalOption === 3 && !draft.provider.simpleNationalTaxRegime) {
     errors.push("Regime de apuracao do Simples Nacional e obrigatorio para ME/EPP.");
   }
+  if (draft.provider.simpleNationalOption === 3 &&
+    (draft.provider.simpleNationalTotalTaxRate == null ||
+      !Number.isFinite(draft.provider.simpleNationalTotalTaxRate) ||
+      draft.provider.simpleNationalTotalTaxRate < 0 ||
+      draft.provider.simpleNationalTotalTaxRate > 99.99)) {
+    errors.push("Aliquota efetiva total do Simples Nacional e obrigatoria e deve estar entre 0% e 99,99%.");
+  }
   if (draft.service.issWithholding !== 1 && !draft.customer) {
     errors.push("Tomador e obrigatorio quando houver retencao do ISS.");
   }
@@ -69,8 +76,14 @@ export function buildDpsXml(draft: NfseDraft, issuedAt = new Date(Date.now() - 2
         <cTribMun>${xml(draft.service.municipalTaxCode)}</cTribMun>` : "";
   const nbs = draft.service.nbsCode ? `
         <cNBS>${onlyDigits(draft.service.nbsCode)}</cNBS>` : "";
-  const rate = draft.service.issRate == null ? "" : `
+  // Regra E0625: ME/EPP sem retencao nao informa pAliq no bloco municipal.
+  const omitIssRate = draft.provider.simpleNationalOption === 3 &&
+    draft.provider.simpleNationalTaxRegime === 1 && draft.service.issWithholding === 1;
+  const rate = draft.service.issRate == null || omitIssRate ? "" : `
           <pAliq>${draft.service.issRate.toFixed(2)}</pAliq>`;
+  const totalTax = draft.provider.simpleNationalOption === 3 ? `
+        <totTrib><pTotTribSN>${Number(draft.provider.simpleNationalTotalTaxRate).toFixed(2)}</pTotTribSN></totTrib>` : `
+        <totTrib><indTotTrib>0</indTotTrib></totTrib>`;
 
   // A SEFIN Nacional compara o componente local da data/hora. Envie explicitamente
   // no fuso de Brasilia e com pequena tolerancia para diferenca entre relogios.
@@ -115,7 +128,7 @@ export function buildDpsXml(draft: NfseDraft, issuedAt = new Date(Date.now() - 2
           <tribISSQN>${draft.service.issTaxation}</tribISSQN>
           <tpRetISSQN>${draft.service.issWithholding}</tpRetISSQN>${rate}
         </tribMun>${federalTax}
-        <totTrib><indTotTrib>0</indTotTrib></totTrib>
+${totalTax}
       </trib>
     </valores>
   </infDPS>

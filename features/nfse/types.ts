@@ -11,6 +11,7 @@ export interface NfseDraft {
         municipalRegistration?: string;
         simpleNationalOption: 1 | 2 | 3;
         simpleNationalTaxRegime?: 1 | 2 | 3;
+        simpleNationalTotalTaxRate?: number;
         specialTaxRegime: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 9;
     };
     customer?: { cpfCnpj: string; name: string; email?: string };
@@ -64,6 +65,7 @@ export interface NfseHistoryItem {
     accessKey?: string;
     error?: string;
     createdAt?: string;
+    competenceDate?: string;
     environment?: 'producao_restrita' | 'producao';
 }
 
@@ -76,6 +78,7 @@ export interface NfseFiscalProfile {
     nationalTaxCode: string;
     municipalTaxCode?: string;
     simpleNationalTaxRegime?: 1 | 2 | 3;
+    simpleNationalTotalTaxRate?: number;
     issRate?: number;
     competence: string;
 }
