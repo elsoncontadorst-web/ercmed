@@ -76,6 +76,7 @@ export enum AppView {
   CHART_OF_ACCOUNTS = 'chart_of_accounts',
   ACCOUNTING_INTEGRATION = 'accounting_integration',
   FISCAL_DOCUMENTS = 'fiscal_documents',
+  NFSE = 'nfse',
   TAX_RETENTIONS = 'tax_retentions',
   ADMIN_GENERAL_REGISTRATIONS = 'admin_general_registrations',
   ADMIN_PARAMETERS = 'admin_parameters',

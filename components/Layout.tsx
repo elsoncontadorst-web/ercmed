@@ -331,6 +331,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
           { view: AppView.ACCOUNTANT_MODULE, label: 'Fator R e Painel Fiscal', icon: Calculator },
           { view: AppView.CHART_OF_ACCOUNTS, label: 'Plano de Contas', icon: BookOpen },
           { view: AppView.ACCOUNTING_INTEGRATION, label: 'Integração Contábil', icon: Landmark },
+          { view: AppView.NFSE, label: 'Emissor NFS-e', icon: Receipt, adminOnly: true },
           { view: AppView.FISCAL_DOCUMENTS, label: 'Documentos Fiscais', icon: FileBox },
           { view: AppView.TAX_RETENTIONS, label: 'Tributos e Retenções', icon: Calculator },
         ],

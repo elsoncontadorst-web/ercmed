@@ -94,6 +94,7 @@ const ClinicTeamsView = safeLazy(() => import('./components/ClinicTeamsView'), '
 const TherapeuticIntelligenceView = safeLazy(() => import('./components/TherapeuticIntelligenceView'), 'therapeutic_intelligence');
 const ServiceCatalogView = safeLazy(() => import('./components/ServiceCatalogView'), 'service_catalog');
 const FiscalImportView = safeLazy(() => import('./components/FiscalImportView'), 'fiscal_import');
+const NfseView = safeLazy(() => import('./features/nfse/NfseView'), 'nfse');
 const CarePackagesView = safeLazy(() => import('./components/CarePackagesView'), 'care_packages');
 const AssetsView = safeLazy(() => import('./components/AssetsView'), 'assets');
 const AttendancesView = safeLazy(() => import('./components/AttendancesView'), 'attendances');
@@ -325,6 +326,8 @@ function App() {
               return <ServiceCatalogView />;
             case AppView.FISCAL_IMPORT:
               return <FiscalImportView />;
+            case AppView.NFSE:
+              return <NfseView />;
 
             // User Management
             case AppView.USERS_MANAGEMENT:

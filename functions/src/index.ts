@@ -6,3 +6,16 @@ export {
   createMercadoPagoSubscription,
   mercadoPagoWebhook,
 } from "./payments/mercadoPago.js";
+
+export {
+  configurarCertificadoNfse,
+  consultarConfiguracaoNfse,
+  consultarPerfilFiscalNfse,
+  emitirNfseHomologacao,
+  emitirNfseProducao,
+  listarNfseNacional,
+  obterNfseNacional,
+  prepararNfseNacional,
+  reenviarNfseProducaoPendente,
+  salvarPerfilFiscalNfse,
+} from "./nfse/index.js";
