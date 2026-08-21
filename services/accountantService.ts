@@ -1,8 +1,78 @@
-import { collection, addDoc, getDocs, updateDoc, doc, query, where, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, doc, query, where, serverTimestamp, orderBy, getDoc, setDoc, deleteDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, auth, storage } from './firebase';
-import { InvoiceRequest, InvoiceRequestFormData, AccountingDocument, DocumentType } from '../types/accountant';
+import { InvoiceRequest, InvoiceRequestFormData, AccountingDocument, DocumentType, AccountantLink } from '../types/accountant';
 import { getManagerIdForUser } from './accessControlService';
+
+const ACCOUNTANT_LINKS = 'accountant_links';
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+export const inviteCompany = async (accountantUid: string, companyEmail: string, accountantName: string): Promise<string> => {
+    const email = normalizeEmail(companyEmail);
+    const existing = await getDocs(query(
+        collection(db, ACCOUNTANT_LINKS),
+        where('accountantUid', '==', accountantUid),
+        where('companyEmail', '==', email)
+    ));
+    if (!existing.empty) throw new Error('Já existe um convite ou vínculo para este e-mail.');
+    const created = await addDoc(collection(db, ACCOUNTANT_LINKS), {
+        accountantUid,
+        accountantName: accountantName.trim() || 'Contador',
+        companyEmail: email,
+        status: 'pending',
+        createdAt: serverTimestamp()
+    });
+    return created.id;
+};
+
+export const watchCompanyInvites = (companyEmail: string, callback: (links: AccountantLink[]) => void): Unsubscribe => {
+    const inviteQuery = query(
+        collection(db, ACCOUNTANT_LINKS),
+        where('companyEmail', '==', normalizeEmail(companyEmail)),
+        where('status', '==', 'pending')
+    );
+    return onSnapshot(inviteQuery, snapshot => callback(snapshot.docs.map(item => ({ id: item.id, ...item.data() } as AccountantLink))));
+};
+
+export const watchAccountantLinks = (accountantUid: string, status: 'pending' | 'active', callback: (links: AccountantLink[]) => void): Unsubscribe => {
+    const linksQuery = query(collection(db, ACCOUNTANT_LINKS), where('accountantUid', '==', accountantUid), where('status', '==', status));
+    return onSnapshot(linksQuery, snapshot => callback(snapshot.docs.map(item => ({ id: item.id, ...item.data() } as AccountantLink))));
+};
+
+export const getAccountantLinks = async (accountantUid: string, status: 'pending' | 'active'): Promise<AccountantLink[]> => {
+    const linksQuery = query(collection(db, ACCOUNTANT_LINKS), where('accountantUid', '==', accountantUid), where('status', '==', status));
+    const snapshot = await getDocs(linksQuery);
+    return snapshot.docs.map(item => ({ id: item.id, ...item.data() } as AccountantLink));
+};
+
+export const acceptCompanyInvite = async (inviteId: string, companyOwnerId: string, companyName: string, companyDocument: string): Promise<void> => {
+    const inviteRef = doc(db, ACCOUNTANT_LINKS, inviteId);
+    const snapshot = await getDoc(inviteRef);
+    if (!snapshot.exists()) throw new Error('Convite não encontrado.');
+    const invite = snapshot.data();
+    const stableId = `${invite.accountantUid}_${companyOwnerId}`;
+    await setDoc(doc(db, ACCOUNTANT_LINKS, stableId), {
+        accountantUid: invite.accountantUid,
+        accountantName: invite.accountantName,
+        companyOwnerId,
+        companyName: companyName.trim() || 'Clínica',
+        companyDocument: companyDocument.trim(),
+        companyEmail: normalizeEmail(String(invite.companyEmail || '')),
+        status: 'active',
+        createdAt: invite.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp()
+    });
+    await deleteDoc(inviteRef);
+};
+
+export const removeAccountantLink = (linkId: string): Promise<void> => deleteDoc(doc(db, ACCOUNTANT_LINKS, linkId));
+
+export const resendCompanyInvite = async (link: AccountantLink): Promise<string> => {
+    if (!link.companyEmail) throw new Error('Convite sem e-mail da clínica.');
+    await removeAccountantLink(link.id);
+    return inviteCompany(link.accountantUid, link.companyEmail, link.accountantName);
+};
 
 /**
  * Create a new invoice request

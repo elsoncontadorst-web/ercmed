@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Moon,
   Package,
+  Percent,
   Pill,
   Receipt,
   RefreshCw,
@@ -59,6 +60,7 @@ import { Clinic } from '../types/clinic';
 import { ACTIVE_CLINIC_CHANGED_EVENT, GROUP_CLINIC_ID, getStoredActiveClinicId, setStoredActiveClinicId } from '../services/activeClinicStorage';
 import { canAccessView, getDefaultViewForRole } from '../services/viewAccessPolicy';
 import { getAllowedClinicsForUser } from '../services/accessControlService';
+import AccountantInviteBell from './AccountantInviteBell';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -86,6 +88,7 @@ const isItemActive = (currentView: AppView, item: NavItem) =>
   currentView === item.view || item.activeViews?.includes(currentView) === true;
 
 const SIDEBAR_SCROLL_KEY = 'ercmed_sidebar_scroll_top';
+const DESKTOP_SIDEBAR_KEY = 'ercmed_desktop_sidebar_visible';
 
 const NavButton = ({
   item,
@@ -134,6 +137,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
   const { theme, toggleTheme, cloudSaveEnabled, toggleCloudSave } = useSettings();
   const { userRole, isAdmin, userProfile, permissions, loading: userLoading, isTrialExpired, trialDaysRemaining } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [desktopSidebarVisible, setDesktopSidebarVisible] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem(DESKTOP_SIDEBAR_KEY) !== 'false';
+  });
   const [activeClinic, setActiveClinic] = useState<Clinic | null>(null);
   const [selectedClinicId, setSelectedClinicId] = useState('');
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
@@ -167,6 +174,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(navElement.scrollTop));
     }
   };
+
+  useEffect(() => {
+    localStorage.setItem(DESKTOP_SIDEBAR_KEY, String(desktopSidebarVisible));
+  }, [desktopSidebarVisible]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -242,7 +253,20 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
   };
 
   const isMaster = userRole === UserRole.ADMIN_MASTER;
+  const isAccountant = (userRole as string) === 'accountant';
   const canAccessCurrentView = canAccessView(currentView, userRole, permissions, isAdmin);
+  const mobileShortcuts = (isAccountant
+    ? [
+        { view: AppView.ACCOUNTANT_MODULE, label: 'Início', icon: LayoutDashboard },
+        { view: AppView.NFSE, label: 'Notas', icon: Receipt },
+        { view: AppView.ACCOUNTS_RECEIVABLE, label: 'Financeiro', icon: DollarSign },
+      ]
+    : [
+        { view: AppView.HEALTH_DASHBOARD, label: 'Início', icon: LayoutDashboard },
+        { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
+        { view: AppView.PATIENTS, label: 'Pacientes', icon: Users },
+        { view: AppView.ACCOUNTS_RECEIVABLE, label: 'Financeiro', icon: DollarSign },
+      ]).filter(item => item.view === AppView.ACCOUNTANT_MODULE || canAccessView(item.view, userRole, permissions, isAdmin));
 
   useEffect(() => {
     if (!userLoading && !canAccessCurrentView) {
@@ -259,6 +283,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
           { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
           { view: AppView.PATIENTS, label: 'Cadastro de Pacientes', icon: Users },
           { view: AppView.CLIENTS, label: 'Clientes', icon: UserRound },
+          { view: AppView.NFSE, label: 'Notas Fiscais', icon: Receipt },
           { view: AppView.ATTENDANCES, label: 'Controle de Atendimentos', icon: ClipboardList },
           { view: AppView.PRODUCTION_ENTRY, label: 'Portal de Produção Profissional', icon: Briefcase },
         ],
@@ -330,10 +355,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         title: 'Contábil e Fiscal',
         icon: Calculator,
         items: [
-          { view: AppView.ACCOUNTANT_MODULE, label: 'Fator R e Painel Fiscal', icon: Calculator },
+          { view: AppView.ACCOUNTANT_MODULE, label: 'Portal Contábil', icon: Calculator },
+          { view: AppView.FATOR_R, label: 'Fator R', icon: Percent },
           { view: AppView.CHART_OF_ACCOUNTS, label: 'Plano de Contas', icon: BookOpen },
           { view: AppView.ACCOUNTING_INTEGRATION, label: 'Integração Contábil', icon: Landmark },
-          { view: AppView.NFSE, label: 'Emissor NFS-e', icon: Receipt, adminOnly: true },
           { view: AppView.FISCAL_DOCUMENTS, label: 'Documentos Fiscais', icon: FileBox },
           { view: AppView.TAX_RETENTIONS, label: 'Tributos e Retenções', icon: Calculator },
         ],
@@ -356,6 +381,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         title: 'Suporte',
         icon: HelpCircle,
         items: [
+          { view: AppView.USER_PROFILE, label: 'Meus Dados e Tipo de Conta', icon: UserIcon },
           { view: AppView.HOW_TO_USE, label: 'Central de Ajuda', icon: HelpCircle },
           { view: AppView.SUPPORT_DOCUMENTATION, label: 'Documentação', icon: BookOpen },
           { view: AppView.FEEDBACK, label: 'Feedback', icon: MessageSquare },
@@ -371,6 +397,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       items: section.items.filter(item => {
         if (item.masterOnly) return isMaster;
         if (item.adminOnly) return isAdmin;
+        if (isAccountant && item.view === AppView.ACCOUNTANT_MODULE) return false;
         return canAccessView(item.view, userRole, permissions, isAdmin);
       }),
     }))
@@ -393,7 +420,9 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
   };
 
   const searchableItems = useMemo(() => {
-    const dashboard = canAccessView(AppView.HEALTH_DASHBOARD, userRole, permissions, isAdmin)
+    const dashboard = isAccountant
+      ? [{ view: AppView.ACCOUNTANT_MODULE, label: 'Dashboard do Contador', section: 'Início' }]
+      : canAccessView(AppView.HEALTH_DASHBOARD, userRole, permissions, isAdmin)
       ? [{ view: AppView.HEALTH_DASHBOARD, label: isAdmin ? 'Dashboard Executivo' : 'Dashboard Pessoal', section: 'Início' }]
       : [];
 
@@ -402,7 +431,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         section.items.map(item => ({ view: item.view, label: item.label, section: section.title }))
       )
     );
-  }, [visibleSections, userRole, permissions, isAdmin]);
+  }, [visibleSections, userRole, permissions, isAdmin, isAccountant]);
 
   const searchResults = useMemo(() => {
     const term = globalSearch.trim().toLocaleLowerCase('pt-BR');
@@ -425,6 +454,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
     availableClinics[0]?.name ||
     userProfile?.displayName ||
     'sua empresa';
+  const accountContextLabel = isAccountant ? 'Escritório contábil' : isAdmin ? 'Gestão da empresa' : 'Acesso profissional';
 
   const SidebarContent = () => (
     <>
@@ -434,7 +464,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
 
       <div className="mt-1 text-center">
         <span className="block text-[10px] font-medium uppercase tracking-wider text-brand-400">
-          {userProfile?.nomeFantasia || userProfile?.razaoSocial || 'Sistema de Gestão'}
+          {isAccountant ? 'Portal do Contador' : userProfile?.nomeFantasia || userProfile?.razaoSocial || 'Sistema de Gestão'}
         </span>
       </div>
 
@@ -445,9 +475,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-bold text-white">
-              Olá, {greetingCompanyName}
+              Olá, {isAccountant ? userProfile?.displayName || 'Contador' : greetingCompanyName}
             </p>
-            <div className="mt-1">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full bg-teal-500/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-teal-300 ring-1 ring-teal-400/20">{accountContextLabel}</span>
               <TierBadge tier={userProfile?.accountTier} size="sm" />
             </div>
           </div>
@@ -457,7 +488,16 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       <nav ref={registerNavRef => {
         desktopNavRef.current = registerNavRef;
       }} className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-        {canAccessView(AppView.HEALTH_DASHBOARD, userRole, permissions, isAdmin) && (
+        {isAccountant ? (
+          <NavButton
+            item={{ view: AppView.ACCOUNTANT_MODULE, label: 'Dashboard do Contador', icon: LayoutDashboard }}
+            currentView={currentView}
+            setView={setView}
+            setMobileMenuOpen={setMobileMenuOpen}
+            registerItemRef={registerItemRef}
+            navScrollRef={desktopNavRef}
+          />
+        ) : canAccessView(AppView.HEALTH_DASHBOARD, userRole, permissions, isAdmin) && (
           <NavButton
             item={{ view: AppView.HEALTH_DASHBOARD, label: isAdmin ? 'Dashboard Executivo' : 'Dashboard Pessoal', icon: LayoutDashboard }}
             currentView={currentView}
@@ -535,14 +575,14 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-slate-800 bg-[#031b31] text-white md:flex">
+    <div className="min-h-[100dvh] bg-slate-50 flex">
+      <aside className={`fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-slate-800 bg-[#031b31] text-white transition-transform duration-300 md:flex ${desktopSidebarVisible ? 'translate-x-0' : '-translate-x-full'}`}>
         <SidebarContent />
       </aside>
 
       <div
         className="fixed left-0 right-0 top-0 z-50 flex items-center justify-center bg-slate-900 text-white shadow-lg md:hidden"
-        style={{ paddingTop: 'max(35px, env(safe-area-inset-top))', paddingBottom: '10px' }}
+        style={{ paddingTop: 'max(12px, env(safe-area-inset-top))', paddingBottom: '8px' }}
       >
         <div className="relative w-full px-4 text-center">
           <div className="mb-1 flex flex-col items-center gap-0.5">
@@ -550,9 +590,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
               <Heart className="h-5 w-5 flex-shrink-0 text-brand-400" />
               <span className="whitespace-normal text-xl font-bold leading-tight">ERCMed</span>
             </div>
-            <span className="max-w-[280px] text-[10px] font-bold uppercase leading-tight tracking-wider text-brand-400">
-              ERP inteligente para empresas de saúde
-            </span>
+            <span className="max-w-[260px] truncate text-[10px] font-bold uppercase leading-tight tracking-wider text-brand-400">{isAccountant ? 'Portal do Contador' : activeClinic?.name || 'Gestão inteligente em saúde'}</span>
           </div>
         </div>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="absolute bottom-3 right-4 p-1">
@@ -561,7 +599,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
       </div>
 
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-40 flex flex-col bg-slate-900 px-4 pb-6 pt-32 md:hidden">
+        <div className="fixed inset-0 z-40 flex flex-col bg-slate-900 px-4 pb-24 pt-24 md:hidden">
           <div className="flex-1 overflow-auto space-y-4">
             <div className="rounded-xl border border-slate-700 bg-slate-800 p-3">
               <label htmlFor="mobile-active-clinic-selector" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-teal-300">Empresa ou unidade ativa</label>
@@ -606,10 +644,13 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         </div>
       )}
 
-      <main className="ml-0 flex flex-1 flex-col overflow-y-auto pt-32 md:relative md:ml-72 md:overflow-hidden md:pt-0">
-        <header className="hidden h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 md:flex">
+      <main className={`ml-0 flex min-w-0 flex-1 flex-col overflow-visible pb-20 pt-20 transition-[margin] duration-300 md:relative md:h-screen md:overflow-y-auto md:pb-0 md:pt-0 ${desktopSidebarVisible ? 'md:ml-72' : 'md:ml-0'}`}>
+        <header className="sticky top-0 z-30 hidden h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-6 shadow-sm backdrop-blur md:flex">
           <div className="flex items-center gap-4">
-            <Menu className="h-5 w-5 text-slate-600" />
+            <AccountantInviteBell />
+            <button type="button" onClick={() => setDesktopSidebarVisible(value => !value)} className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700" title={desktopSidebarVisible ? 'Recolher menu lateral' : 'Mostrar menu lateral'} aria-label={desktopSidebarVisible ? 'Recolher menu lateral' : 'Mostrar menu lateral'}>
+              <Menu className="h-5 w-5" />
+            </button>
             <div className="relative w-[28rem]">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -648,7 +689,12 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="relative min-w-[13rem] rounded-lg border border-slate-200 bg-white transition hover:bg-slate-50">
+            {isAccountant ? (
+              <div className="flex min-w-[13rem] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700">
+                <Building2 className="h-4 w-4 text-teal-700" />
+                Visão geral da carteira
+              </div>
+            ) : <div className="relative min-w-[13rem] rounded-lg border border-slate-200 bg-white transition hover:bg-slate-50">
               <label htmlFor="active-clinic-selector" className="sr-only">Trocar empresa ou unidade</label>
               <select
                 id="active-clinic-selector"
@@ -677,7 +723,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            </div>
+            </div>}
             {isAdmin && (
               <button
                 type="button"
@@ -763,6 +809,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
           <React.Fragment key={selectedClinicId || 'no-clinic'}>{children}</React.Fragment>
         )}
       </main>
+      <nav className="fixed inset-x-0 bottom-0 z-[60] grid border-t border-slate-200 bg-white/95 px-1 pb-[max(6px,env(safe-area-inset-bottom))] pt-1 shadow-[0_-8px_24px_rgba(15,23,42,0.10)] backdrop-blur md:hidden" style={{ gridTemplateColumns: `repeat(${mobileShortcuts.length + 1}, minmax(0, 1fr))` }} aria-label="Atalhos principais">
+        {mobileShortcuts.map(item => { const Icon = item.icon; const active = currentView === item.view; return <button key={item.view} type="button" onClick={() => { setView(item.view); setMobileMenuOpen(false); }} className={`flex min-w-0 flex-col items-center gap-0.5 rounded-xl px-1 py-2 text-[10px] font-bold ${active ? 'bg-teal-50 text-teal-700' : 'text-slate-500'}`}><Icon className="h-5 w-5"/><span className="truncate">{item.label}</span></button>; })}
+        <button type="button" onClick={() => setMobileMenuOpen(value => !value)} className={`flex min-w-0 flex-col items-center gap-0.5 rounded-xl px-1 py-2 text-[10px] font-bold ${mobileMenuOpen ? 'bg-slate-100 text-slate-900' : 'text-slate-500'}`}><Menu className="h-5 w-5"/><span>Mais</span></button>
+      </nav>
     </div>
   );
 };

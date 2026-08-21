@@ -5,6 +5,15 @@ export interface NfseParty {
   name?: string;
   municipalRegistration?: string;
   email?: string;
+  phone?: string;
+  address?: {
+    cityCode: string;
+    postalCode: string;
+    street: string;
+    number: string;
+    complement?: string;
+    neighborhood: string;
+  };
 }
 
 export interface NfseDraft {

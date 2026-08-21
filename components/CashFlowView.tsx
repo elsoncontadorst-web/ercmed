@@ -257,9 +257,9 @@ export const CashFlowView: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-brand-600 p-8">
-                <Loader2 className="w-12 h-12 animate-spin" />
-                <p className="font-medium text-slate-600">Sincronizando com Lançamentos Financeiros e Calculando DRE...</p>
+            <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center text-brand-600">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50"><Loader2 className="h-7 w-7 animate-spin" /></div>
+                <div><p className="font-bold text-slate-800">Preparando sua visão financeira</p><p className="mt-1 text-sm text-slate-500">Sincronizando lançamentos e calculando a DRE...</p></div>
             </div>
         );
     }
@@ -267,12 +267,13 @@ export const CashFlowView: React.FC = () => {
     const { grossRevenue, totalCosts, netProfit, profitMargin, ebitda, breakEvenRevenue } = dreData;
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 overflow-hidden animate-fade-in print:bg-white">
+        <div className="flex h-full flex-col overflow-hidden bg-slate-50 animate-fade-in print:bg-white">
             {/* Header */}
-            <div className="bg-white border-b border-slate-200 p-6 shadow-sm print:shadow-none">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="px-4 pt-4 sm:px-6 sm:pt-6 print:p-0">
+                <div className="mx-auto flex max-w-[1600px] flex-col gap-5 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6 xl:flex-row xl:items-center xl:justify-between print:shadow-none">
                     <div>
-                        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <span className="mb-2 inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-brand-700">Controladoria</span>
+                        <h2 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
                             <Calculator className="w-6 h-6 text-brand-600" />
                             Fluxo de Caixa & DRE
                         </h2>
@@ -280,24 +281,24 @@ export const CashFlowView: React.FC = () => {
                             Sincronizado automaticamente com o Controle Financeiro. Dados consolidados do ano corrente.
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             onClick={exportToPDF}
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors text-sm font-bold shadow-sm print:hidden"
+                            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 print:hidden"
                         >
                             <Download className="w-4 h-4" />
                             Extrato PDF
                         </button>
                         <button
                             onClick={exportBillingReport}
-                            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white hover:bg-brand-700 rounded-lg transition-colors text-sm font-bold shadow-sm print:hidden"
+                            className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 print:hidden"
                         >
                             <FileText className="w-4 h-4" />
                             Relatório de faturamento
                         </button>
                         <button
                             onClick={() => setShowForecast(!showForecast)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-bold shadow-sm border print:hidden ${showForecast ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                            className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold shadow-sm transition-all print:hidden ${showForecast ? 'border-orange-200 bg-orange-100 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                         >
                             <Calculator className="w-4 h-4" />
                             {showForecast ? 'Ocultar Previsão' : 'Simular Previsão'}
@@ -307,25 +308,25 @@ export const CashFlowView: React.FC = () => {
             </div>
 
             {/* View Selection Tabs */}
-            <div className="max-w-7xl mx-auto w-full px-6 pt-6 print:hidden">
-                <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white inline-flex shadow-sm">
+            <div className="mx-auto w-full max-w-[1600px] px-4 pt-5 sm:px-6 print:hidden">
+                <div className="inline-flex max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
                     <button
                         onClick={() => setActiveTab('mensal')}
-                        className={`flex items-center gap-2 px-6 py-2.5 text-sm font-bold transition-colors ${activeTab === 'mensal' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex shrink-0 items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold transition-colors ${activeTab === 'mensal' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         <LayoutDashboard className="w-4 h-4" />
                         Fluxo Mensal
                     </button>
                     <button
                         onClick={() => setActiveTab('dre')}
-                        className={`flex items-center gap-2 px-6 py-2.5 text-sm font-bold transition-colors border-l border-slate-200 ${activeTab === 'dre' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex shrink-0 items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold transition-colors ${activeTab === 'dre' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         <FileText className="w-4 h-4" />
                         DRE Analítico
                     </button>
                     <button
                         onClick={() => setActiveTab('graficos')}
-                        className={`flex items-center gap-2 px-6 py-2.5 text-sm font-bold transition-colors border-l border-slate-200 ${activeTab === 'graficos' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex shrink-0 items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold transition-colors ${activeTab === 'graficos' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         <BarChart3 className="w-4 h-4" />
                         Gráficos Visuais
@@ -334,15 +335,16 @@ export const CashFlowView: React.FC = () => {
             </div>
 
             {/* Scrollable Content Area */}
-            <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
-                <div className="max-w-7xl mx-auto space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 scroll-smooth">
+                <div className="mx-auto max-w-[1600px] space-y-6">
 
                     {/* --- TAB: FLUXO MENSAL --- */}
                     {activeTab === 'mensal' && (
                         <div className="space-y-6 animate-fade-in">
                             {/* Summary Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                <div className="relative flex items-center gap-4 overflow-hidden rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/50 p-5 shadow-sm">
+                                    <div className="absolute inset-x-0 top-0 h-1 bg-emerald-500" />
                                     <div className="p-3 bg-green-100 text-green-700 rounded-lg">
                                         <TrendingUp className="w-6 h-6" />
                                     </div>
@@ -351,7 +353,8 @@ export const CashFlowView: React.FC = () => {
                                         <p className="text-xl font-black text-slate-800">{formatMoney(grossRevenue)}</p>
                                     </div>
                                 </div>
-                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                                <div className="relative flex items-center gap-4 overflow-hidden rounded-2xl border border-red-100 bg-gradient-to-br from-white to-red-50/40 p-5 shadow-sm">
+                                    <div className="absolute inset-x-0 top-0 h-1 bg-red-500" />
                                     <div className="p-3 bg-red-100 text-red-700 rounded-lg">
                                         <TrendingDown className="w-6 h-6" />
                                     </div>
@@ -360,7 +363,8 @@ export const CashFlowView: React.FC = () => {
                                         <p className="text-xl font-black text-slate-800">{formatMoney(dreData.totalCosts + dreData.taxes)}</p>
                                     </div>
                                 </div>
-                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                                <div className="relative flex items-center gap-4 overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/50 p-5 shadow-sm">
+                                    <div className="absolute inset-x-0 top-0 h-1 bg-blue-500" />
                                     <div className="p-3 bg-blue-100 text-blue-700 rounded-lg">
                                         <Calendar className="w-6 h-6" />
                                     </div>
@@ -369,7 +373,8 @@ export const CashFlowView: React.FC = () => {
                                         <p className="text-xl font-black text-slate-800">12 Meses</p>
                                     </div>
                                 </div>
-                                <div className={`p-4 rounded-xl shadow-sm flex items-center gap-4 border ${netProfit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                <div className={`relative flex items-center gap-4 overflow-hidden rounded-2xl border p-5 shadow-sm ${netProfit >= 0 ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                                    <div className={`absolute inset-x-0 top-0 h-1 ${netProfit >= 0 ? 'bg-green-500' : 'bg-red-500'}`} />
                                     <div className={`p-3 rounded-lg ${netProfit >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                         <DollarSign className="w-6 h-6" />
                                     </div>
@@ -381,7 +386,7 @@ export const CashFlowView: React.FC = () => {
                             </div>
 
                             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_.8fr]">
-                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
                                     <h3 className="text-lg font-bold text-slate-800">Indicadores de controladoria</h3>
                                     <div className="mt-5 grid gap-4 md:grid-cols-3">
                                         <MiniIndicator label="EBITDA estimado" value={formatMoney(ebitda)} tone={ebitda >= 0 ? 'emerald' : 'red'} />
@@ -390,7 +395,7 @@ export const CashFlowView: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
                                     <h3 className="text-lg font-bold text-slate-800">Centros de resultado</h3>
                                     <div className="mt-4 space-y-3">
                                         {resultCenters.length ? resultCenters.map(center => (
@@ -409,9 +414,9 @@ export const CashFlowView: React.FC = () => {
                             </div>
 
                             {/* Main Table */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
                                 <div className="overflow-x-auto">
-                                    <table className="w-full">
+                                    <table className="w-full min-w-[980px]">
                                         <thead className="bg-slate-50 border-b border-slate-200">
                                             <tr>
                                                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Mês</th>

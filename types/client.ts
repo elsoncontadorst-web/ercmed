@@ -4,6 +4,15 @@ export interface Client {
   taxId?: string;
   email?: string;
   phone?: string;
+  postalCode?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  cityCode?: string;
+  patientId?: string;
   clinicId?: string;
   unitName?: string;
   source: 'manual' | 'xml' | 'nfse';

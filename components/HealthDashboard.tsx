@@ -535,20 +535,21 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-50">
-        <RefreshCw className="h-7 w-7 animate-spin text-brand-600" />
+        <div className="flex flex-col items-center text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50"><RefreshCw className="h-7 w-7 animate-spin text-brand-600" /></div><p className="mt-3 text-sm font-bold text-slate-700">Atualizando indicadores executivos</p></div>
       </div>
     );
   }
 
   return (
-    <main className="h-full overflow-y-auto bg-slate-50 p-3 md:p-4">
-      <div className="mx-auto w-full max-w-[1680px] space-y-3 pb-6">
-        <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <main className="h-full overflow-y-auto bg-slate-50 p-4 md:p-6">
+      <div className="mx-auto w-full max-w-[1680px] space-y-4 pb-6">
+        <header className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Dashboard Executivo</h1>
-            <p className="text-sm text-slate-500">Visão geral da gestão da sua empresa de saúde</p>
+            <span className="mb-2 inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-brand-700">Visão gerencial</span>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Dashboard Executivo</h1>
+            <p className="mt-1 text-sm text-slate-500">Visão geral da gestão da sua empresa de saúde</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1" aria-label="Tipo de visão do dashboard">
               <button
                 type="button"
@@ -597,7 +598,7 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
           </div>
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Receita Total" value={currency(dashboard.received)} detail="Recebido no período" tone="emerald" values={dashboard.daily.map(item => item.income)} />
           <Metric label="Lucro Líquido" value={currency(dashboard.result)} detail="Após despesas, impostos e repasses" tone={dashboard.result >= 0 ? 'teal' : 'rose'} values={dashboard.daily.map(item => item.income - item.expenses)} />
           <Metric label="Margem Líquida" value={`${percentage(dashboard.result, dashboard.received || dashboard.billed).toFixed(1)}%`} detail="Resultado sobre receita" tone="green" values={dashboard.daily.map(item => item.income - item.expenses)} />
@@ -747,16 +748,17 @@ const HealthDashboard: React.FC<HealthDashboardProps> = ({ setView }) => {
 };
 
 const Metric = ({ label, value, detail, tone, values, action, onAction }: { label: string; value: string; detail: string; tone: string; values: number[]; action?: string; onAction?: () => void }) => (
-  <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+  <article className="relative min-h-[150px] overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50/70 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <div className={`absolute inset-x-0 top-0 h-1 ${tone === 'emerald' || tone === 'green' ? 'bg-emerald-500' : tone === 'rose' ? 'bg-rose-500' : tone === 'orange' ? 'bg-orange-500' : tone === 'violet' ? 'bg-violet-500' : 'bg-blue-500'}`} />
     <div className="flex items-start justify-between">
       <span className={`rounded-lg p-2 ${tone === 'emerald' ? 'bg-emerald-50 text-emerald-600' : ''}${tone === 'teal' ? ' bg-teal-50 text-teal-600' : ''}${tone === 'green' ? ' bg-green-50 text-green-600' : ''}${tone === 'blue' ? ' bg-blue-50 text-blue-600' : ''}${tone === 'violet' ? ' bg-violet-50 text-violet-600' : ''}${tone === 'orange' ? ' bg-orange-50 text-orange-600' : ''}${tone === 'rose' ? ' bg-rose-50 text-rose-600' : ''}`}>
         <TrendingUp className="h-4 w-4" />
       </span>
       <Sparkline values={values} tone={tone} />
     </div>
-    <p className="mt-2 text-[11px] font-medium text-slate-500">{label}</p>
-    <p className="mt-0.5 text-lg font-bold tracking-tight text-slate-900">{value}</p>
-    <p className="mt-1 truncate text-[10px] text-slate-500">{detail}</p>
+    <p className="mt-3 text-xs font-semibold text-slate-500">{label}</p>
+    <p className="mt-1 text-xl font-extrabold tracking-tight text-slate-900">{value}</p>
+    <p className="mt-1 truncate text-[11px] text-slate-500">{detail}</p>
     {action && <button type="button" onClick={onAction} className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-700 hover:text-brand-800"><Info className="h-3 w-3" />{action}</button>}
   </article>
 );
@@ -1095,7 +1097,7 @@ const SimplesAllocationPanel = ({ rows, totalRevenue, totalTax, onAssign }: { ro
         </div>
       </div>
       {rows.length ? (
-        <div className="mt-4 overflow-x-auto">
+        <><div className="mt-4 space-y-2 sm:hidden">{rows.map(row => <div key={row.id} className={`rounded-lg border p-3 ${row.unassigned ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}><div className="flex items-start justify-between gap-3"><p className="font-semibold text-slate-800">{row.name}</p><p className="font-bold text-blue-800">{detailedCurrency(row.taxAmount)}</p></div><div className="mt-2 flex justify-between text-xs text-slate-500"><span>Faturamento: {detailedCurrency(row.revenue)}</span><span>{(row.share * 100).toFixed(2)}%</span></div></div>)}</div><div className="mt-4 hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[620px] text-left text-xs">
             <thead className="border-b border-slate-200 text-slate-500">
               <tr>
@@ -1124,7 +1126,7 @@ const SimplesAllocationPanel = ({ rows, totalRevenue, totalTax, onAssign }: { ro
               </tr>
             </tfoot>
           </table>
-        </div>
+        </div></>
       ) : <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Não há faturamento no período para realizar o rateio.</p>}
       {hasUnassigned && (
         <div className="mt-4 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">

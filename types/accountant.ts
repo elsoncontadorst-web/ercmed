@@ -43,3 +43,18 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
     simples: 'Extrato Simples Nacional',
     contract: 'Contrato Social'
 };
+
+export type AccountantLinkStatus = 'pending' | 'active';
+
+export interface AccountantLink {
+    id: string;
+    accountantUid: string;
+    accountantName: string;
+    companyEmail?: string;
+    companyOwnerId?: string;
+    companyName?: string;
+    companyDocument?: string;
+    status: AccountantLinkStatus;
+    createdAt?: Timestamp;
+    updatedAt?: Timestamp;
+}

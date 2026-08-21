@@ -22,6 +22,12 @@ export function validateNfseDraft(draft: NfseDraft): NfseValidationResult {
 
   if (![11, 14].includes(providerDocument.length)) errors.push("CPF/CNPJ do prestador invalido.");
   if (draft.customer && ![11, 14].includes(customerDocument.length)) errors.push("CPF/CNPJ do tomador invalido.");
+  if (draft.customer?.address) {
+    if (!/^\d{7}$/.test(onlyDigits(draft.customer.address.cityCode))) errors.push("Codigo IBGE do municipio do tomador deve ter 7 digitos.");
+    if (!/^\d{8}$/.test(onlyDigits(draft.customer.address.postalCode))) errors.push("CEP do tomador deve ter 8 digitos.");
+    if (!draft.customer.address.street.trim()) errors.push("Logradouro do tomador e obrigatorio.");
+    if (!draft.customer.address.neighborhood.trim()) errors.push("Bairro do tomador e obrigatorio.");
+  }
   if (!/^\d{7}$/.test(draft.issuerCityCode)) errors.push("Codigo IBGE do municipio emissor deve ter 7 digitos.");
   if (draft.service.locationCountryCode) {
     if (!/^\d{4}$/.test(draft.service.locationCountryCode)) errors.push("Codigo ISO do pais da prestacao deve ter 4 digitos.");
@@ -64,10 +70,22 @@ export function buildDpsXml(draft: NfseDraft, issuedAt = new Date(Date.now() - 2
   const providerDocument = onlyDigits(draft.provider.cpfCnpj);
   const federalRegistrationType = providerDocument.length === 11 ? "1" : "2";
   const id = `DPS${draft.issuerCityCode}${federalRegistrationType}${providerDocument.padStart(14, "0")}${draft.series.padStart(5, "0")}${String(draft.number).padStart(15, "0")}`;
+  const customerAddress = draft.customer?.address ? `
+      <end>
+        <endNac>
+          <cMun>${onlyDigits(draft.customer.address.cityCode)}</cMun>
+          <CEP>${onlyDigits(draft.customer.address.postalCode)}</CEP>
+        </endNac>
+        <xLgr>${xml(draft.customer.address.street)}</xLgr>
+        <nro>${xml(draft.customer.address.number || "S/N")}</nro>${draft.customer.address.complement ? `
+        <xCpl>${xml(draft.customer.address.complement)}</xCpl>` : ""}
+        <xBairro>${xml(draft.customer.address.neighborhood)}</xBairro>
+      </end>` : "";
   const customer = draft.customer ? `
     <toma>
       ${documentTag(draft.customer.cpfCnpj)}
-      <xNome>${xml(draft.customer.name || "Tomador nao informado")}</xNome>${draft.customer.email ? `
+      <xNome>${xml(draft.customer.name || "Tomador nao informado")}</xNome>${customerAddress}${draft.customer.phone ? `
+      <fone>${onlyDigits(draft.customer.phone)}</fone>` : ""}${draft.customer.email ? `
       <email>${xml(draft.customer.email)}</email>` : ""}
     </toma>` : "";
   const simpleRegime = draft.provider.simpleNationalTaxRegime ? `

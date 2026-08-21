@@ -6,25 +6,34 @@ import type {
     NfseEmissionResult,
     NfseFiscalProfile,
     NfseHistoryItem,
+    NfseEventQueryResult,
     NfsePreparationResult
 } from './types';
 import { createDanfsePdf } from './danfsePdf';
+import { getDelegatedCompanyContext } from '../../services/delegatedCompanyContext';
 
-const callable = <Request, Response>(name: string) =>
-    httpsCallable<Request, Response>(getCloudFunctions(), name);
+const withCompany = <T extends object>(payload: T): T & { targetOwnerId?: string } => ({
+    ...payload,
+    ...(getDelegatedCompanyContext()?.ownerId ? { targetOwnerId: getDelegatedCompanyContext()!.ownerId } : {})
+});
+
+const callable = <Request, Response>(name: string) => {
+    const invoke = httpsCallable<any, Response>(getCloudFunctions(), name);
+    return (payload: Request) => invoke(withCompany((payload || {}) as object));
+};
 
 export async function getNfseFiscalProfile(clinicId: string, competence: string): Promise<NfseFiscalProfile | null> {
-    const response = await callable<{ clinicId: string; competence: string }, { profile: NfseFiscalProfile | null }>('consultarPerfilFiscalNfse')({ clinicId, competence });
+    const response = await callable<any, { profile: NfseFiscalProfile | null }>('consultarPerfilFiscalNfse')(withCompany({ clinicId, competence }));
     return response.data.profile;
 }
 
 export async function saveNfseFiscalProfile(clinicId: string, profile: NfseFiscalProfile): Promise<NfseFiscalProfile> {
-    const response = await callable<{ clinicId: string; profile: NfseFiscalProfile }, { saved: boolean; profile: NfseFiscalProfile }>('salvarPerfilFiscalNfse')({ clinicId, profile });
+    const response = await callable<any, { saved: boolean; profile: NfseFiscalProfile }>('salvarPerfilFiscalNfse')(withCompany({ clinicId, profile }));
     return response.data.profile;
 }
 
 export async function prepareNationalNfse(clinicId: string, draft: NfseDraft): Promise<NfsePreparationResult> {
-    return (await callable<{ clinicId: string; draft: NfseDraft }, NfsePreparationResult>('prepararNfseNacional')({ clinicId, draft })).data;
+    return (await callable<any, NfsePreparationResult>('prepararNfseNacional')(withCompany({ clinicId, draft }))).data;
 }
 
 export async function configureNfseCertificate(clinicId: string, file: File, password: string) {
@@ -53,6 +62,10 @@ export async function issueNfse(clinicId: string, draft: NfseDraft): Promise<Nfs
 
 export async function listNationalNfse(clinicId: string): Promise<NfseHistoryItem[]> {
     return (await callable<{ clinicId: string }, { documents: NfseHistoryItem[] }>('listarNfseNacional')({ clinicId })).data.documents;
+}
+
+export async function importNationalNfseXml(clinicId: string, xml: string): Promise<{ imported: boolean; duplicate: boolean; id: string; accessKey: string }> {
+    return (await callable<{ clinicId: string; xml: string }, { imported: boolean; duplicate: boolean; id: string; accessKey: string }>('importarNfseXml')({ clinicId, xml })).data;
 }
 
 export async function downloadNationalNfseXml(clinicId: string, id: string): Promise<void> {
@@ -110,4 +123,15 @@ export async function verifyNationalNfse(clinicId: string, id: string) {
 
 export async function deleteRejectedNationalNfse(clinicId: string, id: string): Promise<void> {
     await callable<{ clinicId: string; id: string }, { deleted: boolean }>('excluirNfseRejeitada')({ clinicId, id });
+}
+
+export async function listNationalNfseEvents(clinicId: string, id: string): Promise<NfseEventQueryResult> {
+    return (await callable<{ clinicId: string; id: string }, NfseEventQueryResult>('listarEventosNfse')({ clinicId, id })).data;
+}
+
+export async function cancelNationalNfse(clinicId: string, id: string, reasonCode: 1 | 2 | 9, reason: string, production: boolean): Promise<void> {
+    await callable<{ clinicId: string; id: string; reasonCode: 1 | 2 | 9; reason: string; confirmation?: string }, { cancelled: boolean }>('cancelarNfseNacional')({
+        clinicId, id, reasonCode, reason,
+        confirmation: production ? 'CANCELAR NFS-E REAL' : undefined
+    });
 }

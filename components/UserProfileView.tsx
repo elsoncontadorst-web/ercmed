@@ -5,6 +5,7 @@ import { PROFESSIONAL_ROLES, MEDICAL_SPECIALTIES } from '../utils/professionalCo
 import { User as UserIcon, Mail, Settings, X, Search, Loader2, Building2, MapPin, Shield } from 'lucide-react';
 import { ProfessionalSettings } from '../types';
 import { fetchCNPJData, formatCNPJ, formatCPF, validateCNPJ, validateCPF } from '../services/cnpjCnesService';
+import AccountTypeSettings from './AccountTypeSettings';
 
 interface UserProfileViewProps {
     user: User;
@@ -333,6 +334,8 @@ const UserProfileView: React.FC<UserProfileViewProps> = ({ user, subscription, i
                 <UserIcon className="w-8 h-8 text-brand-600" />
                 Meus Dados
             </h1>
+
+            <AccountTypeSettings />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Configurações Profissionais */}

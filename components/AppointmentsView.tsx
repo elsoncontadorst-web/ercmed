@@ -493,7 +493,7 @@ const AppointmentsView: React.FC = () => {
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex flex-wrap gap-3">
                     {/* Search */}
-                    <div className="relative flex-1 min-w-[250px]">
+                    <div className="relative min-w-0 flex-[1_1_100%] sm:min-w-[250px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"
@@ -594,13 +594,13 @@ const AppointmentsView: React.FC = () => {
                 <div className="space-y-4">
                     <div className="grid gap-4">
                         {paginatedAppointments.map(app => (
-                            <div key={app.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-                                <div className="flex items-start gap-4 flex-1">
-                                    <div className="p-3 bg-brand-50 text-brand-600 rounded-lg">
+                            <div key={app.id} className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
+                                    <div className="hidden rounded-lg bg-brand-50 p-3 text-brand-600 sm:block">
                                         <User className="w-6 h-6" />
                                     </div>
                                     <div className="flex-1">
-                                        <div className="flex items-start justify-between">
+                                        <div className="flex items-start justify-between gap-2">
                                             <div>
                                                 <h3 className="font-bold text-slate-800">{app.professionalName}</h3>
                                                 <p className="text-sm text-slate-500">{app.specialty}</p>
@@ -610,7 +610,7 @@ const AppointmentsView: React.FC = () => {
                                             </div>
                                             {getStatusBadge(app.status)}
                                         </div>
-                                        <div className="flex items-center gap-4 mt-2 text-sm text-slate-600">
+                                        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-600 sm:gap-4">
                                             <span className="flex items-center gap-1">
                                                 <Calendar className="w-4 h-4" />
                                                 {new Date(app.date).toLocaleDateString('pt-BR')}
@@ -625,7 +625,7 @@ const AppointmentsView: React.FC = () => {
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex justify-end gap-2 border-t pt-2 sm:border-0 sm:pt-0">
                                     <button
                                         onClick={() => handleEdit(app)}
                                         className="p-2 text-brand-600 hover:bg-brand-50 rounded-lg"
@@ -656,8 +656,8 @@ const AppointmentsView: React.FC = () => {
 
             {/* Add/Edit Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
+                <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4">
+                    <div className="my-2 max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl sm:my-6 sm:max-h-[calc(100dvh-3rem)]">
                         <div className="flex justify-between items-center p-6 border-b border-gray-200">
                             <h2 className="text-xl font-bold text-slate-800">
                                 {editingAppointment ? 'Editar Consulta' : 'Nova Consulta'}
@@ -671,7 +671,7 @@ const AppointmentsView: React.FC = () => {
                             {/* Patient Selection */}
                             <div>
                                 <label className="text-sm font-medium text-slate-700">Paciente</label>
-                                <div className="flex gap-2 mt-1">
+                                <div className="mt-1 flex flex-col gap-2 sm:flex-row">
                                     <select
                                         value={formData.patientId}
                                         onChange={(e) => handlePatientSelect(e.target.value)}
@@ -709,7 +709,7 @@ const AppointmentsView: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div>
                                     <label className="text-sm font-medium text-slate-700">Profissional *</label>
                                     <select

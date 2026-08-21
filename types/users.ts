@@ -11,7 +11,7 @@ export interface SystemUser {
     id: string;
     email: string;
     name: string;
-    role: 'admin' | 'manager' | 'professional' | 'health_professional' | 'admin_gestor' | 'admin_master' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider';
+    role: 'admin' | 'manager' | 'professional' | 'health_professional' | 'admin_gestor' | 'admin_master' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider' | 'accountant';
     status: 'pending' | 'approved' | 'rejected' | 'active' | 'inactive';
     createdAt: any;
     updatedAt: any;
@@ -61,7 +61,7 @@ export interface UserCreationByAdmin {
     email: string;
     password: string;
     name: string;
-    role: 'admin' | 'manager' | 'professional' | 'health_professional' | 'admin_gestor' | 'admin_master' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider';
+    role: 'admin' | 'manager' | 'professional' | 'health_professional' | 'admin_gestor' | 'admin_master' | 'receptionist' | 'user' | 'biller' | 'autonomous_provider' | 'accountant';
     phone?: string;
     specialty?: string;
     crm?: string;
@@ -133,6 +133,16 @@ export const DEFAULT_PERMISSIONS: Record<SystemUser['role'], UserPermissions> = 
         canManageContracts: true,
         canViewReports: true,
         canManageSettings: true
+    },
+    accountant: {
+        canManageUsers: false,
+        canManagePatients: false,
+        canManageAppointments: false,
+        canManageBilling: true,
+        canManageInventory: false,
+        canManageContracts: false,
+        canViewReports: true,
+        canManageSettings: false
     },
     receptionist: {
         canManageUsers: false,

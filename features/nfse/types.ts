@@ -14,7 +14,20 @@ export interface NfseDraft {
         simpleNationalTotalTaxRate?: number;
         specialTaxRegime: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 9;
     };
-    customer?: { cpfCnpj: string; name: string; email?: string };
+    customer?: {
+        cpfCnpj: string;
+        name: string;
+        email?: string;
+        phone?: string;
+        address?: {
+            cityCode: string;
+            postalCode: string;
+            street: string;
+            number: string;
+            complement?: string;
+            neighborhood: string;
+        };
+    };
     service: {
         locationCityCode: string;
         locationCountryCode?: string;
@@ -65,8 +78,18 @@ export interface NfseHistoryItem {
     accessKey?: string;
     error?: string;
     createdAt?: string;
+    updatedAt?: string;
+    retryCount?: number;
+    nextRetryAt?: string;
     competenceDate?: string;
     environment?: 'producao_restrita' | 'producao';
+}
+
+export interface NfseEventQueryResult {
+    accessKey: string;
+    events: unknown;
+    cancelled: boolean;
+    checkedAt: string;
 }
 
 export interface NfseFiscalProfile {

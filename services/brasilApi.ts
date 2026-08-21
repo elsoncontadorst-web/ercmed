@@ -31,3 +31,20 @@ export const fetchCnpjInfo = async (cnpj: string): Promise<CnpjData> => {
     throw new Error("CNPJ inválido ou inexistente.");
   }
 };
+
+export interface PublicCepData {
+  cep: string;
+  street?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  city_ibge?: string;
+}
+
+export const fetchCepInfo = async (cep: string): Promise<PublicCepData> => {
+  const cleanCep = cep.replace(/\D/g, '');
+  if (cleanCep.length !== 8) throw new Error("CEP inválido. Digite 8 números.");
+  const response = await fetch(`https://brasilapi.com.br/api/cep/v2/${cleanCep}`);
+  if (!response.ok) throw new Error("CEP não encontrado na base pública.");
+  return response.json();
+};

@@ -42,6 +42,7 @@ export interface Patient {
   chronicConditions?: string[];
   professionalId?: string; // Professional who registered this patient
   clinicId?: string; // Optional: Associate patient with a specific clinic
+  clientId?: string; // Cliente fiscal vinculado para emissão de NFS-e
   active: boolean;
   createdAt: any;
   updatedAt: any;

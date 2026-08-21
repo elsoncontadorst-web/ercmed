@@ -12,7 +12,9 @@ import {
   linkWithCredential,
   fetchSignInMethodsForEmail,
   EmailAuthProvider,
-  User
+  User,
+  browserLocalPersistence,
+  setPersistence
 } from "firebase/auth";
 import {
   getFirestore,
@@ -60,6 +62,11 @@ try {
 
 // INICIALIZAÇÃO RESTAURADA: ESSENCIAL para as funções de login e assinatura (db) abaixo
 export const auth = getAuth(app);
+// Mantém a sessão entre recarregamentos e reaberturas do navegador. A sessão
+// só é encerrada por signOut (ou por revogação de segurança no Firebase).
+export const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.warn('Não foi possível ativar a persistência local da sessão:', error);
+});
 // Inicializa o Firestore com ignoreUndefinedProperties: true para evitar erros com campos opcionais
 export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 // Inicializa o Firebase Storage
@@ -71,8 +78,14 @@ export const getCloudFunctions = () => getFunctions(app, "us-central1");
 export const clinicalAI = getAI(app, { backend: new GoogleAIBackend() });
 
 // Exporta funções wrapper para facilitar o uso no React
-export const signInWithEmailAndPassword = firebaseSignIn;
-export const createUserWithEmailAndPassword = firebaseCreateUser;
+export const signInWithEmailAndPassword = async (...args: Parameters<typeof firebaseSignIn>) => {
+  await authPersistenceReady;
+  return firebaseSignIn(...args);
+};
+export const createUserWithEmailAndPassword = async (...args: Parameters<typeof firebaseCreateUser>) => {
+  await authPersistenceReady;
+  return firebaseCreateUser(...args);
+};
 export const signOut = firebaseSignOut;
 export const onAuthStateChanged = firebaseOnAuthStateChanged;
 export const sendPasswordResetEmail = firebaseSendPasswordResetEmail;
@@ -88,7 +101,10 @@ export const createManagedAuthUser = async (email: string, password: string) => 
 };
 
 export const googleProvider = new GoogleAuthProvider();
-export const signInWithPopup = firebaseSignInWithPopup;
+export const signInWithPopup = async (...args: Parameters<typeof firebaseSignInWithPopup>) => {
+  await authPersistenceReady;
+  return firebaseSignInWithPopup(...args);
+};
 export { linkWithCredential, fetchSignInMethodsForEmail, EmailAuthProvider, GoogleAuthProvider };
 
 // --- FUNÇÕES DE ASSINATURA (FIRESTORE) ---

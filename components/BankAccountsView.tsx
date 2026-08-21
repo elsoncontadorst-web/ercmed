@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Landmark, Pencil, Plus, Power, Wallet, X } from 'lucide-react';
+import { Building2, Landmark, Loader2, Pencil, Plus, Power, Wallet, X } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { getManagerIdForUser } from '../services/accessControlService';
 import { BankAccount, getBankingData, saveBankAccounts } from '../services/bankingService';
@@ -99,10 +99,10 @@ const BankAccountsView: React.FC = () => {
     }
   };
 
-  return <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-10">
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-      <div><h1 className="text-3xl font-bold text-slate-900">Contas bancárias</h1><p className="mt-1 text-slate-500">Cadastre bancos e acompanhe a posição financeira da clínica.</p></div>
-      <button onClick={() => { resetForm(); setShowForm(true); }} className="flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"><Plus size={19}/> Nova conta</button>
+  return <div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6 lg:p-8">
+    <div className="flex flex-col justify-between gap-5 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6 lg:flex-row lg:items-center">
+      <div><span className="mb-2 inline-flex rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-teal-700">Tesouraria</span><h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Contas bancárias</h1><p className="mt-1 text-sm text-slate-500 sm:text-base">Cadastre bancos e acompanhe a posição financeira da clínica.</p></div>
+      <button onClick={() => { resetForm(); setShowForm(true); }} className="flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-teal-700 hover:shadow-md"><Plus size={19}/> Nova conta</button>
     </div>
     {message && <div role="status" className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-blue-800">{message}</div>}
     <div className="grid gap-4 md:grid-cols-3">
@@ -120,12 +120,12 @@ const BankAccountsView: React.FC = () => {
       <div className="flex gap-2"><input className="min-w-0 flex-1 rounded-lg border p-3" placeholder="Saldo inicial" value={form.openingBalance} onChange={e => setForm({ ...form, openingBalance: e.target.value })}/><button disabled={saving} onClick={saveAccount} className="rounded-lg bg-slate-900 px-4 text-white">{saving ? 'Salvando...' : 'Salvar'}</button></div>
       </div>
     </div>}
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      {loading ? <div className="p-12 text-center text-slate-500">Carregando contas bancárias...</div> : accounts.length === 0 ? <div className="p-12 text-center text-slate-500"><Landmark className="mx-auto mb-3" size={34}/><p className="font-semibold text-slate-700">Nenhuma conta cadastrada</p><p className="text-sm">Cadastre a conta usada pela clínica para iniciar a conciliação.</p></div> : accounts.map(item => <div key={item.id} className="flex items-center justify-between border-b p-5 last:border-0"><div><p className="font-semibold text-slate-900">{item.name}</p><p className="text-sm text-slate-500">{item.bank} · Agência {item.agency || '—'} · Conta {item.account || '—'}</p></div><div className="flex items-center gap-3"><div className="mr-2 text-right"><p className="text-xs text-slate-500">Saldo inicial</p><p className="font-bold">{money(item.openingBalance)}</p></div><button disabled={saving} title="Editar conta" onClick={() => editAccount(item)} className="rounded-lg bg-blue-50 p-2 text-blue-600 hover:bg-blue-100 disabled:opacity-40"><Pencil size={18}/></button><button disabled={saving} title={item.active ? 'Desativar conta' : 'Ativar conta'} onClick={() => toggle(item.id)} className={`rounded-lg p-2 disabled:opacity-40 ${item.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}><Power size={18}/></button></div></div>)}
+    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      {loading ? <div className="flex flex-col items-center p-14 text-center"><div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50"><Loader2 className="animate-spin text-teal-600" size={24}/></div><p className="font-semibold text-slate-700">Carregando contas bancárias...</p></div> : accounts.length === 0 ? <div className="p-14 text-center text-slate-500"><div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100"><Landmark size={28}/></div><p className="font-semibold text-slate-700">Nenhuma conta cadastrada</p><p className="text-sm">Cadastre a conta usada pela clínica para iniciar a conciliação.</p></div> : accounts.map(item => <div key={item.id} className="flex flex-col gap-4 border-b p-5 transition hover:bg-slate-50/70 sm:flex-row sm:items-center sm:justify-between last:border-0"><div className="flex items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700"><Landmark size={20}/></div><div><p className="font-semibold text-slate-900">{item.name}</p><p className="text-sm text-slate-500">{item.bank} · Agência {item.agency || '—'} · Conta {item.account || '—'}</p></div></div><div className="flex items-center justify-between gap-3 sm:justify-end"><div className="mr-2 text-left sm:text-right"><p className="text-xs text-slate-500">Saldo inicial</p><p className="font-bold">{money(item.openingBalance)}</p></div><button disabled={saving} title="Editar conta" onClick={() => editAccount(item)} className="rounded-lg bg-blue-50 p-2 text-blue-600 hover:bg-blue-100 disabled:opacity-40"><Pencil size={18}/></button><button disabled={saving} title={item.active ? 'Desativar conta' : 'Ativar conta'} onClick={() => toggle(item.id)} className={`rounded-lg p-2 disabled:opacity-40 ${item.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}><Power size={18}/></button></div></div>)}
     </div>
   </div>;
 };
 
-const Summary = ({ icon: Icon, label, value, detail }: { icon: React.ElementType; label: string; value: string; detail?: string }) => <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><Icon className="mb-4 text-teal-600"/><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>{detail && <p className="mt-2 text-xs text-slate-500" title="Saldo inicial + entradas recebidas - saídas pagas">{detail}</p>}</div>;
+const Summary = ({ icon: Icon, label, value, detail }: { icon: React.ElementType; label: string; value: string; detail?: string }) => <div className="relative overflow-hidden rounded-2xl border border-teal-100 bg-gradient-to-br from-white to-teal-50/40 p-5 shadow-sm"><div className="absolute inset-x-0 top-0 h-1 bg-teal-500"/><div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100"><Icon className="text-teal-700" size={20}/></div><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>{detail && <p className="mt-2 text-xs text-slate-500" title="Saldo inicial + entradas recebidas - saídas pagas">{detail}</p>}</div>;
 
 export default BankAccountsView;

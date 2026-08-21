@@ -6,9 +6,10 @@ import * as admin from "firebase-admin";
 import {isAxiosError} from "axios";
 import {buildDpsXml, validateNfseDraft} from "./dps";
 import {decryptValue, encryptValue, readCertificate} from "./certificateVault";
-import {signDpsXml} from "./signer";
-import {checkDpsProduction, downloadDanfseProduction, getNfseProduction, transmitDpsProduction, transmitDpsRestricted} from "./sefinClient";
+import {signDpsXml, signNfseEventXml} from "./signer";
+import {checkDpsProduction, downloadDanfseProduction, getNfseEvents, getNfseProduction, registerNfseEvent, transmitDpsProduction, transmitDpsRestricted} from "./sefinClient";
 import {NfseDraft} from "./types";
+import {buildCancellationEventXml} from "./events";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -29,7 +30,7 @@ type NfseCompanyProfile = {
   competence: string;
 };
 
-async function companyAccess(uid: string, clinicIdValue: unknown): Promise<{
+async function companyAccess(uid: string, clinicIdValue: unknown, targetOwnerIdValue?: unknown): Promise<{
   ownerId: string;
   clinicId: string;
   scopeId: string;
@@ -45,24 +46,37 @@ async function companyAccess(uid: string, clinicIdValue: unknown): Promise<{
     db.collection("user_profiles").doc(uid).get(),
   ]);
   const data = systemUser.exists ? systemUser.data() || {} : profile.data() || {};
-  const role = String(data.role || "").toLowerCase();
+  const role = profile.data()?.accountType === "accountant" ? "accountant" : String(data.role || "").toLowerCase();
   const email = String(data.email || "").toLowerCase();
   const managerRoles = ["admin", "manager", "admin_gestor", "admin_master"];
   const isManager = managerRoles.includes(role) || data.isClinicManager === true || email === "elsoncontador.st@gmail.com";
-  const ownerId = isManager ? uid : String(data.managerId || "");
+  const ownOwnerId = isManager ? uid : String(data.managerId || "");
+  const requestedOwnerId = String(targetOwnerIdValue || "").trim();
+  let ownerId = ownOwnerId;
+  let delegated = false;
+  if (requestedOwnerId && requestedOwnerId !== ownOwnerId) {
+    if (role !== "accountant") throw new HttpsError("permission-denied", "Somente contas de contador podem trabalhar em contexto delegado.");
+    const linkId = `${uid}_${requestedOwnerId}`;
+    const linkSnapshot = await db.collection("accountant_links").doc(linkId).get();
+    const link = linkSnapshot.data() || {};
+    const authorized = linkSnapshot.exists && link.status === "active" && link.accountantUid === uid && link.companyOwnerId === requestedOwnerId;
+    if (!authorized) throw new HttpsError("permission-denied", "O contador nao possui vinculo ativo com esta empresa.");
+    ownerId = requestedOwnerId;
+    delegated = true;
+  }
   if (!ownerId) throw new HttpsError("permission-denied", "Vinculo com o gestor da clinica nao encontrado.");
 
   const clinic = await db.collection("users").doc(ownerId).collection("clinics").doc(clinicId).get();
   if (!clinic.exists || clinic.data()?.active === false) {
     throw new HttpsError("permission-denied", "Clinica nao encontrada ou sem acesso.");
   }
-  if (!isManager) {
+  if (!isManager && !delegated) {
     const clinicIds = Array.isArray(data.clinicIds) ? data.clinicIds.map(String) : [];
     if (String(data.clinicId || "") !== clinicId && !clinicIds.includes(clinicId)) {
       throw new HttpsError("permission-denied", "Sem acesso a esta clinica.");
     }
   }
-  return {ownerId, clinicId, scopeId: `${ownerId}__${clinicId}`, canConfigure: isManager};
+  return {ownerId, clinicId, scopeId: `${ownerId}__${clinicId}`, canConfigure: isManager || delegated};
 }
 
 function safeError(error: unknown): string {
@@ -99,6 +113,30 @@ function accessKeyFromXml(xml?: string): string | null {
     xml.match(/Id="NFS(\d{50})"/)?.[1] || null;
 }
 
+function xmlValue(xml: string, tag: string): string {
+  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return xml.match(new RegExp(`<(?:\\w+:)?${escaped}(?:\\s[^>]*)?>([^<]*)</(?:\\w+:)?${escaped}>`, "i"))?.[1]?.trim() || "";
+}
+
+function xmlSection(xml: string, tag: string): string {
+  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return xml.match(new RegExp(`<(?:\\w+:)?${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:\\w+:)?${escaped}>`, "i"))?.[1] || "";
+}
+
+function documentEnvironment(value: unknown): "homologacao" | "producao" {
+  return value === "producao" ? "producao" : "homologacao";
+}
+
+async function companyCertificate(scopeId: string) {
+  const snapshot = await db.collection("nfse_private_config").doc(scopeId).get();
+  if (!snapshot.exists) throw new HttpsError("failed-precondition", "Configure o certificado A1 antes de consultar ou registrar eventos.");
+  const config = snapshot.data() || {};
+  const secret = NFSE_CERTIFICATE_KEY.value();
+  const pfx = decryptValue(config.encryptedPfx, secret);
+  const password = decryptValue(config.encryptedPassword, secret).toString("utf8");
+  return {pfx, password, certificate: readCertificate(pfx, password)};
+}
+
 function cleanProfile(value: Partial<NfseCompanyProfile>): NfseCompanyProfile {
   const regime = "simples" as const;
   const issRate = value.issRate == null || value.issRate === ("" as unknown) ? undefined : Number(value.issRate);
@@ -130,7 +168,7 @@ export const consultarPerfilFiscalNfse = onCall(
   {region: "us-central1"},
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
-    const {scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     const competence = String(request.data?.competence || "");
     const [company, monthly] = await Promise.all([
       db.collection("nfse_company_config").doc(scopeId).get(),
@@ -144,7 +182,7 @@ export const salvarPerfilFiscalNfse = onCall(
   {region: "us-central1"},
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
-    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     if (!canConfigure) throw new HttpsError("permission-denied", "Sem permissao para alterar o perfil fiscal.");
     const profile = cleanProfile(request.data?.profile || {});
     const companyRef = db.collection("nfse_company_config").doc(scopeId);
@@ -180,7 +218,7 @@ export const prepararNfseNacional = onCall(
   {region: "us-central1", enforceAppCheck: false},
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
-    await companyAccess(request.auth.uid, request.data?.clinicId);
+    await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     const draft = request.data?.draft as NfseDraft | undefined;
     if (!draft) throw new HttpsError("invalid-argument", "Rascunho da NFS-e nao informado.");
     const validation = validateNfseDraft(draft);
@@ -199,7 +237,7 @@ export const configurarCertificadoNfse = onCall(
   {region: "us-central1", timeoutSeconds: 60, secrets: [NFSE_CERTIFICATE_KEY]},
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
-    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     if (!canConfigure) throw new HttpsError("permission-denied", "Sem permissao para configurar o certificado.");
 
     const pfxBase64 = String(request.data?.pfxBase64 || "");
@@ -235,7 +273,7 @@ export const consultarConfiguracaoNfse = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
     const userId = request.auth.uid;
-    const {scopeId} = await companyAccess(userId, request.data?.clinicId);
+    const {scopeId} = await companyAccess(userId, request.data?.clinicId, request.data?.targetOwnerId);
     const snapshot = await db.collection("nfse_private_config").doc(scopeId).get();
     if (!snapshot.exists) return {configured: false, environment: "producao_restrita"};
     const data = snapshot.data() || {};
@@ -259,7 +297,7 @@ export const emitirNfseHomologacao = onCall(
     const validation = validateNfseDraft(restrictedDraft);
     if (!validation.valid) throw new HttpsError("invalid-argument", validation.errors.join(" "));
 
-    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(userId, request.data?.clinicId);
+    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(userId, request.data?.clinicId, request.data?.targetOwnerId);
     if (!canConfigure) throw new HttpsError("permission-denied", "Apenas gestores podem emitir NFS-e.");
     const configSnapshot = await db.collection("nfse_private_config").doc(scopeId).get();
     if (!configSnapshot.exists) throw new HttpsError("failed-precondition", "Configure o certificado A1 antes de emitir.");
@@ -389,7 +427,7 @@ export const emitirNfseProducao = onCall(
     const validation = validateNfseDraft(productionDraft);
     if (!validation.valid) throw new HttpsError("invalid-argument", validation.errors.join(" "));
 
-    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(userId, request.data?.clinicId);
+    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(userId, request.data?.clinicId, request.data?.targetOwnerId);
     if (!canConfigure) throw new HttpsError("permission-denied", "Apenas gestores podem emitir NFS-e.");
     const configSnapshot = await db.collection("nfse_private_config").doc(scopeId).get();
     if (!configSnapshot.exists) throw new HttpsError("failed-precondition", "Configure o certificado A1 antes de emitir.");
@@ -467,7 +505,7 @@ export const verificarDpsNfseProducao = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
     const id = String(request.data?.id || "");
-    const {ownerId, clinicId, scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {ownerId, clinicId, scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     const documentRef = db.collection("nfse_documents").doc(id);
     const [documentSnapshot, configSnapshot] = await Promise.all([
       documentRef.get(),
@@ -506,7 +544,7 @@ export const listarNfseNacional = onCall(
   {region: "us-central1"},
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
-    const {ownerId, clinicId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {ownerId, clinicId} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     const snapshot = await db.collection("nfse_documents").where("ownerId", "==", ownerId).where("clinicId", "==", clinicId).limit(100).get();
     const documents = snapshot.docs.filter((item) => !item.data().deletedAt).map((item) => {
       const data = item.data();
@@ -522,11 +560,106 @@ export const listarNfseNacional = onCall(
         customerEmail: data.customerEmail,
         accessKey: data.accessKey,
         error: data.error,
+        retryCount: Number(data.retryCount || 0),
+        nextRetryAt: data.nextRetryAt?.toDate?.().toISOString() || null,
         environment: data.environment || "producao_restrita",
         createdAt: data.createdAt?.toDate?.().toISOString() || null,
+        updatedAt: data.updatedAt?.toDate?.().toISOString() || null,
       };
     }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return {documents};
+  },
+);
+
+export const importarNfseXml = onCall(
+  {region: "us-central1", timeoutSeconds: 60, memory: "512MiB"},
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
+    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
+    if (!canConfigure) throw new HttpsError("permission-denied", "Sem permissao para importar documentos fiscais.");
+    const xml = String(request.data?.xml || "").trim();
+    if (!xml || Buffer.byteLength(xml, "utf8") > 3 * 1024 * 1024) throw new HttpsError("invalid-argument", "XML vazio ou maior que 3 MB.");
+    if (!/<(?:\w+:)?(?:NFSe|CompNfse|infNFSe)\b/i.test(xml)) throw new HttpsError("invalid-argument", "O arquivo nao possui uma NFS-e reconhecida.");
+    const accessKey = String(accessKeyFromXml(xml) || xmlValue(xml, "chNFSe")).replace(/\D/g, "");
+    if (!/^\d{50}$/.test(accessKey)) throw new HttpsError("invalid-argument", "Nao foi encontrada uma chave nacional valida no XML.");
+    const providerSection = xmlSection(xml, "emit") || xmlSection(xml, "prest") || xmlSection(xml, "prestador");
+    const providerDocument = String(xmlValue(providerSection, "CNPJ") || xmlValue(providerSection, "CPF") || xmlValue(xml, "CNPJPrestador") || xmlValue(xml, "CPFPrestador")).replace(/\D/g, "");
+    const profile = (await db.collection("nfse_company_config").doc(scopeId).get()).data() || {};
+    const expectedDocument = String(profile.providerDocument || "").replace(/\D/g, "");
+    if (expectedDocument && providerDocument && expectedDocument !== providerDocument) throw new HttpsError("failed-precondition", "O prestador deste XML nao corresponde ao CNPJ da clinica selecionada.");
+    const customerSection = xmlSection(xml, "toma") || xmlSection(xml, "tomador");
+    const customerDocument = String(xmlValue(customerSection, "CNPJ") || xmlValue(customerSection, "CPF")).replace(/\D/g, "");
+    const customerName = xmlValue(customerSection, "xNome") || xmlValue(customerSection, "RazaoSocial");
+    const amountText = xmlValue(xmlSection(xml, "valores") || xml, "vServ") || xmlValue(xml, "vLiq") || xmlValue(xml, "valorServicos") || "0";
+    const amount = Number(amountText.replace(",", ".")) || 0;
+    const competenceDate = (xmlValue(xml, "dCompet") || xmlValue(xml, "dhEmi") || xmlValue(xml, "dataEmissao")).slice(0, 10) || null;
+    const documentId = `${scopeId}_import_${accessKey}`;
+    const reference = db.collection("nfse_documents").doc(documentId);
+    const previous = await reference.get();
+    if (previous.exists && !previous.data()?.deletedAt) return {imported: false, duplicate: true, id: documentId, accessKey};
+    await reference.set({ownerId, clinicId, environment: "producao", status: "autorizada", series: xmlValue(xml, "serie") || "XML", number: Number(xmlValue(xml, "nNFSe") || xmlValue(xml, "nNFS-e") || 0), providerDocument: providerDocument || expectedDocument || null, customerDocument: customerDocument || null, customerName: customerName || null, amount, competenceDate, accessKey, authorizedXml: xml, imported: true, importedSource: "xml", importedBy: request.auth.uid, createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
+    return {imported: true, duplicate: false, id: documentId, accessKey};
+  },
+);
+
+export const listarEventosNfse = onCall(
+  {region: "us-central1", timeoutSeconds: 60, memory: "512MiB", secrets: [NFSE_CERTIFICATE_KEY]},
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
+    const {ownerId, clinicId, scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
+    const id = String(request.data?.id || "");
+    const reference = db.collection("nfse_documents").doc(id);
+    const snapshot = await reference.get();
+    const data = snapshot.data() || {};
+    if (!snapshot.exists || data.ownerId !== ownerId || data.clinicId !== clinicId) throw new HttpsError("not-found", "NFS-e nao encontrada.");
+    const accessKey = String(data.accessKey || accessKeyFromXml(data.authorizedXml) || "");
+    if (!/^\d{50}$/.test(accessKey)) throw new HttpsError("failed-precondition", "Esta nota ainda nao possui chave nacional.");
+    try {
+      const {pfx, password} = await companyCertificate(scopeId);
+      const events = await getNfseEvents(accessKey, documentEnvironment(data.environment), pfx, password);
+      const cancelled = /101101|cancelamento de nfs-e/i.test(JSON.stringify(events || {}));
+      await reference.set({events, eventsCheckedAt: admin.firestore.FieldValue.serverTimestamp(), ...(cancelled ? {status: "cancelada", cancelledExternally: data.status !== "cancelada"} : {}), updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
+      return {accessKey, events, cancelled, checkedAt: new Date().toISOString()};
+    } catch (error) {
+      throw new HttpsError("internal", safeError(error));
+    }
+  },
+);
+
+export const cancelarNfseNacional = onCall(
+  {region: "us-central1", timeoutSeconds: 90, memory: "512MiB", secrets: [NFSE_CERTIFICATE_KEY]},
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
+    const {ownerId, clinicId, scopeId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
+    if (!canConfigure) throw new HttpsError("permission-denied", "Sem permissao para cancelar esta NFS-e.");
+    const id = String(request.data?.id || "");
+    const reason = String(request.data?.reason || "").trim();
+    const reasonCode = Number(request.data?.reasonCode || 9) as 1 | 2 | 9;
+    const reference = db.collection("nfse_documents").doc(id);
+    const snapshot = await reference.get();
+    const data = snapshot.data() || {};
+    if (!snapshot.exists || data.ownerId !== ownerId || data.clinicId !== clinicId) throw new HttpsError("not-found", "NFS-e nao encontrada.");
+    const environment = documentEnvironment(data.environment);
+    if (environment === "producao" && request.data?.confirmation !== "CANCELAR NFS-E REAL") throw new HttpsError("failed-precondition", "Digite CANCELAR NFS-E REAL para confirmar o cancelamento em producao.");
+    if (data.status === "cancelada") throw new HttpsError("already-exists", "Esta NFS-e ja esta cancelada.");
+    if (data.status !== "autorizada") throw new HttpsError("failed-precondition", "Somente uma NFS-e autorizada pode ser cancelada.");
+    const accessKey = String(data.accessKey || accessKeyFromXml(data.authorizedXml) || "");
+    if (!/^\d{50}$/.test(accessKey)) throw new HttpsError("failed-precondition", "Esta nota ainda nao possui chave nacional.");
+    try {
+      const {pfx, password, certificate} = await companyCertificate(scopeId);
+      const profile = (await db.collection("nfse_company_config").doc(scopeId).get()).data() || {};
+      const eventXml = buildCancellationEventXml({accessKey, authorDocument: String(profile.providerDocument || certificate.document || data.providerDocument || ""), environment, reasonCode, reason});
+      const response = await registerNfseEvent(accessKey, signNfseEventXml(eventXml, certificate), environment, pfx, password);
+      const auditRef = db.collection("nfse_event_audit").doc();
+      const batch = db.batch();
+      batch.set(auditRef, {ownerId, clinicId, nfseDocumentId: id, accessKey, eventCode: "101101", reasonCode, reason, environment, requestedBy: request.auth.uid, success: true, response: response.data, registeredXml: response.authorizedXml || null, createdAt: admin.firestore.FieldValue.serverTimestamp()});
+      batch.set(reference, {status: "cancelada", cancelledAt: admin.firestore.FieldValue.serverTimestamp(), cancellationEventId: auditRef.id, cancellationReason: reason, eventsCheckedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
+      await batch.commit();
+      return {cancelled: true, status: "cancelada", eventId: auditRef.id, accessKey};
+    } catch (error) {
+      await db.collection("nfse_event_audit").add({ownerId, clinicId, nfseDocumentId: id, accessKey, eventCode: "101101", reasonCode, reason, environment, requestedBy: request.auth.uid, success: false, error: safeError(error), createdAt: admin.firestore.FieldValue.serverTimestamp()});
+      throw new HttpsError("internal", safeError(error));
+    }
   },
 );
 
@@ -536,7 +669,7 @@ export const excluirNfseRejeitada = onCall(
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
     const id = String(request.data?.id || "");
     if (!id) throw new HttpsError("invalid-argument", "Identificador da NFS-e nao informado.");
-    const {ownerId, clinicId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {ownerId, clinicId, canConfigure} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     if (!canConfigure) throw new HttpsError("permission-denied", "Apenas gestores podem excluir notas rejeitadas.");
     const documentRef = db.collection("nfse_documents").doc(id);
     const snapshot = await documentRef.get();
@@ -562,7 +695,7 @@ export const obterNfseNacional = onCall(
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
     const id = String(request.data?.id || "");
     if (!id) throw new HttpsError("invalid-argument", "Identificador da NFS-e nao informado.");
-    const {ownerId, clinicId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {ownerId, clinicId} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     const snapshot = await db.collection("nfse_documents").doc(id).get();
     if (!snapshot.exists || snapshot.data()?.ownerId !== ownerId || snapshot.data()?.clinicId !== clinicId) {
       throw new HttpsError("not-found", "Documento fiscal nao encontrado.");
@@ -584,7 +717,7 @@ export const obterDanfseNacional = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Usuario nao autenticado.");
     const id = String(request.data?.id || "");
-    const {ownerId, clinicId, scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId);
+    const {ownerId, clinicId, scopeId} = await companyAccess(request.auth.uid, request.data?.clinicId, request.data?.targetOwnerId);
     const [snapshot, configSnapshot] = await Promise.all([
       db.collection("nfse_documents").doc(id).get(),
       db.collection("nfse_private_config").doc(scopeId).get(),

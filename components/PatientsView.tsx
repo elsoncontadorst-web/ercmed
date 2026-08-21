@@ -11,6 +11,9 @@ import { AccountTier, TIER_CONFIG } from '../types/accountTiers';
 import { Lock } from 'lucide-react';
 import { formatCPF, formatPhone } from '../utils/formatters';
 import { ACTIVE_CLINIC_CHANGED_EVENT, getActiveClinicScopeId } from '../services/activeClinicStorage';
+import { getClients } from '../services/clientService';
+import { getManagerIdForUser } from '../services/accessControlService';
+import type { Client } from '../types/client';
 
 import { AppView } from '../types';
 
@@ -22,6 +25,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
     const [patients, setPatients] = useState<Patient[]>([]);
     const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
     const [clinics, setClinics] = useState<Clinic[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -50,6 +54,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
         address: '',
         gender: '',
         clinicId: '',
+        clientId: '',
         isMinor: false,
         guardianName: '',
         guardianCpf: '',
@@ -87,6 +92,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                     : allPatients;
                 setPatients(clinicScopedPatients);
                 setFilteredPatients(clinicScopedPatients);
+                const managerId = (await getManagerIdForUser(user.uid)) || user.uid;
+                setClients(await getClients(managerId, activeClinicId || undefined));
 
                 // Load Clinics
                 const allClinics = await getClinics();
@@ -165,6 +172,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
         }
     };
 
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -201,6 +209,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                 address: formData.address || undefined,
                 gender: formData.gender || undefined,
                 clinicId: formData.clinicId,
+                clientId: formData.clientId || undefined,
                 isMinor,
                 guardian: isMinor ? {
                     name: formData.guardianName,
@@ -249,6 +258,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             address: '',
             gender: '',
             clinicId: clinics.length === 1 ? clinics[0].id : (clinics.length > 0 ? clinics[0].id : ''),
+            clientId: '',
             isMinor: false,
             guardianName: '',
             guardianCpf: '',
@@ -275,6 +285,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             address: patient.address || '',
             gender: patient.gender || '',
             clinicId: patient.clinicId || '',
+            clientId: patient.clientId || '',
             isMinor: patient.isMinor,
             guardianName: patient.guardian?.name || '',
             guardianCpf: patient.guardian?.cpf || '',
@@ -364,8 +375,15 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
             </div>
 
             {/* Patients List */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full text-left">
+            <div className="space-y-3 md:hidden">
+                {filteredPatients.length === 0 ? <p className="rounded-xl border bg-white p-8 text-center text-slate-500">Nenhum paciente encontrado.</p> : filteredPatients.map(patient => {
+                    const patientAge = calculateAge(patient.birthdate);
+                    const patientClinic = clinics.find(c => c.id === patient.clinicId);
+                    return <article key={patient.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-bold text-slate-900">{patient.name}</h3><p className="text-xs text-slate-500">{patient.cpf ? `CPF: ${patient.cpf}` : 'CPF não informado'}</p></div><div className="flex shrink-0"><button aria-label="Editar paciente" onClick={() => handleEdit(patient)} className="rounded-lg bg-brand-50 p-2 text-brand-600"><Edit2 className="h-4 w-4"/></button>{(userProfile?.isClinicManager === true || userProfile?.accountTier === AccountTier.UNLIMITED) && <button aria-label="Excluir paciente" onClick={() => handleDelete(patient.id)} className="ml-1 rounded-lg bg-red-50 p-2 text-red-500"><Trash2 className="h-4 w-4"/></button>}</div></div><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-slate-400">Idade</p><p>{patientAge === null ? 'Não informada' : `${patientAge} anos`}</p></div><div><p className="text-xs text-slate-400">Telefone</p><p className="truncate">{patient.phone || '—'}</p></div><div className="col-span-2"><p className="text-xs text-slate-400">Clínica</p><p className="truncate text-blue-700">{patientClinic?.name || 'Geral'}</p></div></div></article>;
+                })}
+            </div>
+            <div className="hidden overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm md:block">
+                <table className="w-full min-w-[900px] text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
                             <th className="p-4 font-semibold text-slate-700">Nome</th>
@@ -393,6 +411,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                             <div>
                                                 <p className="font-medium text-slate-900">{patient.name}</p>
                                                 {patient.cpf && <p className="text-xs text-slate-500">CPF: {patient.cpf}</p>}
+                                                {patient.clientId && <p className="mt-1 text-xs font-medium text-teal-600">Cliente fiscal: {clients.find(client => client.id === patient.clientId)?.name || 'Vinculado'}</p>}
                                             </div>
                                         </td>
                                         <td className="p-4 text-slate-600">
@@ -473,7 +492,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
                             {/* Basic Info */}
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="col-span-2">
                                     <label className="text-sm font-medium text-slate-700 block mb-1">Clínica *</label>
                                     <select
@@ -500,6 +519,19 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                                             Nenhuma clínica disponível. Crie uma clínica primeiro.
                                         </p>
                                     )}
+                                </div>
+
+                                <div className="col-span-2">
+                                    <label className="text-sm font-medium text-slate-700 block mb-1">Cliente fiscal vinculado</label>
+                                    <select
+                                        value={formData.clientId}
+                                        onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                                    >
+                                        <option value="">Não vincular cliente</option>
+                                        {clients.map(client => <option key={client.id} value={client.id}>{client.name} {client.taxId ? `— ${client.taxId}` : ''}</option>)}
+                                    </select>
+                                    <p className="mt-1 text-xs text-slate-500">Ao selecionar este paciente na NFS-e, serão usados os dados fiscais e o endereço deste cliente.</p>
                                 </div>
 
                                 <div className="col-span-2">

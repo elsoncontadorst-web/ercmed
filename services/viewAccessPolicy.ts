@@ -60,6 +60,20 @@ export const canAccessView = (
   if (isAdmin) return true;
   if (SUPPORT_VIEWS.has(view)) return true;
 
+  if (role === 'accountant') {
+    return [
+      AppView.ACCOUNTANT_MODULE,
+      AppView.FATOR_R,
+      AppView.NFSE,
+      AppView.FISCAL_DOCUMENTS,
+      AppView.FINANCIAL_CONTROL,
+      AppView.ACCOUNTS_RECEIVABLE,
+      AppView.ACCOUNTS_PAYABLE,
+      AppView.PROFESSIONAL_PRODUCTION,
+      AppView.REPASSE_DASHBOARD,
+    ].includes(view);
+  }
+
   // Financial entry screens are available to every authenticated clinic user.
   if ([AppView.ACCOUNTS_RECEIVABLE, AppView.ACCOUNTS_PAYABLE, AppView.CASH_ACCOUNTS].includes(view)) {
     return true;
@@ -97,6 +111,7 @@ export const getDefaultViewForRole = (
   isAdmin: boolean,
 ): AppView => {
   if (isAdmin) return AppView.HEALTH_DASHBOARD;
+  if (role === 'accountant') return AppView.ACCOUNTANT_MODULE;
   if (role === UserRole.BILLER || role === 'biller') return AppView.BILLING_MANAGEMENT;
   return AppView.HEALTH_DASHBOARD;
 };

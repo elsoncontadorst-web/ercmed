@@ -12,6 +12,7 @@ import {
 import { saveUserProfile } from '../services/userRoleService';
 import { AccountTier } from '../types/accountTiers';
 import { UserRole } from '../types';
+import { changeOwnAccountType } from '../services/accountTypeService';
 import {
   AlertCircle,
   ArrowLeft,
@@ -24,6 +25,8 @@ import {
   Mail,
   Rocket,
   UserPlus,
+  Building2,
+  BriefcaseBusiness,
 } from 'lucide-react';
 import SystemLogo from './SystemLogo';
 
@@ -46,6 +49,7 @@ const LoginComponent: React.FC<LoginComponentProps> = ({ onBack, initialSignUp =
   const [googleLoading, setGoogleLoading] = useState(false);
   const [syncEmail, setSyncEmail] = useState<string | null>(null);
   const [pendingGoogleCredential, setPendingGoogleCredential] = useState<any>(null);
+  const [accountType, setAccountType] = useState<'clinic' | 'accountant'>('clinic');
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,13 +73,18 @@ const LoginComponent: React.FC<LoginComponentProps> = ({ onBack, initialSignUp =
           await saveUserProfile(userCredential.user.uid, {
             uid: userCredential.user.uid,
             email: normalizedEmail,
-            role: UserRole.HEALTH_PROFESSIONAL,
+            role: accountType === 'accountant' ? UserRole.ACCOUNTANT : UserRole.ADMIN_GESTOR,
+            accountType,
             accountTier: AccountTier.TRIAL,
-            isClinicManager: true,
-            displayName: 'Gestor ERCMed',
+            isClinicManager: accountType === 'clinic',
+            displayName: accountType === 'accountant' ? 'Contador ERCMed' : 'Gestor ERCMed',
+            ...(accountType === 'accountant' ? { accountantProfile: { name: 'Contador ERCMed' } } : {}),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
+          await changeOwnAccountType(accountType, accountType === 'accountant' ? {
+            name: userCredential.user.displayName || 'Contador ERCMed',
+          } : undefined);
           window.dispatchEvent(new CustomEvent(USER_PROFILE_UPDATED_EVENT));
         }
       } else {
@@ -131,17 +140,25 @@ const LoginComponent: React.FC<LoginComponentProps> = ({ onBack, initialSignUp =
       const creationTime = result.user.metadata.creationTime;
       const lastSignInTime = result.user.metadata.lastSignInTime;
 
-      if (creationTime === lastSignInTime) {
+      const isNewGoogleUser = creationTime === lastSignInTime;
+      if (isNewGoogleUser) {
         await saveUserProfile(userId, {
           uid: userId,
           email: userEmail,
-          role: UserRole.HEALTH_PROFESSIONAL,
+          role: accountType === 'accountant' ? UserRole.ACCOUNTANT : UserRole.ADMIN_GESTOR,
+          accountType,
           accountTier: AccountTier.TRIAL,
-          isClinicManager: true,
-          displayName: result.user.displayName || 'Gestor ERCMed',
+          isClinicManager: accountType === 'clinic',
+          displayName: result.user.displayName || (accountType === 'accountant' ? 'Contador ERCMed' : 'Gestor ERCMed'),
+          ...(accountType === 'accountant' ? { accountantProfile: { name: result.user.displayName || 'Contador ERCMed' } } : {}),
           createdAt: new Date(),
           updatedAt: new Date(),
         });
+      }
+      if (isSignUp) {
+        await changeOwnAccountType(accountType, accountType === 'accountant' ? {
+          name: result.user.displayName || 'Contador ERCMed',
+        } : undefined);
         window.dispatchEvent(new CustomEvent(USER_PROFILE_UPDATED_EVENT));
       }
     } catch (err: any) {
@@ -261,6 +278,24 @@ const LoginComponent: React.FC<LoginComponentProps> = ({ onBack, initialSignUp =
                 <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                 <span>{successMessage}</span>
               </div>
+            )}
+
+            {isSignUp && !isResetting && !syncEmail && (
+              <fieldset>
+                <legend className="ml-1 mb-2 text-sm font-medium text-slate-700">Como você usará o ERCMed?</legend>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => setAccountType('clinic')} className={`rounded-xl border p-3 text-left transition ${accountType === 'clinic' ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-100' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <Building2 className={`mb-2 h-5 w-5 ${accountType === 'clinic' ? 'text-teal-700' : 'text-slate-400'}`} />
+                    <span className="block text-sm font-bold text-slate-800">Clínica</span>
+                    <span className="text-xs text-slate-500">Empresa ou profissional de saúde</span>
+                  </button>
+                  <button type="button" onClick={() => setAccountType('accountant')} className={`rounded-xl border p-3 text-left transition ${accountType === 'accountant' ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <BriefcaseBusiness className={`mb-2 h-5 w-5 ${accountType === 'accountant' ? 'text-blue-700' : 'text-slate-400'}`} />
+                    <span className="block text-sm font-bold text-slate-800">Contador</span>
+                    <span className="text-xs text-slate-500">Contador ou escritório contábil</span>
+                  </button>
+                </div>
+              </fieldset>
             )}
 
             <div>

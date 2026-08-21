@@ -9,12 +9,15 @@ export {
 
 export {
   configurarCertificadoNfse,
+  cancelarNfseNacional,
   consultarConfiguracaoNfse,
   consultarPerfilFiscalNfse,
   emitirNfseHomologacao,
   emitirNfseProducao,
   excluirNfseRejeitada,
+  importarNfseXml,
   listarNfseNacional,
+  listarEventosNfse,
   obterNfseNacional,
   obterDanfseNacional,
   prepararNfseNacional,
@@ -22,3 +25,5 @@ export {
   salvarPerfilFiscalNfse,
   verificarDpsNfseProducao,
 } from "./nfse/index.js";
+
+export {changeOwnAccountType} from "./accounts.js";

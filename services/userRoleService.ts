@@ -21,6 +21,10 @@ export const determineUserRole = (email: string): UserRole => {
 // Get user role
 export const getUserRole = async (userId: string): Promise<UserRole> => {
     try {
+        const profileSnap = await getDoc(doc(db, 'user_profiles', userId));
+        if (profileSnap.exists() && profileSnap.data().accountType === 'accountant') {
+            return UserRole.ACCOUNTANT;
+        }
         const userRef = doc(db, 'users', userId);
         const userSnap = await getDoc(userRef);
 
@@ -123,7 +127,9 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
             ...profileData,
             uid: userId, // Ensure UID is set
             email: userData.email || profileData.email || '',
-            role: userData.role || profileData.role || UserRole.HEALTH_PROFESSIONAL
+            role: (profileData.accountType === 'accountant' || userData.accountType === 'accountant')
+                ? UserRole.ACCOUNTANT
+                : userData.role || profileData.role || UserRole.HEALTH_PROFESSIONAL
         } as UserProfile;
     } catch (error) {
         console.error('Error getting user profile:', error);

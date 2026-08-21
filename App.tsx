@@ -96,6 +96,7 @@ const TherapeuticIntelligenceView = safeLazy(() => import('./components/Therapeu
 const ServiceCatalogView = safeLazy(() => import('./components/ServiceCatalogView'), 'service_catalog');
 const FiscalImportView = safeLazy(() => import('./components/FiscalImportView'), 'fiscal_import');
 const NfseView = safeLazy(() => import('./features/nfse/NfseView'), 'nfse');
+const FiscalOverviewView = safeLazy(() => import('./components/AccountantModule/FiscalOverviewView'), 'fiscal_overview');
 const CarePackagesView = safeLazy(() => import('./components/CarePackagesView'), 'care_packages');
 const AssetsView = safeLazy(() => import('./components/AssetsView'), 'assets');
 const AttendancesView = safeLazy(() => import('./components/AttendancesView'), 'attendances');
@@ -329,8 +330,10 @@ function App() {
               return <ServiceCatalogView />;
             case AppView.FISCAL_IMPORT:
               return <FiscalImportView />;
-            case AppView.NFSE:
+case AppView.NFSE:
               return <NfseView />;
+            case AppView.FATOR_R:
+              return <FiscalOverviewView />;
 
             // User Management
             case AppView.USERS_MANAGEMENT:
@@ -342,13 +345,13 @@ function App() {
             case AppView.AI_CONSULTANT:
               return <AiConsultantView />;
             case AppView.FINANCIAL_CONTROL:
-              return <FinancialControlView />;
+              return <FinancialControlView setView={setView} />;
             case AppView.ACCOUNTS_RECEIVABLE:
-              return <FinancialControlView initialTab="receivable" />;
+              return <FinancialControlView initialTab="receivable" setView={setView} />;
             case AppView.ACCOUNTS_PAYABLE:
-              return <FinancialControlView initialTab="payable" />;
+              return <FinancialControlView initialTab="payable" setView={setView} />;
             case AppView.CASH_ACCOUNTS:
-              return <FinancialControlView initialTab="transactions" />;
+              return <FinancialControlView initialTab="transactions" setView={setView} />;
             case AppView.BANKS:
               return <BankAccountsView />;
             case AppView.BANK_RECONCILIATION:
@@ -405,7 +408,7 @@ function App() {
               return <PlansView setView={setView} />;
 
             case AppView.ACCOUNTANT_MODULE:
-              return <AccountantModule />;
+              return <AccountantModule setView={setView} />;
 
             case AppView.CLINIC_TEAMS:
               return <ClinicTeamsView />;

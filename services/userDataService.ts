@@ -43,6 +43,10 @@ export interface SavedTransaction {
     type: 'income' | 'expense';
     status: 'paid' | 'pending';
     paymentMethod?: 'pix' | 'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'boleto' | 'other';
+    bankAccountId?: string;
+    bankAccountName?: string;
+    settlementNotes?: string;
+    settlementHistory?: Array<{ action: 'settled' | 'reversed'; date: string; paymentMethod?: string; bankAccountId?: string; bankAccountName?: string; notes?: string; userId: string; recordedAt: string }>;
     sourceBillingId?: string;
     sourceFiscalDocumentId?: string;
     sourceType?: 'billing' | 'fiscal_import' | 'manual' | 'production_entry' | 'simples_forecast';
@@ -51,6 +55,9 @@ export interface SavedTransaction {
     sourceFingerprint?: string;
     professionalId?: string;
     professionalName?: string;
+    clientId?: string;
+    clientName?: string;
+    clientTaxId?: string;
     sourceFiscalFileId?: string;
     fiscalIssuedAt?: string;
     competence?: string;

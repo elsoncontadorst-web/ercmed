@@ -15,6 +15,7 @@ export interface Message {
 export enum UserRole {
   ADMIN_MASTER = 'admin_master',
   ADMIN_GESTOR = 'admin_gestor',
+  ACCOUNTANT = 'accountant',
   HEALTH_PROFESSIONAL = 'health_professional',
   BILLER = 'biller'
 }
@@ -77,6 +78,7 @@ export enum AppView {
   CHART_OF_ACCOUNTS = 'chart_of_accounts',
   ACCOUNTING_INTEGRATION = 'accounting_integration',
   FISCAL_DOCUMENTS = 'fiscal_documents',
+  FATOR_R = 'fator_r',
   NFSE = 'nfse',
   TAX_RETENTIONS = 'tax_retentions',
   ADMIN_GENERAL_REGISTRATIONS = 'admin_general_registrations',
@@ -145,6 +147,14 @@ export interface UserProfile {
   isClinicManager?: boolean;
   managerId?: string; // ID of the manager if this user is a professional under a clinic
   professionalId?: string; // Contract/professional record linked to this login
+  accountType?: 'clinic' | 'accountant';
+  accountantProfile?: {
+    name: string;
+    crc?: string;
+    officeName?: string;
+    officeCNPJ?: string;
+    phone?: string;
+  };
   customModuleAccess?: {
     IRPF?: boolean;
     SIMULATOR?: boolean;

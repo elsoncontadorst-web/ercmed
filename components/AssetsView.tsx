@@ -58,8 +58,8 @@ const AssetsView: React.FC = () => {
   const maintenance = items.filter(item => item.status === 'maintenance').length;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-7xl space-y-4 p-3 sm:space-y-6 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
             <Hammer className="text-brand-600" />
@@ -112,7 +112,7 @@ const AssetsView: React.FC = () => {
       )}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid grid-cols-[1.4fr_.8fr_.8fr_.8fr_.8fr_.8fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+        <div className="hidden grid-cols-[1.4fr_.8fr_.8fr_.8fr_.8fr_.8fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
           <span>Ativo</span>
           <span>Categoria</span>
           <span>Aquisição</span>
@@ -121,15 +121,15 @@ const AssetsView: React.FC = () => {
           <span>Status</span>
         </div>
         {items.length ? items.map(item => (
-          <div key={item.id} className="grid grid-cols-[1.4fr_.8fr_.8fr_.8fr_.8fr_.8fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm">
+          <div key={item.id} className="grid grid-cols-2 gap-3 border-b border-slate-100 px-4 py-4 text-sm md:grid-cols-[1.4fr_.8fr_.8fr_.8fr_.8fr_.8fr] md:gap-4 md:px-5">
             <div>
               <p className="font-semibold text-slate-800">{item.name}</p>
               <p className="text-xs text-slate-500">{item.supplierName || 'Sem fornecedor'}{item.nextMaintenanceAt ? ` · manutenção ${item.nextMaintenanceAt}` : ''}</p>
             </div>
-            <span className="text-slate-600">{item.category}</span>
-            <span className="text-slate-700">{money(item.acquisitionValue)}</span>
-            <span className="text-slate-700">{money(item.monthlyDepreciation)}</span>
-            <span className="font-semibold text-slate-800">{money(item.bookValue)}</span>
+            <span className="text-slate-600"><span className="block text-[10px] uppercase text-slate-400 md:hidden">Categoria</span>{item.category}</span>
+            <span className="text-slate-700"><span className="block text-[10px] uppercase text-slate-400 md:hidden">Aquisição</span>{money(item.acquisitionValue)}</span>
+            <span className="text-slate-700"><span className="block text-[10px] uppercase text-slate-400 md:hidden">Depreciação/mês</span>{money(item.monthlyDepreciation)}</span>
+            <span className="font-semibold text-slate-800"><span className="block text-[10px] uppercase text-slate-400 md:hidden">Valor contábil</span>{money(item.bookValue)}</span>
             <span className={item.status === 'active' ? 'font-semibold text-emerald-600' : item.status === 'maintenance' ? 'font-semibold text-amber-600' : 'font-semibold text-slate-500'}>
               {item.status === 'active' ? 'Ativo' : item.status === 'maintenance' ? 'Manutenção' : 'Baixado'}
             </span>

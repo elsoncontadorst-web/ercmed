@@ -15,8 +15,8 @@ export const getClients = async (managerId: string, clinicId?: string): Promise<
     .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
 };
 
-export const saveClient = async (managerId: string, input: ClientInput): Promise<string> => {
-  const id = clientId(input.taxId, input.name);
+export const saveClient = async (managerId: string, input: ClientInput, existingId?: string): Promise<string> => {
+  const id = existingId || clientId(input.taxId, input.name);
   const reference = doc(db, 'users', managerId, 'clients', id);
   const current = await getDoc(reference);
   await setDoc(reference, {

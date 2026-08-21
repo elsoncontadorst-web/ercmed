@@ -53,8 +53,8 @@ const InventoryView: React.FC = () => {
   const categories = new Set(items.map(item => item.category)).size;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="flex justify-between items-center">
+    <div className="mx-auto max-w-7xl space-y-4 p-3 sm:space-y-6 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Package className="w-6 h-6 text-brand-600" />
@@ -97,8 +97,8 @@ const InventoryView: React.FC = () => {
         </form>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="grid grid-cols-[1.6fr_.8fr_.7fr_.7fr_.9fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="hidden grid-cols-[1.6fr_.8fr_.7fr_.7fr_.9fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
           <span>Item</span>
           <span>Categoria</span>
           <span>Estoque</span>
@@ -106,14 +106,14 @@ const InventoryView: React.FC = () => {
           <span>Status</span>
         </div>
         {items.length ? items.map(item => (
-          <div key={item.id} className="grid grid-cols-[1.6fr_.8fr_.7fr_.7fr_.9fr] gap-4 px-5 py-4 border-b border-slate-100 text-sm">
+          <div key={item.id} className="grid grid-cols-2 gap-3 border-b border-slate-100 px-4 py-4 text-sm md:grid-cols-[1.6fr_.8fr_.7fr_.7fr_.9fr] md:gap-4 md:px-5">
             <div>
               <p className="font-semibold text-slate-800">{item.name}</p>
               <p className="text-xs text-slate-500">{item.batch || 'Sem lote'}{item.expirationDate ? ` · validade ${item.expirationDate}` : ''}</p>
             </div>
-            <span className="text-slate-600">{item.category}</span>
-            <span className="text-slate-800">{item.quantity} {item.unit}</span>
-            <span className="text-slate-600">{item.minimumQuantity} {item.unit}</span>
+            <span className="text-slate-600"><span className="block text-[10px] uppercase text-slate-400 md:hidden">Categoria</span>{item.category}</span>
+            <span className="text-slate-800"><span className="block text-[10px] uppercase text-slate-400 md:hidden">Estoque</span>{item.quantity} {item.unit}</span>
+            <span className="text-slate-600"><span className="block text-[10px] uppercase text-slate-400 md:hidden">Mínimo</span>{item.minimumQuantity} {item.unit}</span>
             <span className={item.quantity <= item.minimumQuantity ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}>
               {item.quantity <= item.minimumQuantity ? 'Reposicao' : 'Ok'}
             </span>

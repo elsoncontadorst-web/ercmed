@@ -33,6 +33,16 @@ service cloud.firestore {
       );
     }
 
+    function isAccountantOf(targetOwnerId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/user_profiles/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.role == 'accountant' ||
+          get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.accountType == 'accountant') &&
+        exists(/databases/$(database)/documents/accountant_links/$(request.auth.uid + "_" + targetOwnerId)) &&
+        get(/databases/$(database)/documents/accountant_links/$(request.auth.uid + "_" + targetOwnerId)).data.status == 'active' &&
+        get(/databases/$(database)/documents/accountant_links/$(request.auth.uid + "_" + targetOwnerId)).data.accountantUid == request.auth.uid;
+    }
+
     function isClinicManager() {
       let profile = get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data;
       return isAuthenticated() && (
@@ -90,6 +100,23 @@ service cloud.firestore {
     // =============================================
     match /{document=**} {
       allow read, write: if isMasterAdmin();
+    }
+
+    match /accountant_links/{linkId} {
+      allow create: if isAuthenticated() && (
+        request.resource.data.accountantUid == request.auth.uid ||
+        request.resource.data.companyOwnerId == request.auth.uid
+      );
+      allow read: if isAuthenticated() && (
+        resource.data.accountantUid == request.auth.uid ||
+        resource.data.companyOwnerId == request.auth.uid ||
+        resource.data.companyEmail == request.auth.token.email
+      );
+      allow update, delete: if isAuthenticated() && (
+        resource.data.accountantUid == request.auth.uid ||
+        resource.data.companyOwnerId == request.auth.uid ||
+        resource.data.companyEmail == request.auth.token.email
+      );
     }
 
     // =============================================
@@ -298,7 +325,7 @@ service cloud.firestore {
       }
       
       match /financial_control/{docId} {
-        allow read: if isOwner(userId) || isClinicMember(userId);
+        allow read: if isOwner(userId) || isClinicMember(userId) || isAccountantOf(userId);
         allow write: if isOwner(userId) || isClinicMember(userId);
       }
       
@@ -315,7 +342,8 @@ service cloud.firestore {
       }
       
       match /clinics/{clinicId} {
-        allow read, write: if isAuthenticated() && isClinicMember(userId);
+        allow read: if isAuthenticated() && (isClinicMember(userId) || isAccountantOf(userId));
+        allow write: if isAuthenticated() && isClinicMember(userId);
       }
       
       match /invoiceRequests/{docId} {
@@ -323,7 +351,7 @@ service cloud.firestore {
       }
       
       match /accountingDocuments/{docId} {
-        allow read: if isAuthenticated() && isClinicMember(userId);
+        allow read: if isAuthenticated() && (isClinicMember(userId) || isAccountantOf(userId));
         allow write: if isMasterAdmin();
       }
       
@@ -336,7 +364,8 @@ service cloud.firestore {
       }
 
       match /fiscal_documents/{docId} {
-        allow read, write: if isAuthenticated() && isClinicMember(userId);
+        allow read: if isAuthenticated() && (isClinicMember(userId) || isAccountantOf(userId));
+        allow write: if isAuthenticated() && isClinicMember(userId);
       }
 
       match /fiscal_counterparties/{docId} {
@@ -344,7 +373,8 @@ service cloud.firestore {
       }
 
       match /clients/{docId} {
-        allow read, write: if isAuthenticated() && isClinicMember(userId);
+        allow read: if isAuthenticated() && (isClinicMember(userId) || isAccountantOf(userId));
+        allow write: if isAuthenticated() && (isClinicMember(userId) || isAccountantOf(userId));
       }
 
       match /fiscal_files/{docId} {

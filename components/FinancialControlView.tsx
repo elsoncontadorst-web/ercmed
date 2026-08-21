@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, FileSpreadsheet, Plus, Filter, Download, Trash2, CheckCircle, XCircle, Calendar, DollarSign, TrendingUp, TrendingDown, Save, Loader2, X, Pencil, Search, Archive, Users } from 'lucide-react';
+import { Upload, FileSpreadsheet, Plus, Filter, Download, Trash2, CheckCircle, XCircle, Calendar, DollarSign, TrendingUp, TrendingDown, Save, Loader2, X, Pencil, Search, Archive, Users, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { auth } from '../services/firebase';
-import { getTransactions, SavedTransaction, saveCustomCategories, getCustomCategories, updateTransactionStatus, syncTransactions } from '../services/userDataService';
+import { getTransactions, SavedTransaction, saveCustomCategories, getCustomCategories, syncTransactions } from '../services/userDataService';
 import { getAllBillingRecords, deleteBillingRecord, updateBillingPaymentStatus, getAllProfessionals } from '../services/repasseService';
 import { useUser } from '../contexts/UserContext';
 import { ConsultationBilling } from '../types/finance';
@@ -13,7 +13,11 @@ import { ACTIVE_CLINIC_CHANGED_EVENT, getActiveClinicScopeId } from '../services
 import { recordMatchesClinicScope } from '../services/clinicScopeService';
 import { archiveFiscalXml, downloadAllFiscalXml, updateFiscalFileProfessional } from '../services/fiscalFileArchiveService';
 import { Professional } from '../types/finance';
-import { saveClientFromFiscalDraft } from '../services/clientService';
+import { getClients, saveClient, saveClientFromFiscalDraft } from '../services/clientService';
+import type { Client } from '../types/client';
+import { getDelegatedCompanyContext } from '../services/delegatedCompanyContext';
+import { AppView } from '../types';
+import { BankAccount, getBankingData } from '../services/bankingService';
 
 // Reusing the interface from service or defining compatible one
 interface Transaction extends SavedTransaction { }
@@ -52,6 +56,19 @@ const normalizeXmlValue = (value?: string | null) =>
 const normalizeAccessKey = (value?: string | null) =>
     String(value || '').replace(/^NFe|^CTe/i, '').replace(/[^a-z0-9]/gi, '').toUpperCase();
 
+const extractClientFromDescription = (description: string) => {
+    const documentMatch = description.match(/\b(CPF|CNPJ)\s*:?\s*([\d.\-/]+)/i);
+    if (!documentMatch) return null;
+    const taxId = documentMatch[2].replace(/\D/g, '');
+    if (taxId.length !== 11 && taxId.length !== 14) return null;
+    const name = description
+        .slice(0, documentMatch.index)
+        .replace(/^NF:\s*/i, '')
+        .replace(/[\s\-–—:]+$/g, '')
+        .trim();
+    return name ? { name, taxId } : null;
+};
+
 const transactionFingerprint = (transaction: Pick<Transaction, 'date' | 'description' | 'amount' | 'type' | 'sourceAccessKey' | 'sourceFingerprint'>) =>
     transaction.sourceAccessKey
         ? `key:${normalizeAccessKey(transaction.sourceAccessKey)}`
@@ -82,8 +99,9 @@ const addMonthsKeepingValidDay = (isoDate: string, monthsToAdd: number) => {
     return `${result.getFullYear()}-${String(result.getMonth() + 1).padStart(2, '0')}-${String(result.getDate()).padStart(2, '0')}`;
 };
 
-export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ initialTab = 'transactions' }) => {
-    const { user, userProfile, isAdmin: contextIsAdmin, isAdminMaster, loading: userLoading } = useUser();
+export const FinancialControlView: React.FC<{ initialTab?: FinancialTab; setView?: (view: AppView) => void }> = ({ initialTab = 'transactions', setView }) => {
+    const { user, userProfile, userRole, isAdmin: contextIsAdmin, isAdminMaster, loading: userLoading } = useUser();
+    const isAccountantView = (userRole as string) === 'accountant';
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const allTransactionsRef = useRef<Transaction[]>([]);
     const loadedScopeTransactionIdsRef = useRef<Set<string>>(new Set());
@@ -92,6 +110,9 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+    const [settlementTarget, setSettlementTarget] = useState<Transaction | null>(null);
+    const [settlementForm, setSettlementForm] = useState({ date: new Date().toISOString().split('T')[0], paymentMethod: 'pix' as NonNullable<Transaction['paymentMethod']>, bankAccountId: '', notes: '' });
     const [isImporting, setIsImporting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [repeatMonthly, setRepeatMonthly] = useState(false);
@@ -124,6 +145,13 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [xmlClassMode, setXmlClassMode] = useState<'auto' | 'income' | 'expense'>('auto');
     const [saveXmlClients, setSaveXmlClients] = useState(true);
+    const [clientLinkTransaction, setClientLinkTransaction] = useState<Transaction | null>(null);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [clientSearch, setClientSearch] = useState('');
+    const [selectedClientId, setSelectedClientId] = useState('');
+    const [newClientTaxId, setNewClientTaxId] = useState('');
+    const [isLinkingClient, setIsLinkingClient] = useState(false);
+    const [isBulkLinkingClients, setIsBulkLinkingClients] = useState(false);
     const [xmlProfessionalId, setXmlProfessionalId] = useState('all');
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [isDownloadingXml, setIsDownloadingXml] = useState(false);
@@ -175,13 +203,20 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
     useEffect(() => {
         if (!user) return;
         void (async () => {
+            if (isAccountantView) return setProfessionals([]);
             const ownerId = (await getManagerIdForUser(user.uid)) || user.uid;
             setProfessionals(await getAllProfessionals(ownerId, activeClinicId || undefined));
         })();
-    }, [user?.uid, activeClinicId]);
+    }, [user?.uid, activeClinicId, isAccountantView]);
 
     useEffect(() => {
         const syncClinic = async () => {
+            const delegated = getDelegatedCompanyContext();
+            if (delegated && isAccountantView) {
+                setActiveClinicId(null);
+                setActiveClinicName(delegated.companyName);
+                return;
+            }
             const clinicId = getActiveClinicScopeId();
             setActiveClinicId(clinicId);
             const clinics = await getClinics();
@@ -192,7 +227,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         syncClinic();
         window.addEventListener(ACTIVE_CLINIC_CHANGED_EVENT, syncClinic);
         return () => window.removeEventListener(ACTIVE_CLINIC_CHANGED_EVENT, syncClinic);
-    }, []);
+    }, [isAccountantView]);
 
     useEffect(() => {
         const loadData = async () => {
@@ -200,7 +235,8 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
 
             setIsLoading(true);
             try {
-                const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
+                const delegated = isAccountantView ? getDelegatedCompanyContext() : null;
+                const managerId = delegated?.ownerId || (isAdminMaster ? undefined : await getManagerIdForUser(user.uid));
                 const ownerId = managerId || user.uid;
                 const clinics = await getClinics(ownerId);
 
@@ -212,7 +248,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                     allTransactionsRef.current = uniqueTransactions;
                     loadedScopeTransactionIdsRef.current = new Set(scopedTransactions.map(item => item.id));
                     setTransactions(scopedTransactions);
-                    if (removed > 0) {
+                    if (removed > 0 && !isAccountantView) {
                         const uniqueIds = new Set(uniqueTransactions.map(item => item.id));
                         const duplicateIds = transactionsData.filter(item => !uniqueIds.has(item.id)).map(item => item.id);
                         const saved = await syncTransactions(ownerId, [], duplicateIds);
@@ -222,7 +258,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 }
 
                 // Load Custom Categories
-                const categoriesData = await getCustomCategories(ownerId);
+                const categoriesData = isAccountantView ? null : await getCustomCategories(ownerId);
                 if (categoriesData) {
                     setCustomExpenseCategories(categoriesData.expense);
                     setCustomIncomeCategories(categoriesData.income);
@@ -232,7 +268,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 let billingData: ConsultationBilling[] = [];
                 
                 // Determine managerId for filtering: Only Master Admins see everything
-                billingData = await getAllBillingRecords(managerId);
+                billingData = isAccountantView ? [] : await getAllBillingRecords(managerId);
 
                 // Fallback: This usually shouldn't be needed if logic above is correct, 
                 // but kept for compatibility with existing professional-level access if any
@@ -278,13 +314,31 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         }
     };
 
-    const handleMarkAsReceived = async (transactionId: string) => {
-        if (!user || updatingStatusId) return;
-        setUpdatingStatusId(transactionId);
-        const targetTransaction = transactions.find(transaction => transaction.id === transactionId);
+    useEffect(() => {
+        if (!user) return;
+        void ((async () => {
+            const ownerId = getDelegatedCompanyContext()?.ownerId || (await getManagerIdForUser(user.uid)) || user.uid;
+            const data = await getBankingData(ownerId);
+            setBankAccounts(data.accounts.filter(item => item.active && (!activeClinicId || !item.clinicId || item.clinicId === activeClinicId)));
+        })()).catch(() => setBankAccounts([]));
+    }, [user?.uid, activeClinicId]);
+
+    const handleMarkAsReceived = (transactionId: string) => {
+        const target = transactions.find(transaction => transaction.id === transactionId);
+        if (!target) return;
+        setSettlementTarget(target);
+        setSettlementForm({ date: new Date().toISOString().split('T')[0], paymentMethod: target.paymentMethod || 'pix', bankAccountId: target.bankAccountId || '', notes: '' });
+    };
+
+    const confirmSettlement = async () => {
+        if (!user || !settlementTarget || updatingStatusId || !settlementForm.date) return;
+        const targetTransaction = settlementTarget;
+        setUpdatingStatusId(targetTransaction.id);
         try {
-            const ownerId = (await getManagerIdForUser(user.uid)) || user.uid;
-            const success = await updateTransactionStatus(ownerId, transactionId, 'paid');
+            const ownerId = getDelegatedCompanyContext()?.ownerId || (await getManagerIdForUser(user.uid)) || user.uid;
+            const bankAccount = bankAccounts.find(item => item.id === settlementForm.bankAccountId);
+            const changed: Transaction = {...targetTransaction, status: 'paid', receivedAt: settlementForm.date, paymentMethod: settlementForm.paymentMethod, bankAccountId: bankAccount?.id, bankAccountName: bankAccount?.name, settlementNotes: settlementForm.notes.trim() || undefined, settlementHistory: [...(targetTransaction.settlementHistory || []), {action: 'settled', date: settlementForm.date, paymentMethod: settlementForm.paymentMethod, bankAccountId: bankAccount?.id, bankAccountName: bankAccount?.name, notes: settlementForm.notes.trim() || undefined, userId: user.uid, recordedAt: new Date().toISOString()}]};
+            const success = await syncTransactions(ownerId, [changed]);
             if (!success) {
                 alert(targetTransaction?.type === 'expense'
                     ? 'Não foi possível marcar a conta como paga.'
@@ -292,21 +346,48 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                 return;
             }
             if (targetTransaction?.sourceBillingId) {
-                await updateBillingPaymentStatus(targetTransaction.sourceBillingId, 'received', new Date().toISOString().split('T')[0]);
+                await updateBillingPaymentStatus(targetTransaction.sourceBillingId, 'received', settlementForm.date);
                 setBillingRecords(prev => prev.map(item =>
                     item.id === targetTransaction.sourceBillingId
-                        ? { ...item, paymentStatus: 'received', paymentDate: new Date().toISOString().split('T')[0] }
+                        ? { ...item, paymentStatus: 'received', paymentDate: settlementForm.date }
                         : item
                 ));
             }
-            setTransactions(prev => prev.map(transaction =>
-                transaction.id === transactionId
-                    ? { ...transaction, status: 'paid', receivedAt: new Date().toISOString().split('T')[0] }
-                    : transaction
-            ));
+            setTransactions(prev => prev.map(transaction => transaction.id === changed.id ? changed : transaction));
+            setSettlementTarget(null);
+            if (targetTransaction?.type === 'income' && !targetTransaction.sourceFiscalDocumentId && window.confirm('Recebimento confirmado. Deseja preparar a NFS-e agora? A nota só será emitida depois da sua revisão.')) {
+                prepareNfseFromTransaction(changed);
+            }
         } finally {
             setUpdatingStatusId(null);
         }
+    };
+
+    const reverseSettlement = async (transaction: Transaction) => {
+        if (!user || transaction.status !== 'paid' || !window.confirm(`Estornar a baixa de "${transaction.description}" e retornar o lançamento para pendente?`)) return;
+        setUpdatingStatusId(transaction.id);
+        try {
+            const ownerId = getDelegatedCompanyContext()?.ownerId || (await getManagerIdForUser(user.uid)) || user.uid;
+            const changed: Transaction = {...transaction, status: 'pending', receivedAt: undefined, bankAccountId: undefined, bankAccountName: undefined, settlementHistory: [...(transaction.settlementHistory || []), {action: 'reversed', date: new Date().toISOString().split('T')[0], userId: user.uid, recordedAt: new Date().toISOString()}]};
+            if (!(await syncTransactions(ownerId, [changed]))) throw new Error('O Firebase recusou o estorno.');
+            if (transaction.sourceBillingId) await updateBillingPaymentStatus(transaction.sourceBillingId, 'pending');
+            setTransactions(current => current.map(item => item.id === changed.id ? changed : item));
+        } catch { alert('Não foi possível estornar a baixa.'); }
+        finally { setUpdatingStatusId(null); }
+    };
+
+    const prepareNfseFromTransaction = (transaction: Transaction) => {
+        if (!setView) return;
+        sessionStorage.setItem('ercmed:nfse-financial-draft', JSON.stringify({
+            transactionId: transaction.id,
+            clinicId: transaction.clinicId || activeClinicId || '',
+            customerName: transaction.clientName || '',
+            customerDocument: transaction.clientTaxId || '',
+            description: transaction.description,
+            amount: Number(transaction.amount || 0),
+            competenceDate: transaction.date,
+        }));
+        setView(AppView.NFSE);
     };
 
     // Helper to save custom categories to Firebase
@@ -704,17 +785,35 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         });
 
         if (uniqueTransactions.length > 0 || correctedTransactions.size > 0) {
+            const currentUser = auth.currentUser;
+            const ownerId = currentUser ? ((await getManagerIdForUser(currentUser.uid)) || currentUser.uid) : undefined;
+            if (ownerId) {
+                const candidates = [...uniqueTransactions, ...correctedTransactions.values()];
+                await Promise.all(candidates.map(async transaction => {
+                    if (transaction.type !== 'income' || transaction.clientId) return;
+                    const extracted = extractClientFromDescription(transaction.description);
+                    if (!extracted) return;
+                    const id = await saveClient(ownerId, {
+                        ...extracted,
+                        clinicId: activeClinicId || undefined,
+                        unitName: activeClinicName || undefined,
+                        source: 'manual',
+                        active: true
+                    });
+                    transaction.clientId = id;
+                    transaction.clientName = extracted.name;
+                    transaction.clientTaxId = extracted.taxId;
+                }));
+            }
             const nextTransactions = [
                 ...uniqueTransactions,
                 ...transactions.map(transaction => correctedTransactions.get(transaction.id) || transaction)
             ];
             setTransactions(nextTransactions);
-            const currentUser = auth.currentUser;
             if (currentUser) {
                 setIsSaving(true);
                 try {
-                    const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
-                    await persistScopedTransactions(ownerId, nextTransactions);
+                    await persistScopedTransactions(ownerId!, nextTransactions);
                 } finally {
                     setIsSaving(false);
                 }
@@ -764,17 +863,17 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                         }
 
                         knownFingerprints.add(fingerprint);
-                        allNewTransactions.push({
+                        const pdfTransaction: Transaction = {
                             id: `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
                             date: draft.issuedAt,
-                            description: `NF: ${draft.issuerName || draft.recipientName || file.name}`,
+                            description: `NF: ${detectedType === 'income' ? (draft.recipientName || draft.issuerName || file.name) : (draft.issuerName || draft.recipientName || file.name)}`,
                             category: detectedType === 'income' ? 'Geral' : 'Impostos e Tributos',
                             amount: Math.abs(draft.totalValue),
                             type: detectedType,
                             status: 'pending',
                             sourceType: 'fiscal_import',
                             sourceFingerprint: fingerprint
-                        });
+                        };
                         if (ownerId) {
                             await indexFiscalCounterpartiesFromDraft(
                                 ownerId,
@@ -783,8 +882,16 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                 detectedType,
                                 { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }
                             );
-                            if (saveXmlClients) await saveClientFromFiscalDraft(ownerId, draft, detectedType, { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }, fingerprint);
+                            if (saveXmlClients) {
+                                const clientId = await saveClientFromFiscalDraft(ownerId, draft, detectedType, { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }, fingerprint);
+                                if (clientId) {
+                                    pdfTransaction.clientId = clientId;
+                                    pdfTransaction.clientName = draft.recipientName;
+                                    pdfTransaction.clientTaxId = String(draft.recipientCnpj || '').replace(/\D/g, '');
+                                }
+                            }
                         }
+                        allNewTransactions.push(pdfTransaction);
                     } catch (error) {
                         console.error('Erro ao ler PDF:', file.name, error);
                         alert(`O PDF "${file.name}" precisa de conferência assistida em Documentos Fiscais.`);
@@ -889,7 +996,14 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                         detectedType,
                                         { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }
                                     );
-                                    if (saveXmlClients) await saveClientFromFiscalDraft(ownerId, { ...fiscalDraft, suggestedEntryType: detectedType }, detectedType, { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }, fingerprint);
+                                    if (saveXmlClients) {
+                                        const clientId = await saveClientFromFiscalDraft(ownerId, { ...fiscalDraft, suggestedEntryType: detectedType }, detectedType, { clinicId: activeClinicId || undefined, unitName: activeClinicName || undefined }, fingerprint);
+                                        if (clientId) {
+                                            newTransaction.clientId = clientId;
+                                            newTransaction.clientName = fiscalDraft.recipientName;
+                                            newTransaction.clientTaxId = String(fiscalDraft.recipientCnpj || '').replace(/\D/g, '');
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1101,6 +1215,118 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     };
 
+    const openClientLink = async (transaction: Transaction) => {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+        setClientLinkTransaction(transaction);
+        setClientSearch(transaction.clientName || transaction.description.replace(/^NF:\s*/i, ''));
+        setSelectedClientId(transaction.clientId || '');
+        setNewClientTaxId(transaction.clientTaxId || '');
+        try {
+            const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
+            setClients(await getClients(ownerId, activeClinicId || undefined));
+        } catch (error) {
+            console.error('Erro ao carregar clientes:', error);
+            alert('Não foi possível carregar os clientes cadastrados.');
+        }
+    };
+
+    const linkClientToTransaction = async (createNew = false) => {
+        if (!clientLinkTransaction) return;
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+        const typedName = clientSearch.trim();
+        const selectedClient = clients.find(item => item.id === selectedClientId);
+        if (createNew && !typedName) {
+            alert('Informe o nome do cliente.');
+            return;
+        }
+        if (!createNew && !selectedClient) {
+            alert('Selecione um cliente cadastrado.');
+            return;
+        }
+        setIsLinkingClient(true);
+        try {
+            const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
+            let client = selectedClient;
+            let id = selectedClient?.id;
+            if (createNew) {
+                id = await saveClient(ownerId, {
+                    name: typedName,
+                    taxId: newClientTaxId,
+                    clinicId: activeClinicId || undefined,
+                    unitName: activeClinicName || undefined,
+                    source: 'manual',
+                    active: true
+                });
+                client = { id, name: typedName, taxId: newClientTaxId.replace(/\D/g, ''), source: 'manual', active: true };
+            }
+            if (!client || !id) return;
+            const changed: Transaction = {
+                ...clientLinkTransaction,
+                clientId: id,
+                clientName: client.name,
+                clientTaxId: client.taxId || ''
+            };
+            const saved = await syncTransactions(ownerId, [changed]);
+            if (!saved) throw new Error('O Firebase recusou o vínculo do cliente.');
+            setTransactions(previous => previous.map(item => item.id === changed.id ? changed : item));
+            allTransactionsRef.current = allTransactionsRef.current.map(item => item.id === changed.id ? changed : item);
+            setClientLinkTransaction(null);
+            alert(`Cliente ${client.name} vinculado com sucesso.`);
+        } catch (error) {
+            console.error('Erro ao vincular cliente:', error);
+            alert('Não foi possível vincular o cliente ao lançamento.');
+        } finally {
+            setIsLinkingClient(false);
+        }
+    };
+
+    const handleBulkClientLink = async () => {
+        const eligible = transactions.filter(item => selectedIds.includes(item.id) && item.type === 'income' && !item.clientId);
+        if (!eligible.length) {
+            alert('Nenhum dos lançamentos selecionados está disponível para vínculo.');
+            return;
+        }
+        const recognized = eligible
+            .map(transaction => ({ transaction, client: extractClientFromDescription(transaction.description) }))
+            .filter((item): item is { transaction: Transaction; client: { name: string; taxId: string } } => Boolean(item.client));
+        if (!recognized.length) {
+            alert('Não encontrei nome acompanhado de CPF ou CNPJ nas descrições selecionadas.');
+            return;
+        }
+        if (!window.confirm(`Cadastrar ou localizar e vincular ${recognized.length} cliente(s) automaticamente?`)) return;
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+        setIsBulkLinkingClients(true);
+        try {
+            const ownerId = (await getManagerIdForUser(currentUser.uid)) || currentUser.uid;
+            const changed = await Promise.all(recognized.map(async ({ transaction, client }) => {
+                const id = await saveClient(ownerId, {
+                    ...client,
+                    clinicId: transaction.clinicId || activeClinicId || undefined,
+                    unitName: transaction.unitName || activeClinicName || undefined,
+                    source: 'manual',
+                    active: true
+                });
+                return { ...transaction, clientId: id, clientName: client.name, clientTaxId: client.taxId };
+            }));
+            const saved = await syncTransactions(ownerId, changed);
+            if (!saved) throw new Error('O Firebase recusou os vínculos.');
+            const changes = new Map(changed.map(item => [item.id, item]));
+            setTransactions(previous => previous.map(item => changes.get(item.id) || item));
+            allTransactionsRef.current = allTransactionsRef.current.map(item => changes.get(item.id) || item);
+            setSelectedIds([]);
+            const ignored = eligible.length - recognized.length;
+            alert(`${changed.length} cliente(s) vinculado(s) com sucesso.${ignored ? ` ${ignored} lançamento(s) sem CPF/CNPJ foram ignorados.` : ''}`);
+        } catch (error) {
+            console.error('Erro ao vincular clientes em lote:', error);
+            alert('Não foi possível concluir todos os vínculos. Tente novamente.');
+        } finally {
+            setIsBulkLinkingClients(false);
+        }
+    };
+
     const handleBulkProfessionalAssignment = async () => {
         const selectedProfessional = professionals.find(item => item.id === xmlProfessionalId);
         if (!selectedProfessional) {
@@ -1242,24 +1468,25 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
         : 0;
 
     return (
-        <div className="p-6 max-w-7xl mx-auto space-y-6 animate-fade-in">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+<div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6 lg:p-8 animate-fade-in">
+            <header className="flex flex-col gap-5 overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-[280px]">
+                    <span className="mb-2 inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-brand-700">Gestão financeira</span>
+                    <h1 className="flex items-center gap-3 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
                         Controle Financeiro
                         {isSaving && <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />}
                     </h1>
-                    <p className="text-slate-600">Gerencie suas contas, fluxo de caixa e importações.</p>
+                    <p className="mt-1 text-sm text-slate-500 sm:text-base">Gerencie suas contas, fluxo de caixa e importações.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                {isAccountantView ? <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800">Consulta contábil · somente leitura · {activeClinicName || 'empresa selecionada'}</div> : <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:max-w-4xl xl:justify-end">
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                        className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 font-bold text-emerald-700 transition hover:bg-emerald-100"
                     >
                         <FileSpreadsheet className="w-4 h-4" />
                         Planilha Excel
                     </button>
-                    <div className="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
+                    <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1">
                         <select
                             value={xmlClassMode}
                             onChange={(e) => setXmlClassMode(e.target.value as 'auto' | 'income' | 'expense')}
@@ -1272,13 +1499,13 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                         <button
                             onClick={() => xmlInputRef.current?.click()}
                             disabled={isImporting}
-                            className={`flex items-center gap-2 ${isImporting ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'} text-white px-3 py-1.5 rounded transition-colors shadow-sm text-sm ml-1`}
+                            className={`ml-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-white shadow-sm transition-colors ${isImporting ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}
                         >
                             {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                             {isImporting ? 'Lendo...' : 'Importar XML/PDF'}
                         </button>
                     </div>
-                    <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600" title="Em notas de receita, cadastra o destinatário como cliente"><input type="checkbox" checked={saveXmlClients} onChange={e => setSaveXmlClients(e.target.checked)} className="h-4 w-4"/>Salvar clientes do XML</label>
+                    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600" title="Em notas de receita, cadastra o destinatário como cliente"><input type="checkbox" checked={saveXmlClients} onChange={e => setSaveXmlClients(e.target.checked)} className="h-4 w-4"/>Salvar clientes do XML</label>
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -1296,37 +1523,38 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                     />
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors shadow-sm"
+                        className="order-first flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-brand-700 hover:shadow-md"
                     >
                         <Plus className="w-4 h-4" />
                         Novo Lançamento
                     </button>
-                </div>
+                </div>}
             </header>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="relative overflow-hidden rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/50 p-5 shadow-sm transition-shadow hover:shadow-md">
+                    <div className="absolute inset-x-0 top-0 h-1 bg-emerald-500" />
                     <div className="flex justify-between items-start mb-2">
                         <div className="p-2 bg-green-100 rounded-lg">
                             <TrendingUp className="w-6 h-6 text-green-600" />
                         </div>
-                        <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">+12%</span>
                     </div>
                     <h3 className="text-slate-500 text-sm font-medium">Receitas Totais</h3>
                     <p className="text-2xl font-bold text-slate-800">{formatMoney(getIncome())}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div className="relative overflow-hidden rounded-2xl border border-red-100 bg-gradient-to-br from-white to-red-50/40 p-5 shadow-sm transition-shadow hover:shadow-md">
+                    <div className="absolute inset-x-0 top-0 h-1 bg-red-500" />
                     <div className="flex justify-between items-start mb-2">
                         <div className="p-2 bg-red-100 rounded-lg">
                             <TrendingDown className="w-6 h-6 text-red-600" />
                         </div>
-                        <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-full">+5%</span>
                     </div>
                     <h3 className="text-slate-500 text-sm font-medium">Despesas Totais</h3>
                     <p className="text-2xl font-bold text-slate-800">{formatMoney(getExpenses())}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/50 p-5 shadow-sm transition-shadow hover:shadow-md">
+                    <div className={`absolute inset-x-0 top-0 h-1 ${getBalance() >= 0 ? 'bg-blue-500' : 'bg-red-500'}`} />
                     <div className="flex justify-between items-start mb-2">
                         <div className="p-2 bg-blue-100 rounded-lg">
                             <DollarSign className="w-6 h-6 text-blue-600" />
@@ -1340,23 +1568,23 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
             </div>
 
             {taxAllocation.rows.length > 0 && (
-                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                             <h2 className="font-bold text-slate-800">Rateio de impostos por faturamento profissional</h2>
                             <p className="text-sm text-slate-500">A participação de cada profissional é aplicada ao total de impostos do período filtrado.</p>
                         </div>
-                        <div className="text-sm text-slate-500">Impostos identificados: <strong className="text-slate-800">{formatMoney(taxAllocation.taxTotal)}</strong></div>
+                        <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-sm text-amber-800 sm:mt-0">Impostos identificados: <strong>{formatMoney(taxAllocation.taxTotal)}</strong></div>
                     </div>
-                    <div className="mt-4 overflow-x-auto">
+                    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
                         <table className="w-full min-w-[620px] text-sm">
-                            <thead><tr className="border-b text-left text-slate-500"><th className="py-2">Profissional</th><th className="py-2 text-right">Faturamento</th><th className="py-2 text-right">Participação</th><th className="py-2 text-right">Imposto atribuído</th></tr></thead>
+                            <thead className="bg-slate-50"><tr className="border-b text-left text-slate-500"><th className="px-3 py-2.5">Profissional</th><th className="px-3 py-2.5 text-right">Faturamento</th><th className="px-3 py-2.5 text-right">Participação</th><th className="px-3 py-2.5 text-right">Imposto atribuído</th></tr></thead>
                             <tbody>{taxAllocation.rows.map(row => (
                                 <tr key={row.name} className="border-b border-slate-100">
-                                    <td className="py-2.5 font-medium text-slate-700">{row.name}</td>
-                                    <td className="py-2.5 text-right">{formatMoney(row.revenue)}</td>
-                                    <td className="py-2.5 text-right">{(row.share * 100).toFixed(1)}%</td>
-                                    <td className="py-2.5 text-right font-bold text-brand-700">{formatMoney(taxAllocation.taxTotal * row.share)}</td>
+                                    <td className="px-3 py-3 font-medium text-slate-700">{row.name}</td>
+                                    <td className="px-3 py-3 text-right">{formatMoney(row.revenue)}</td>
+                                    <td className="px-3 py-3 text-right">{(row.share * 100).toFixed(1)}%</td>
+                                    <td className="px-3 py-3 text-right font-bold text-brand-700">{formatMoney(taxAllocation.taxTotal * row.share)}</td>
                                 </tr>
                             ))}</tbody>
                         </table>
@@ -1365,36 +1593,36 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
             )}
 
             {/* Tabs */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-200">
-                    <div className="flex">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
+                    <div className="flex w-full min-w-0 overflow-x-auto border-b border-slate-200 bg-white px-2 pt-2 [scrollbar-width:thin]">
                         <button
                             onClick={() => setActiveTab('transactions')}
-                            className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'transactions' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`shrink-0 rounded-t-lg px-4 py-3 text-sm font-semibold transition-colors ${activeTab === 'transactions' ? 'border-b-2 border-brand-600 bg-brand-50/60 text-brand-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
                         >
                             Todos os Lançamentos
                         </button>
                         <button
                             onClick={() => setActiveTab('receivable')}
-                            className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'receivable' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`shrink-0 rounded-t-lg px-4 py-3 text-sm font-semibold transition-colors ${activeTab === 'receivable' ? 'border-b-2 border-brand-600 bg-brand-50/60 text-brand-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
                         >
                             Contas a Receber
                         </button>
                         <button
                             onClick={() => setActiveTab('payable')}
-                            className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'payable' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`shrink-0 rounded-t-lg px-4 py-3 text-sm font-semibold transition-colors ${activeTab === 'payable' ? 'border-b-2 border-brand-600 bg-brand-50/60 text-brand-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
                         >
                             Contas a Pagar
                         </button>
                         <button
                             onClick={() => setActiveTab('billing')}
-                            className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'billing' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`shrink-0 rounded-t-lg px-4 py-3 text-sm font-semibold transition-colors ${activeTab === 'billing' ? 'border-b-2 border-brand-600 bg-brand-50/60 text-brand-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
                         >
                             Faturamento Clínico
                         </button>
                         <button
                             onClick={() => setActiveTab('laboratoryBilling')}
-                            className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'laboratoryBilling' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`shrink-0 rounded-t-lg px-4 py-3 text-sm font-semibold transition-colors ${activeTab === 'laboratoryBilling' ? 'border-b-2 border-brand-600 bg-brand-50/60 text-brand-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
                         >
                             Faturamento Laboratorial
                         </button>
@@ -1507,7 +1735,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                     </select>
                 </div>
 
-                <div className="p-6">
+                <div className="p-3 sm:p-5 lg:p-6">
                     {(() => {
                         const normalizedSearch = searchTerm.trim().toLocaleLowerCase('pt-BR');
                         const compareDates = (firstDate?: string, secondDate?: string) => {
@@ -1639,9 +1867,9 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                     </div>
                                     <div className="border-t border-slate-200 pt-4">
                                         <h3 className="mb-2 text-sm font-bold text-slate-800">Lançamentos clínicos importados</h3>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead><tr className="border-b border-slate-200">
+                                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                            <table className="w-full min-w-[760px] border-collapse text-left">
+                                                <thead className="bg-slate-50"><tr className="border-b border-slate-200">
                                                     <th className="py-3 px-4 text-sm font-semibold text-slate-600">Data</th>
                                                     <th className="py-3 px-4 text-sm font-semibold text-slate-600">Descrição</th>
                                                     <th className="py-3 px-4 text-sm font-semibold text-slate-600">Categoria</th>
@@ -1678,22 +1906,40 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                         </p>
                                     </div>
                                     {selectedIds.length > 0 && (
-                                        <div className="flex items-center justify-between rounded-xl border border-red-100 bg-red-50 p-4">
-                                            <span className="text-sm font-medium text-red-700">
+                                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                                            <span className="text-sm font-medium text-blue-800">
                                                 {selectedIds.length} {selectedIds.length === 1 ? 'lançamento selecionado' : 'lançamentos selecionados'}
                                             </span>
-                                            <button
-                                                onClick={handleBulkDelete}
-                                                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                                Excluir selecionados
-                                            </button>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    disabled={isBulkLinkingClients}
+                                                    onClick={() => void handleBulkClientLink()}
+                                                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+                                                >
+                                                    {isBulkLinkingClients ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+                                                    {isBulkLinkingClients ? 'Vinculando...' : 'Vincular todos os clientes'}
+                                                </button>
+                                                <button
+                                                    disabled={isBulkLinkingClients}
+                                                    onClick={handleBulkDelete}
+                                                    className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                    Excluir selecionados
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse">
-                                            <thead>
+                                    <div className="space-y-3 md:hidden">
+                                        {filteredTransactions.map(transaction => <article key={transaction.id} className={`rounded-2xl border bg-white p-4 shadow-sm ${selectedIds.includes(transaction.id) ? 'border-brand-300 ring-2 ring-brand-100' : 'border-slate-200'}`}>
+                                            <div className="flex items-start gap-3"><input type="checkbox" checked={selectedIds.includes(transaction.id)} onChange={() => toggleSelect(transaction.id)} className="mt-1 h-5 w-5 shrink-0 rounded text-brand-600" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className="font-black text-slate-900">{transaction.description}</p><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${transaction.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{transaction.status === 'paid' ? 'Recebido' : 'Pendente'}</span></div><p className="mt-1 text-xs text-slate-500">Vence em {transaction.dueDate || transaction.date}</p><p className="mt-3 text-2xl font-black text-emerald-700">{formatMoney(transaction.amount)}</p><p className="mt-1 text-xs text-slate-500">{transaction.clientName || 'Cliente não vinculado'} · {transaction.professionalName || 'Responsável não informado'}</p></div></div>
+                                            <div className="mt-4 grid grid-cols-2 gap-2"><button onClick={() => void openClientLink(transaction)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs font-black text-blue-700">{transaction.clientId ? 'Alterar cliente' : 'Vincular cliente'}</button>{transaction.status === 'pending' ? <button onClick={() => handleMarkAsReceived(transaction.id)} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white">Receber</button> : !transaction.sourceFiscalDocumentId ? <button onClick={() => prepareNfseFromTransaction(transaction)} className="rounded-xl bg-blue-600 px-3 py-2.5 text-xs font-black text-white">Preparar NFS-e</button> : <span className="rounded-xl bg-violet-50 px-3 py-2.5 text-center text-xs font-black text-violet-700">Nota vinculada</span>}<button onClick={() => handleEdit(transaction)} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Editar</button>{transaction.status === 'paid' ? <button onClick={() => void reverseSettlement(transaction)} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">Estornar</button> : <button onClick={() => handleDelete(transaction.id)} className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">Excluir</button>}</div>
+                                        </article>)}
+                                        {filteredTransactions.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">Nenhuma conta a receber encontrada.</div>}
+                                    </div>
+                                    <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
+                                        <table className="w-full min-w-[1080px] border-collapse text-left">
+                                            <thead className="bg-slate-50">
                                                 <tr className="border-b border-slate-200">
                                                     <th className="w-10 py-3 px-4">
                                                         <input
@@ -1733,6 +1979,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                         <td className="py-3 px-4 text-sm text-slate-800 font-medium">
                                                             {transaction.description}
                                                             <span className="mt-0.5 block text-xs font-normal text-slate-500">Responsável: {transaction.professionalName || 'não informado'}</span>
+                                                            <span className="mt-0.5 block text-xs font-normal text-slate-500">Cliente: {transaction.clientName || 'não vinculado'}</span>
                                                         </td>
                                                         <td className="py-3 px-4 text-sm text-slate-500">{transaction.sourceType || 'manual'}</td>
                                                         <td className="py-3 px-4 text-sm">
@@ -1743,6 +1990,14 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                         <td className="py-3 px-4 text-sm text-right font-bold text-emerald-700">{formatMoney(transaction.amount)}</td>
                                                         <td className="py-3 px-4 text-center">
                                                             <div className="flex items-center justify-center gap-2">
+                                                                <button
+                                                                    onClick={() => void openClientLink(transaction)}
+                                                                    className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${transaction.clientId ? 'border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                                                    title={transaction.clientId ? 'Alterar cliente vinculado' : 'Vincular a um cliente'}
+                                                                >
+                                                                    <Users className="h-3.5 w-3.5" />
+                                                                    {transaction.clientId ? 'Cliente vinculado' : 'Vincular cliente'}
+                                                                </button>
                                                                 {transaction.status === 'pending' ? (
                                                                     <button
                                                                         disabled={updatingStatusId === transaction.id}
@@ -1753,7 +2008,12 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                                         {updatingStatusId === transaction.id ? 'Salvando...' : 'Marcar como recebido'}
                                                                     </button>
                                                                 ) : (
-                                                                    <span className="text-xs text-slate-400">{transaction.receivedAt || 'Baixado'}</span>
+                                                                    <>
+                                                                        <span className="text-xs text-slate-400">{transaction.receivedAt || 'Baixado'}</span>
+                                                                        {!transaction.sourceFiscalDocumentId && <button onClick={() => prepareNfseFromTransaction(transaction)} className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100"><FileText className="h-3.5 w-3.5" /> NFS-e</button>}
+                                                                        {transaction.sourceFiscalDocumentId && <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700"><FileText className="h-3 w-3" /> Nota vinculada</span>}
+                                                                        <button onClick={() => void reverseSettlement(transaction)} disabled={updatingStatusId === transaction.id} className="rounded-lg px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Estornar</button>
+                                                                    </>
                                                                 )}
                                                                 <button
                                                                     onClick={(event) => { event.stopPropagation(); handleEdit(transaction); }}
@@ -1777,7 +2037,15 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                 ))}
                                                 {filteredTransactions.length === 0 && (
                                                     <tr>
-                                                        <td colSpan={7} className="py-12 text-center text-slate-500">Nenhuma conta a receber encontrada.</td>
+                                                        <td colSpan={7} className="py-14 text-center">
+                                                            <div className="mx-auto flex max-w-sm flex-col items-center">
+                                                                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+                                                                    <DollarSign className="h-6 w-6 text-emerald-600" />
+                                                                </div>
+                                                                <strong className="text-sm text-slate-800">Nenhuma conta a receber encontrada</strong>
+                                                                <span className="mt-1 text-xs text-slate-500">Revise os filtros ou registre um novo lançamento.</span>
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 )}
                                             </tbody>
@@ -1789,8 +2057,12 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
 
                         return (
                             isLoading ? (
-                                <div className="flex justify-center py-12">
-                                    <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
+                                <div className="flex flex-col items-center justify-center py-16 text-center">
+                                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50">
+                                        <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
+                                    </div>
+                                    <strong className="text-sm text-slate-800">Carregando dados financeiros</strong>
+                                    <span className="mt-1 text-xs text-slate-500">Aguarde enquanto organizamos seus lançamentos.</span>
                                 </div>
                             ) : transactions.length === 0 ? (
                                 <div className="text-center py-12">
@@ -1822,7 +2094,16 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                     </div>
                                 </div>
                             ) : (
-                                <div className="overflow-x-auto">
+                                <>
+                                <div className="space-y-3 md:hidden">
+                                    {selectedIds.length > 0 && <div className="flex items-center justify-between rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700"><span>{selectedIds.length} selecionado(s)</span><button onClick={handleBulkDelete} className="rounded-lg bg-red-600 px-3 py-2 text-white">Excluir</button></div>}
+                                    {filteredTransactions.map((t: any) => <article key={t.id} className={`rounded-2xl border bg-white p-4 shadow-sm ${selectedIds.includes(t.id) ? 'border-brand-300 ring-2 ring-brand-100' : 'border-slate-200'}`}>
+                                        <div className="flex items-start gap-3">{!isGrouped && <input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => toggleSelect(t.id)} className="mt-1 h-5 w-5 shrink-0 rounded text-brand-600" />}<div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className="font-black text-slate-900">{t.description}</p>{!isGrouped && <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${t.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{t.status === 'paid' ? (t.type === 'income' ? 'Recebido' : 'Pago') : 'Pendente'}</span>}</div><p className="mt-1 text-xs text-slate-500">{isGrouped ? `${t.count} lançamentos` : t.date} · {t.category}</p><p className={`mt-3 text-2xl font-black ${t.type === 'income' ? 'text-emerald-700' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount)}</p>{t.bankAccountName && <p className="mt-1 text-xs text-slate-500">Conta: {t.bankAccountName}</p>}</div></div>
+                                        {!isGrouped && !isAccountantView && <div className="mt-4 grid grid-cols-2 gap-2">{t.status === 'pending' ? <button onClick={() => handleMarkAsReceived(t.id)} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white">{t.type === 'expense' ? 'Pagar' : 'Receber'}</button> : t.type === 'income' && !t.sourceFiscalDocumentId ? <button onClick={() => prepareNfseFromTransaction(t)} className="rounded-xl bg-blue-600 px-3 py-2.5 text-xs font-black text-white">Preparar NFS-e</button> : <button onClick={() => void reverseSettlement(t)} className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-700">Estornar baixa</button>}<button onClick={() => handleEdit(t)} className="rounded-xl bg-slate-100 px-3 py-2.5 text-xs font-bold text-slate-700">Editar</button></div>}
+                                    </article>)}
+                                    {filteredTransactions.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">Nenhum lançamento corresponde aos filtros.</div>}
+                                </div>
+                                <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
                                     {selectedIds.length > 0 && (
                                         <div className="mb-4 flex items-center justify-between p-4 bg-red-50 border border-red-100 rounded-xl animate-fade-in">
                                             <span className="text-sm font-medium text-red-700">
@@ -1838,8 +2119,8 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                         </div>
                                     )}
 
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
+                                    <table className="w-full min-w-[920px] border-collapse text-left">
+                                        <thead className="bg-slate-50">
                                             <tr className="border-b border-slate-200">
                                                 {!isGrouped && (
                                                     <th className="py-3 px-4 w-10">
@@ -1909,7 +2190,7 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                         {t.type === 'income' ? '+' : '-'}{formatMoney(t.amount)}
                                                     </td>
                                                     <td className="py-3 px-4 text-center">
-                                                        {!isGrouped && (
+                                                        {!isGrouped && !isAccountantView && (
                                                             <div className="flex items-center justify-center gap-2">
                                                                 {t.status === 'pending' && (
                                                                     <button
@@ -1922,6 +2203,10 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                                         {updatingStatusId === t.id ? 'Salvando...' : t.type === 'expense' ? 'Marcar como pago' : 'Marcar como recebido'}
                                                                     </button>
                                                                 )}
+                                                                {t.type === 'income' && t.status === 'paid' && !t.sourceFiscalDocumentId && (
+                                                                    <button onClick={(e) => { e.stopPropagation(); prepareNfseFromTransaction(t); }} className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100"><FileText className="h-3.5 w-3.5" /> NFS-e</button>
+                                                                )}
+                                                                {t.status === 'paid' && <button onClick={(e) => { e.stopPropagation(); void reverseSettlement(t); }} disabled={updatingStatusId === t.id} className="rounded-lg px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Estornar</button>}
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleEdit(t); }}
                                                                     className="text-slate-400 hover:text-brand-600 transition-colors"
@@ -1944,9 +2229,23 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                                                     </td>
                                                 </tr>
                                             ))}
+                                            {filteredTransactions.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={isGrouped ? 6 : 7} className="py-14 text-center">
+                                                        <div className="mx-auto flex max-w-sm flex-col items-center">
+                                                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                                                                <Search className="h-6 w-6 text-slate-400" />
+                                                            </div>
+                                                            <strong className="text-sm text-slate-800">Nenhum lançamento corresponde aos filtros</strong>
+                                                            <span className="mt-1 text-xs text-slate-500">Altere a busca, o período ou a categoria para visualizar outros resultados.</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
+                                </>
                             )
                         );
                     })()}
@@ -1955,6 +2254,23 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
 
 
             {/* Modal Novo Lançamento */}
+            {settlementTarget && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+                        <div className="flex items-start justify-between gap-4">
+                            <div><h3 className="text-xl font-black text-slate-950">{settlementTarget.type === 'expense' ? 'Registrar pagamento' : 'Registrar recebimento'}</h3><p className="mt-1 text-sm text-slate-500">{settlementTarget.description} · {formatMoney(settlementTarget.amount)}</p></div>
+                            <button onClick={() => setSettlementTarget(null)} disabled={!!updatingStatusId} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><X size={19} /></button>
+                        </div>
+                        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                            <label><span className="mb-1 block text-xs font-bold text-slate-600">DATA DA BAIXA</span><input type="date" value={settlementForm.date} onChange={e => setSettlementForm(current => ({...current, date: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100" /></label>
+                            <label><span className="mb-1 block text-xs font-bold text-slate-600">FORMA DE PAGAMENTO</span><select value={settlementForm.paymentMethod} onChange={e => setSettlementForm(current => ({...current, paymentMethod: e.target.value as NonNullable<Transaction['paymentMethod']>}))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100"><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="credit_card">Cartão de crédito</option><option value="debit_card">Cartão de débito</option><option value="bank_transfer">Transferência bancária</option><option value="boleto">Boleto</option><option value="other">Outro</option></select></label>
+                            <label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-600">CONTA BANCÁRIA</span><select value={settlementForm.bankAccountId} onChange={e => setSettlementForm(current => ({...current, bankAccountId: e.target.value}))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100"><option value="">Não informar conta</option>{bankAccounts.map(account => <option key={account.id} value={account.id}>{account.name} — {account.bank}</option>)}</select>{bankAccounts.length === 0 && <p className="mt-1 text-xs text-slate-500">Cadastre contas em Financeiro → Bancos para selecioná-las nas baixas.</p>}</label>
+                            <label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-600">OBSERVAÇÃO (OPCIONAL)</span><textarea value={settlementForm.notes} onChange={e => setSettlementForm(current => ({...current, notes: e.target.value.slice(0, 300)}))} rows={3} placeholder="Ex.: comprovante conferido, pagamento parcial acordado..." className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100" /></label>
+                        </div>
+                        <div className="mt-5 flex justify-end gap-3"><button onClick={() => setSettlementTarget(null)} disabled={!!updatingStatusId} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600">Cancelar</button><button onClick={() => void confirmSettlement()} disabled={!!updatingStatusId || !settlementForm.date} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-50">{updatingStatusId ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Confirmar baixa</button></div>
+                    </div>
+                </div>
+            )}
             {
                 isModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -2273,6 +2589,53 @@ export const FinancialControlView: React.FC<{ initialTab?: FinancialTab }> = ({ 
                     </div>
                 )
             }
+
+            {clientLinkTransaction && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-center justify-between bg-slate-900 p-4 text-white">
+                            <div>
+                                <h3 className="flex items-center gap-2 font-bold"><Users className="h-5 w-5 text-teal-400" />Vincular cliente</h3>
+                                <p className="mt-1 text-xs text-slate-300">{clientLinkTransaction.description} · {formatMoney(clientLinkTransaction.amount)}</p>
+                            </div>
+                            <button onClick={() => setClientLinkTransaction(null)} className="rounded p-1 text-slate-300 hover:bg-slate-800 hover:text-white"><X className="h-5 w-5" /></button>
+                        </div>
+                        <div className="space-y-5 p-5">
+                            <section>
+                                <label className="mb-2 block text-sm font-bold text-slate-700">Cliente já cadastrado</label>
+                                <input
+                                    value={clientSearch}
+                                    onChange={event => { setClientSearch(event.target.value); setSelectedClientId(''); }}
+                                    placeholder="Buscar por nome, CPF ou CNPJ"
+                                    className="w-full rounded-xl border border-slate-300 p-3"
+                                />
+                                <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-slate-200">
+                                    {clients.filter(client => {
+                                        const search = clientSearch.toLocaleLowerCase('pt-BR').replace(/\D/g, '') || clientSearch.toLocaleLowerCase('pt-BR');
+                                        return !clientSearch || client.name.toLocaleLowerCase('pt-BR').includes(clientSearch.toLocaleLowerCase('pt-BR')) || String(client.taxId || '').includes(search);
+                                    }).map(client => (
+                                        <button key={client.id} onClick={() => { setSelectedClientId(client.id); setClientSearch(client.name); }} className={`flex w-full items-center justify-between border-b border-slate-100 p-3 text-left text-sm last:border-0 ${selectedClientId === client.id ? 'bg-teal-50 text-teal-900' : 'hover:bg-slate-50'}`}>
+                                            <span className="font-semibold">{client.name}</span><span className="text-xs text-slate-500">{client.taxId || 'Sem CPF/CNPJ'}</span>
+                                        </button>
+                                    ))}
+                                    {!clients.length && <p className="p-4 text-center text-sm text-slate-500">Nenhum cliente cadastrado nesta empresa.</p>}
+                                </div>
+                                <button disabled={isLinkingClient || !selectedClientId} onClick={() => void linkClientToTransaction(false)} className="mt-3 w-full rounded-xl bg-teal-600 px-4 py-3 font-bold text-white disabled:opacity-50">
+                                    {isLinkingClient ? 'Vinculando...' : 'Vincular cliente selecionado'}
+                                </button>
+                            </section>
+                            <div className="flex items-center gap-3 text-xs font-bold uppercase text-slate-400"><span className="h-px flex-1 bg-slate-200" />ou cadastre agora<span className="h-px flex-1 bg-slate-200" /></div>
+                            <section className="grid gap-3 sm:grid-cols-2">
+                                <input value={clientSearch} onChange={event => { setClientSearch(event.target.value); setSelectedClientId(''); }} placeholder="Nome ou razão social" className="rounded-xl border border-slate-300 p-3" />
+                                <input value={newClientTaxId} onChange={event => setNewClientTaxId(event.target.value)} placeholder="CPF ou CNPJ" className="rounded-xl border border-slate-300 p-3" />
+                                <button disabled={isLinkingClient || !clientSearch.trim()} onClick={() => void linkClientToTransaction(true)} className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white disabled:opacity-50 sm:col-span-2">
+                                    {isLinkingClient ? 'Salvando...' : 'Cadastrar e vincular novo cliente'}
+                                </button>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal de Seleção de Planilhas Excel */}
             {isExcelModalOpen && (

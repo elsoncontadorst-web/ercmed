@@ -8,6 +8,10 @@ const RESTRICTED_BASE_URL = "https://sefin.producaorestrita.nfse.gov.br/API/Sefi
 const PRODUCTION_BASE_URL = "https://sefin.nfse.gov.br/SefinNacional";
 const PRODUCTION_DANFSE_URL = "https://adn.nfse.gov.br/danfse";
 
+function baseUrl(environment: "homologacao" | "producao"): string {
+  return environment === "producao" ? PRODUCTION_BASE_URL : RESTRICTED_BASE_URL;
+}
+
 export interface SefinResponse {
   data: unknown;
   authorizedXml?: string;
@@ -95,4 +99,18 @@ export async function getNfseProduction(
   const body = response.data as Record<string, unknown>;
   const encodedXml = body?.nfseXmlGZipB64 || body?.xmlGZipB64;
   return {data: body, authorizedXml: decodeGzipBase64(encodedXml)};
+}
+
+export async function registerNfseEvent(accessKey: string, signedXml: string, environment: "homologacao" | "producao", pfx: Buffer, password: string): Promise<SefinResponse> {
+  const agent = new https.Agent({pfx, passphrase: password, rejectUnauthorized: true});
+  const eventoXmlGZipB64 = zlib.gzipSync(Buffer.from(signedXml, "utf8")).toString("base64");
+  const response = await axios.post(`${baseUrl(environment)}/nfse/${encodeURIComponent(accessKey)}/eventos`, {eventoXmlGZipB64}, {httpsAgent: agent, headers: {"Content-Type": "application/json"}, timeout: 45000});
+  const body = response.data as Record<string, unknown>;
+  return {data: body, authorizedXml: decodeGzipBase64(body?.eventoXmlGZipB64 || body?.xmlGZipB64)};
+}
+
+export async function getNfseEvents(accessKey: string, environment: "homologacao" | "producao", pfx: Buffer, password: string): Promise<unknown> {
+  const agent = new https.Agent({pfx, passphrase: password, rejectUnauthorized: true});
+  const response = await axios.get(`${baseUrl(environment)}/nfse/${encodeURIComponent(accessKey)}/eventos`, {httpsAgent: agent, timeout: 30000});
+  return response.data;
 }

@@ -1095,14 +1095,14 @@ const ContractsView: React.FC = () => {
 
                                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                                     {activeTab === 'general' && (
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                             {formData.contractKind === 'partner' && (
                                                 <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
                                                     <p className="font-bold text-amber-900">Cadastro societário</p>
                                                     <p className="mt-1 text-sm text-amber-800">O sócio ficará disponível na seleção de responsável pelas notas fiscais e no rateio de impostos.</p>
                                                 </div>
                                             )}
-                                            <div className="col-span-2 grid grid-cols-2 gap-4">
+                                            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
                                                 <div>
                                                     <label className="text-sm font-medium text-slate-700">Tipo de Pessoa</label>
                                                     <div className="flex gap-4 mt-1">
@@ -1284,7 +1284,7 @@ const ContractsView: React.FC = () => {
 
                                     {
                                         activeTab === 'financial' && (
-                                            <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 <div>
                                                     <label className="text-sm font-medium text-slate-700">Modelo de Pagamento</label>
                                                     <select
@@ -1354,7 +1354,7 @@ const ContractsView: React.FC = () => {
 
                                     {
                                         activeTab === 'bank' && (
-                                            <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 <div>
                                                     <label className="text-sm font-medium text-slate-700">Banco</label>
                                                     <input
