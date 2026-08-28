@@ -1,20 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Link, Loader2, Megaphone, MonitorUp, Plus, RotateCcw, Save, Tv2, X } from 'lucide-react';
+import { Building2, Check, Link, Loader2, Megaphone, MonitorUp, Plus, RotateCcw, Save, Trash2, Tv2, X } from 'lucide-react';
 import { Appointment } from '../types/health';
 import { CallTicket } from '../types/callPanel';
+import { Professional } from '../types/finance';
+import { ConsultingRoom } from '../types/consultingRoom';
 import { callTicket, configureCallPanelSource, getCallPanelId, issueCallTicket, listenCallTickets, listenPublicCallPanel, updateCallTicketStatus } from '../services/callPanelService';
+import { createConsultingRoom, deleteConsultingRoom, listenConsultingRooms } from '../services/consultingRoomService';
 
 interface Props {
   ownerId: string;
   clinicId?: string;
   clinicName: string;
   appointments: Appointment[];
+  professionals: Professional[];
 }
 
 type ManagedScreen = { availLeft: number; availTop: number; availWidth: number; availHeight: number };
 type ManagedScreenDetails = { screens: ManagedScreen[]; currentScreen: ManagedScreen };
 
-const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appointments }) => {
+const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appointments, professionals }) => {
   const [tickets, setTickets] = useState<CallTicket[]>([]);
   const [prefix, setPrefix] = useState('C');
   const [destination, setDestination] = useState('Consultório 01');
@@ -24,10 +28,22 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
   const [launching, setLaunching] = useState(false);
   const [screenDetails, setScreenDetails] = useState<ManagedScreenDetails | null>(null);
   const [message, setMessage] = useState('');
+  const [rooms, setRooms] = useState<ConsultingRoom[]>([]);
+  const [showRooms, setShowRooms] = useState(false);
+  const [roomName, setRoomName] = useState('');
+  const [roomProfessionalId, setRoomProfessionalId] = useState('');
 
   useEffect(() => {
     if (!ownerId) return;
     return listenCallTickets(ownerId, clinicId, setTickets);
+  }, [clinicId, ownerId]);
+
+  useEffect(() => {
+    if (!ownerId) return;
+    return listenConsultingRooms(ownerId, clinicId, items => {
+      setRooms(items);
+      if (items.length && !items.some(item => item.name === destination)) setDestination(items[0].name);
+    });
   }, [clinicId, ownerId]);
 
   useEffect(() => {
@@ -51,6 +67,25 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
   const eligibleAppointments = useMemo(() => appointments.filter(item =>
     item.status !== 'cancelled' && !tickets.some(ticket => ticket.appointmentId === item.id && ticket.status !== 'cancelled')
   ), [appointments, tickets]);
+
+  const selectAppointment = (id: string) => {
+    setAppointmentId(id);
+    const appointment = appointments.find(item => item.id === id);
+    const assignedRoom = rooms.find(item => item.professionalId === appointment?.professionalId);
+    if (assignedRoom) setDestination(assignedRoom.name);
+  };
+
+  const addRoom = async () => {
+    if (!roomName.trim()) return;
+    const professional = professionals.find(item => item.id === roomProfessionalId || item.userId === roomProfessionalId);
+    setSaving(true); setMessage('');
+    try {
+      await createConsultingRoom({ ownerId, clinicId, name: roomName, professionalId: professional?.id, professionalName: professional?.name });
+      setRoomName(''); setRoomProfessionalId('');
+      setMessage('Consultório cadastrado e disponível para as chamadas.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível cadastrar o consultório.'); }
+    finally { setSaving(false); }
+  };
 
   const emit = async () => {
     if (!ownerId) return;
@@ -144,10 +179,12 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
     </div>
     <div className="grid gap-3 xl:grid-cols-[110px_1.2fr_1fr_auto]">
       <label className="text-xs font-bold text-slate-500">Prefixo<input value={prefix} onChange={e => setPrefix(e.target.value.toUpperCase().slice(0, 2))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-900 outline-none focus:border-teal-500"/></label>
-      <label className="text-xs font-bold text-slate-500">Paciente agendado (opcional)<select value={appointmentId} onChange={e => setAppointmentId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"><option value="">Atendimento sem vínculo</option>{eligibleAppointments.map(item => <option key={item.id} value={item.id}>{item.time} — {item.patientName || 'Paciente'} — {item.professionalName}</option>)}</select></label>
-      <label className="text-xs font-bold text-slate-500">Destino<input value={destination} onChange={e => setDestination(e.target.value)} placeholder="Consultório 01" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"/></label>
+      <label className="text-xs font-bold text-slate-500">Paciente agendado (opcional)<select value={appointmentId} onChange={e => selectAppointment(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"><option value="">Atendimento sem vínculo</option>{eligibleAppointments.map(item => <option key={item.id} value={item.id}>{item.time} — {item.patientName || 'Paciente'} — {item.professionalName}</option>)}</select></label>
+      <label className="text-xs font-bold text-slate-500">Destino{rooms.length ? <select value={destination} onChange={e => setDestination(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500">{rooms.map(room => <option key={room.id} value={room.name}>{room.name}{room.professionalName ? ` — ${room.professionalName}` : ''}</option>)}</select> : <input value={destination} onChange={e => setDestination(e.target.value)} placeholder="Consultório 01" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"/>}</label>
       <button onClick={emit} disabled={saving || !destination.trim()} className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Plus className="h-4 w-4"/>}Emitir senha</button>
     </div>
+    <button onClick={() => setShowRooms(value => !value)} className="mt-3 flex items-center gap-2 text-xs font-bold text-teal-700 hover:text-teal-900"><Building2 className="h-4 w-4"/>{showRooms ? 'Fechar cadastro de consultórios' : `Configurar consultórios${rooms.length ? ` (${rooms.length})` : ''}`}</button>
+    {showRooms && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="grid gap-2 lg:grid-cols-[1fr_1.4fr_auto]"><input value={roomName} onChange={event => setRoomName(event.target.value)} placeholder="Ex.: Consultório 01" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-500"/><select value={roomProfessionalId} onChange={event => setRoomProfessionalId(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-500"><option value="">Sem profissional fixo</option>{professionals.map(item => <option key={item.id} value={item.id}>{item.name} — {item.specialty || item.role}</option>)}</select><button onClick={addRoom} disabled={saving || !roomName.trim()} className="flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4"/>Adicionar</button></div>{rooms.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{rooms.map(room => <span key={room.id} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">{room.name}{room.professionalName ? ` · ${room.professionalName}` : ''}<button onClick={() => deleteConsultingRoom(ownerId, room.id)} title="Excluir consultório" className="text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5"/></button></span>)}</div>}</div>}
     {message && <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p>}
     <div className="mt-4 grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
       {waiting.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500 lg:col-span-2 2xl:col-span-3">Nenhuma senha aguardando.</p> : waiting.map(ticket => <article key={ticket.id} className={`flex items-center gap-3 rounded-xl border p-3 ${ticket.status === 'called' ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>

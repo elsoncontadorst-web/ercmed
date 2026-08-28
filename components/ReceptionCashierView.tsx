@@ -331,6 +331,7 @@ const ReceptionCashierView: React.FC<{ setView: (view: AppView) => void }> = ({ 
           clinicId={activeClinicId || undefined}
           clinicName={activeUnitName || 'Clínica'}
           appointments={allDayItems}
+          professionals={professionals}
         />
 
         {loading ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-teal-600"/></div> : dayItems.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><CalendarDays className="mx-auto mb-3 h-10 w-10 text-slate-300"/><h2 className="font-bold text-slate-700">Nenhum agendamento encontrado</h2><p className="mt-1 text-sm text-slate-500">Altere a data ou os filtros para consultar a agenda.</p></div> : <div className="space-y-3">{dayItems.map((item, index) => {

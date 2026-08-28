@@ -314,6 +314,10 @@ service cloud.firestore {
       match /call_panel_settings/{settingId} {
         allow read, write: if isAuthenticated() && isClinicMember(userId);
       }
+
+      match /consulting_rooms/{roomId} {
+        allow read, write: if isAuthenticated() && isClinicMember(userId);
+      }
       
       match /settings/booking {
         allow read: if true;
