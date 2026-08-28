@@ -31,6 +31,7 @@ export interface PublicCall {
 export interface PublicCallPanel {
   ownerId: string;
   clinicName: string;
+  youtubeVideoId?: string;
   currentCall?: PublicCall;
   recentCalls: PublicCall[];
   updatedAtMs: number;

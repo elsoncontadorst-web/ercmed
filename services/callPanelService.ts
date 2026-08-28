@@ -1,5 +1,5 @@
 import {
-  collection, doc, onSnapshot, runTransaction, serverTimestamp, updateDoc, Unsubscribe,
+  collection, doc, onSnapshot, runTransaction, serverTimestamp, setDoc, updateDoc, Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { CallTicket, PublicCall, PublicCallPanel } from '../types/callPanel';
@@ -9,6 +9,37 @@ const cleanPrefix = (value: string) => value.trim().toUpperCase().replace(/[^A-Z
 const scopeId = (clinicId?: string) => clinicId || 'geral';
 
 export const getCallPanelId = (ownerId: string, clinicId?: string) => `${ownerId}_${scopeId(clinicId)}`;
+
+const youtubeVideoIdFromUrl = (value: string): string => {
+  const trimmed = value.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] || '';
+    if (url.hostname.endsWith('youtube.com')) {
+      return url.searchParams.get('v') || url.pathname.match(/\/(?:live|embed|shorts)\/([a-zA-Z0-9_-]{11})/)?.[1] || '';
+    }
+  } catch { return ''; }
+  return '';
+};
+
+export const configureCallPanelYoutube = async (input: {
+  ownerId: string;
+  clinicId?: string;
+  clinicName: string;
+  youtubeUrl: string;
+}): Promise<string> => {
+  const youtubeVideoId = youtubeVideoIdFromUrl(input.youtubeUrl);
+  if (!youtubeVideoId) throw new Error('Informe um link válido de vídeo ou transmissão do YouTube.');
+  await setDoc(doc(db, 'public_call_panels', getCallPanelId(input.ownerId, input.clinicId)), {
+    ownerId: input.ownerId,
+    clinicName: input.clinicName || 'Clínica',
+    youtubeVideoId,
+    recentCalls: [],
+    updatedAtMs: Date.now(),
+  }, { merge: true });
+  return youtubeVideoId;
+};
 
 export const listenCallTickets = (
   ownerId: string,

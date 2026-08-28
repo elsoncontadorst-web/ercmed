@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Loader2, Megaphone, MonitorUp, Plus, RotateCcw, Tv2, X } from 'lucide-react';
+import { Check, Link, Loader2, Megaphone, MonitorUp, Plus, RotateCcw, Save, Tv2, X } from 'lucide-react';
 import { Appointment } from '../types/health';
 import { CallTicket } from '../types/callPanel';
-import { callTicket, getCallPanelId, issueCallTicket, listenCallTickets, updateCallTicketStatus } from '../services/callPanelService';
+import { callTicket, configureCallPanelYoutube, getCallPanelId, issueCallTicket, listenCallTickets, updateCallTicketStatus } from '../services/callPanelService';
 
 interface Props {
   ownerId: string;
@@ -19,6 +19,7 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
   const [prefix, setPrefix] = useState('C');
   const [destination, setDestination] = useState('Consultório 01');
   const [appointmentId, setAppointmentId] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [screenDetails, setScreenDetails] = useState<ManagedScreenDetails | null>(null);
@@ -67,6 +68,16 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
     finally { setSaving(false); }
   };
 
+  const saveYoutube = async () => {
+    if (!ownerId) return;
+    setSaving(true); setMessage('');
+    try {
+      await configureCallPanelYoutube({ ownerId, clinicId, clinicName, youtubeUrl });
+      setMessage('Canal do YouTube salvo. O painel da TV foi atualizado.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível salvar o canal.'); }
+    finally { setSaving(false); }
+  };
+
   const launchTvMode = async () => {
     if (!ownerId || launching) return;
     setLaunching(true); setMessage('');
@@ -85,30 +96,17 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
         screen.availLeft !== details.currentScreen.availLeft || screen.availTop !== details.currentScreen.availTop
       ) || details.currentScreen;
       if (details.screens.length < 2) throw new Error('O segundo monitor não foi detectado. No Windows, selecione “Estender estes monitores”.');
-      const tvWidth = Math.round(target.availWidth * 0.75);
-      const panelWidth = target.availWidth - tvWidth;
       const panelId = getCallPanelId(ownerId, clinicId);
       const panelUrl = `${window.location.origin}/painel/${encodeURIComponent(panelId)}`;
-      const tvFeatures = `popup=yes,left=${target.availLeft},top=${target.availTop},width=${tvWidth},height=${target.availHeight}`;
-      const panelFeatures = `popup=yes,left=${target.availLeft + tvWidth},top=${target.availTop},width=${panelWidth},height=${target.availHeight}`;
-      // A unique name prevents Edge from reusing an older window and ignoring
-      // the requested coordinates. Load content only after both blank popup
-      // windows have been created in their final positions.
+      const panelFeatures = `popup=yes,left=${target.availLeft},top=${target.availTop},width=${target.availWidth},height=${target.availHeight}`;
       const launchId = Date.now();
-      const tvWindow = window.open('about:blank', `ercmed-tv-globoplay-${launchId}`, tvFeatures);
       const panelWindow = window.open('about:blank', `ercmed-tv-painel-${launchId}`, panelFeatures);
-      if (!tvWindow || !panelWindow) {
-        tvWindow?.close(); panelWindow?.close();
-        throw new Error('O Edge bloqueou as janelas. Clique no aviso de pop-up na barra de endereço, escolha “Sempre permitir” e tente novamente.');
-      }
-      tvWindow.moveTo(target.availLeft, target.availTop);
-      tvWindow.resizeTo(tvWidth, target.availHeight);
-      panelWindow.moveTo(target.availLeft + tvWidth, target.availTop);
-      panelWindow.resizeTo(panelWidth, target.availHeight);
-      tvWindow.opener = null; panelWindow.opener = null;
-      tvWindow.location.replace('https://globoplay.globo.com/tv-globo/ao-vivo/7832875/');
+      if (!panelWindow) throw new Error('O Edge bloqueou a janela. Clique no aviso de pop-up na barra de endereço, escolha “Sempre permitir” e tente novamente.');
+      panelWindow.moveTo(target.availLeft, target.availTop);
+      panelWindow.resizeTo(target.availWidth, target.availHeight);
+      panelWindow.opener = null;
       panelWindow.location.replace(panelUrl);
-      setMessage('ERCMed TV iniciado no segundo monitor. Ative o som no painel uma vez.');
+      setMessage('ERCMed TV iniciado no segundo monitor com vídeo e senhas na mesma tela.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Não foi possível organizar o segundo monitor.');
     } finally { setLaunching(false); }
@@ -118,6 +116,10 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
     <div className="mb-4 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
       <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-100 p-3 text-teal-700"><Tv2 className="h-6 w-6"/></span><div><h2 className="font-extrabold text-slate-900">ERCMed TV — Painel de Atendimento</h2><p className="text-xs text-slate-500">Emita e chame senhas no segundo monitor conectado por HDMI.</p></div></div>
       <button onClick={launchTvMode} disabled={!ownerId || launching} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">{launching ? <Loader2 className="h-5 w-5 animate-spin"/> : <MonitorUp className="h-5 w-5"/>}{screenDetails ? 'Iniciar ERCMed TV' : 'Autorizar segundo monitor'}</button>
+    </div>
+    <div className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_auto] lg:items-end">
+      <label className="text-xs font-bold text-slate-500"><span className="flex items-center gap-1"><Link className="h-3.5 w-3.5"/>Link do vídeo ou transmissão ao vivo no YouTube</span><input value={youtubeUrl} onChange={event => setYoutubeUrl(event.target.value)} placeholder="Cole aqui o link exibido ao abrir o vídeo no YouTube" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"/></label>
+      <button onClick={saveYoutube} disabled={saving || !youtubeUrl.trim()} className="flex items-center justify-center gap-2 rounded-xl border border-teal-600 bg-white px-4 py-3 text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4"/>}Salvar canal</button>
     </div>
     <div className="grid gap-3 xl:grid-cols-[110px_1.2fr_1fr_auto]">
       <label className="text-xs font-bold text-slate-500">Prefixo<input value={prefix} onChange={e => setPrefix(e.target.value.toUpperCase().slice(0, 2))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-900 outline-none focus:border-teal-500"/></label>
