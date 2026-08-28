@@ -18,6 +18,7 @@ import { getActiveClinicScopeId } from '../services/activeClinicStorage';
 import { getClinicServices, resolveClinicServicePrice } from '../services/clinicErpService';
 import { getClinics } from '../services/clinicService';
 import { ClinicService } from '../types/clinicErp';
+import CallPanelControl from './CallPanelControl';
 
 type Filter = 'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
 type PaymentMethod = NonNullable<SavedTransaction['paymentMethod']>;
@@ -324,6 +325,13 @@ const ReceptionCashierView: React.FC<{ setView: (view: AppView) => void }> = ({ 
             <div className="flex gap-1 overflow-x-auto">{(['all','scheduled','confirmed','completed','cancelled'] as Filter[]).map(key => <button key={key} onClick={() => setFilter(key)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold ${filter === key ? 'bg-teal-100 text-teal-800' : 'text-slate-500 hover:bg-slate-50'}`}>{key === 'all' ? 'Todos' : statusMeta[key].label}</button>)}</div>
           </div>
         </div>
+
+        <CallPanelControl
+          ownerId={ownerId}
+          clinicId={activeClinicId || undefined}
+          clinicName={activeUnitName || 'Clínica'}
+          appointments={allDayItems}
+        />
 
         {loading ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-teal-600"/></div> : dayItems.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><CalendarDays className="mx-auto mb-3 h-10 w-10 text-slate-300"/><h2 className="font-bold text-slate-700">Nenhum agendamento encontrado</h2><p className="mt-1 text-sm text-slate-500">Altere a data ou os filtros para consultar a agenda.</p></div> : <div className="space-y-3">{dayItems.map((item, index) => {
           const status = statusMeta[item.status]; const paid = paidByAppointment.has(item.id);

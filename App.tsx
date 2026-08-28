@@ -79,6 +79,7 @@ const ClinicHoursView = safeLazy(() => import('./components/ClinicHoursView'), '
 const BookingSettingsView = safeLazy(() => import('./components/BookingSettingsView'), 'booking_settings');
 const RepasseCalculationView = safeLazy(() => import('./components/RepasseCalculationView'), 'repasse_calculation');
 const PublicBookingPage = safeLazy(() => import('./components/PublicBookingPage'), 'public_booking');
+const PublicCallPanel = safeLazy(() => import('./components/PublicCallPanel'), 'public_call_panel');
 const TISSView = safeLazy(() => import('./components/TISSView'), 'tiss');
 const UsersManagementView = safeLazy(() => import('./components/UsersManagementView'), 'users_management');
 const PermissionsManagementView = safeLazy(() => import('./components/PermissionsManagementView'), 'permissions_management');
@@ -462,6 +463,20 @@ case AppView.NFSE:
               </div>
             }>
               <PublicBookingPage />
+            </Suspense>
+          }
+        />
+
+        {/* Public, sanitized call display for the clinic's second monitor/TV */}
+        <Route
+          path="/painel/:panelId"
+          element={
+            <Suspense fallback={
+              <div className="min-h-screen flex items-center justify-center bg-slate-950">
+                <Loader2 className="w-10 h-10 animate-spin text-teal-400" />
+              </div>
+            }>
+              <PublicCallPanel />
             </Suspense>
           }
         />
