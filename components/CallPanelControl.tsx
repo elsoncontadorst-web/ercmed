@@ -11,6 +11,9 @@ interface Props {
   appointments: Appointment[];
 }
 
+type ManagedScreen = { availLeft: number; availTop: number; availWidth: number; availHeight: number };
+type ManagedScreenDetails = { screens: ManagedScreen[]; currentScreen: ManagedScreen };
+
 const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appointments }) => {
   const [tickets, setTickets] = useState<CallTicket[]>([]);
   const [prefix, setPrefix] = useState('C');
@@ -18,12 +21,23 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
   const [appointmentId, setAppointmentId] = useState('');
   const [saving, setSaving] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [screenDetails, setScreenDetails] = useState<ManagedScreenDetails | null>(null);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (!ownerId) return;
     return listenCallTickets(ownerId, clinicId, setTickets);
   }, [clinicId, ownerId]);
+
+  useEffect(() => {
+    const managedWindow = window as Window & { getScreenDetails?: () => Promise<ManagedScreenDetails> };
+    if (!managedWindow.getScreenDetails || !navigator.permissions?.query) return;
+    navigator.permissions.query({ name: 'window-management' as PermissionName })
+      .then(permission => {
+        if (permission.state === 'granted') managedWindow.getScreenDetails?.().then(setScreenDetails).catch(() => undefined);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const waiting = useMemo(() => tickets.filter(item => item.status === 'waiting' || item.status === 'called'), [tickets]);
   const eligibleAppointments = useMemo(() => appointments.filter(item =>
@@ -56,40 +70,36 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
   const launchTvMode = async () => {
     if (!ownerId || launching) return;
     setLaunching(true); setMessage('');
-    const panelId = getCallPanelId(ownerId, clinicId);
-    const panelUrl = `${window.location.origin}/painel/${encodeURIComponent(panelId)}`;
-    const liveTvUrl = 'https://globoplay.globo.com/tv-globo/ao-vivo/7832875/';
-    // Open both windows synchronously from the user's click so the popup
-    // permission is requested only once and browsers do not discard the action.
-    const tvWindow = window.open('about:blank', 'ercmed-tv-globoplay', 'popup=yes');
-    const panelWindow = window.open('about:blank', 'ercmed-tv-painel', 'popup=yes');
-    if (!tvWindow || !panelWindow) {
-      tvWindow?.close(); panelWindow?.close();
-      setMessage('Autorize os pop-ups deste site e clique novamente em “Iniciar ERCMed TV”.');
-      setLaunching(false); return;
-    }
-    tvWindow.opener = null; panelWindow.opener = null;
     try {
-      type ManagedScreen = { availLeft: number; availTop: number; availWidth: number; availHeight: number };
-      type ScreenDetails = { screens: ManagedScreen[]; currentScreen: ManagedScreen };
-      const managedWindow = window as Window & { getScreenDetails?: () => Promise<ScreenDetails> };
+      const managedWindow = window as Window & { getScreenDetails?: () => Promise<ManagedScreenDetails> };
       if (!managedWindow.getScreenDetails) throw new Error('Seu navegador precisa ser atualizado para organizar o segundo monitor automaticamente.');
-      const details = await managedWindow.getScreenDetails();
+      if (!screenDetails) {
+        const details = await managedWindow.getScreenDetails();
+        setScreenDetails(details);
+        if (details.screens.length < 2) throw new Error('O segundo monitor não foi detectado. No Windows, selecione “Estender estes monitores”.');
+        setMessage('Acesso aos monitores autorizado. Clique novamente em “Iniciar ERCMed TV”.');
+        setLaunching(false); return;
+      }
+      const details = screenDetails;
       const target = details.screens.find(screen =>
         screen.availLeft !== details.currentScreen.availLeft || screen.availTop !== details.currentScreen.availTop
       ) || details.currentScreen;
       if (details.screens.length < 2) throw new Error('O segundo monitor não foi detectado. No Windows, selecione “Estender estes monitores”.');
       const tvWidth = Math.round(target.availWidth * 0.75);
       const panelWidth = target.availWidth - tvWidth;
-      tvWindow.moveTo(target.availLeft, target.availTop);
-      tvWindow.resizeTo(tvWidth, target.availHeight);
-      panelWindow.moveTo(target.availLeft + tvWidth, target.availTop);
-      panelWindow.resizeTo(panelWidth, target.availHeight);
-      tvWindow.location.replace(liveTvUrl);
-      panelWindow.location.replace(panelUrl);
+      const panelId = getCallPanelId(ownerId, clinicId);
+      const panelUrl = `${window.location.origin}/painel/${encodeURIComponent(panelId)}`;
+      const tvFeatures = `popup=yes,left=${target.availLeft},top=${target.availTop},width=${tvWidth},height=${target.availHeight}`;
+      const panelFeatures = `popup=yes,left=${target.availLeft + tvWidth},top=${target.availTop},width=${panelWidth},height=${target.availHeight}`;
+      const tvWindow = window.open('https://globoplay.globo.com/tv-globo/ao-vivo/7832875/', 'ercmed-tv-globoplay', tvFeatures);
+      const panelWindow = window.open(panelUrl, 'ercmed-tv-painel', panelFeatures);
+      if (!tvWindow || !panelWindow) {
+        tvWindow?.close(); panelWindow?.close();
+        throw new Error('O Edge bloqueou as janelas. Clique no aviso de pop-up na barra de endereço, escolha “Sempre permitir” e tente novamente.');
+      }
+      tvWindow.opener = null; panelWindow.opener = null;
       setMessage('ERCMed TV iniciado no segundo monitor. Ative o som no painel uma vez.');
     } catch (error) {
-      tvWindow.close(); panelWindow.close();
       setMessage(error instanceof Error ? error.message : 'Não foi possível organizar o segundo monitor.');
     } finally { setLaunching(false); }
   };
@@ -97,7 +107,7 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
   return <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
     <div className="mb-4 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
       <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-100 p-3 text-teal-700"><Tv2 className="h-6 w-6"/></span><div><h2 className="font-extrabold text-slate-900">ERCMed TV — Painel de Atendimento</h2><p className="text-xs text-slate-500">Emita e chame senhas no segundo monitor conectado por HDMI.</p></div></div>
-      <button onClick={launchTvMode} disabled={!ownerId || launching} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">{launching ? <Loader2 className="h-5 w-5 animate-spin"/> : <MonitorUp className="h-5 w-5"/>}Iniciar ERCMed TV</button>
+      <button onClick={launchTvMode} disabled={!ownerId || launching} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">{launching ? <Loader2 className="h-5 w-5 animate-spin"/> : <MonitorUp className="h-5 w-5"/>}{screenDetails ? 'Iniciar ERCMed TV' : 'Autorizar segundo monitor'}</button>
     </div>
     <div className="grid gap-3 xl:grid-cols-[110px_1.2fr_1fr_auto]">
       <label className="text-xs font-bold text-slate-500">Prefixo<input value={prefix} onChange={e => setPrefix(e.target.value.toUpperCase().slice(0, 2))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-900 outline-none focus:border-teal-500"/></label>
