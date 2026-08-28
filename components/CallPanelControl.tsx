@@ -112,10 +112,23 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
     } finally { setLaunching(false); }
   };
 
+  const launchWindowsTvMode = () => {
+    if (!ownerId) return;
+    const panelId = getCallPanelId(ownerId, clinicId);
+    const panelUrl = `${window.location.origin}/painel/${encodeURIComponent(panelId)}?overlay=1`;
+    const globoplayUrl = 'https://globoplay.globo.com/tv-globo/ao-vivo/6120663/';
+    const command = `ercmedtv://start?panelUrl=${encodeURIComponent(panelUrl)}&tvUrl=${encodeURIComponent(globoplayUrl)}`;
+    window.location.href = command;
+    setMessage('Comando enviado ao ERCMed TV para Windows. O Edge e o painel serão abertos no segundo monitor.');
+  };
+
   return <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
     <div className="mb-4 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
       <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-100 p-3 text-teal-700"><Tv2 className="h-6 w-6"/></span><div><h2 className="font-extrabold text-slate-900">ERCMed TV — Painel de Atendimento</h2><p className="text-xs text-slate-500">Emita e chame senhas no segundo monitor conectado por HDMI.</p></div></div>
-      <button onClick={launchTvMode} disabled={!ownerId || launching} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">{launching ? <Loader2 className="h-5 w-5 animate-spin"/> : <MonitorUp className="h-5 w-5"/>}{screenDetails ? 'Iniciar ERCMed TV' : 'Autorizar segundo monitor'}</button>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button onClick={launchWindowsTvMode} disabled={!ownerId} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"><MonitorUp className="h-5 w-5"/>Iniciar ERCMed TV</button>
+        <button onClick={launchTvMode} disabled={!ownerId || launching} title="Usar sem o aplicativo para Windows" className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">{launching ? <Loader2 className="h-4 w-4 animate-spin"/> : <Tv2 className="h-4 w-4"/>}Abrir somente painel</button>
+      </div>
     </div>
     <div className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_auto] lg:items-end">
       <label className="text-xs font-bold text-slate-500"><span className="flex items-center gap-1"><Link className="h-3.5 w-3.5"/>Link do vídeo ou transmissão ao vivo no YouTube</span><input value={youtubeUrl} onChange={event => setYoutubeUrl(event.target.value)} placeholder="Cole aqui o link exibido ao abrir o vídeo no YouTube" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"/></label>

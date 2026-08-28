@@ -1,0 +1,33 @@
+{
+  "name": "ercmed-tv-windows",
+  "version": "1.0.0",
+  "description": "Inicializador do ERCMed TV para o segundo monitor",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "br.com.ercmed.tv",
+    "productName": "ERCMed TV",
+    "compression": "store",
+    "artifactName": "ERCMed-TV-Setup-${version}.${ext}",
+    "files": ["main.cjs", "package.json"],
+    "win": { "target": "nsis" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "protocols": [{
+      "name": "ERCMed TV",
+      "schemes": ["ercmedtv"]
+    }]
+  }
+}
