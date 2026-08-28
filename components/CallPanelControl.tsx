@@ -127,7 +127,7 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
       <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-100 p-3 text-teal-700"><Tv2 className="h-6 w-6"/></span><div><h2 className="font-extrabold text-slate-900">ERCMed TV — Painel de Atendimento</h2><p className="text-xs text-slate-500">Emita e chame senhas no segundo monitor conectado por HDMI.</p></div></div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <button onClick={launchWindowsTvMode} disabled={!ownerId} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"><MonitorUp className="h-5 w-5"/>Iniciar ERCMed TV</button>
-        <a href="/downloads/ERCMed-TV-Setup-1.0.0.exe" download className="flex items-center justify-center rounded-xl border border-teal-600 bg-white px-4 py-3 text-xs font-bold text-teal-700 hover:bg-teal-50">Instalar ERCMed TV</a>
+        <a href="/downloads/ERCMed-TV-Setup-1.0.1.exe" download className="flex items-center justify-center rounded-xl border border-teal-600 bg-white px-4 py-3 text-xs font-bold text-teal-700 hover:bg-teal-50">Instalar ERCMed TV</a>
         <button onClick={launchTvMode} disabled={!ownerId || launching} title="Usar sem o aplicativo para Windows" className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">{launching ? <Loader2 className="h-4 w-4 animate-spin"/> : <Tv2 className="h-4 w-4"/>}Abrir somente painel</button>
       </div>
     </div>

@@ -83,6 +83,7 @@ else {
   });
 
   app.whenReady().then(() => {
+    app.setAsDefaultProtocolClient('ercmedtv');
     tray = new Tray(process.execPath);
     tray.setToolTip('ERCMed TV');
     tray.setContextMenu(Menu.buildFromTemplate([

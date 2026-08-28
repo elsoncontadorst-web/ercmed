@@ -1,6 +1,6 @@
 {
   "name": "ercmed-tv-windows",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Inicializador do ERCMed TV para o segundo monitor",
   "main": "main.cjs",
   "private": true,
