@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ExternalLink, Loader2, Megaphone, Plus, RotateCcw, Tv2, X } from 'lucide-react';
+import { Check, ExternalLink, Loader2, Megaphone, Play, Plus, RotateCcw, Tv2, X } from 'lucide-react';
 import { Appointment } from '../types/health';
 import { CallTicket } from '../types/callPanel';
 import { callTicket, getCallPanelId, issueCallTicket, listenCallTickets, updateCallTicketStatus } from '../services/callPanelService';
@@ -57,10 +57,14 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
     window.open(`${window.location.origin}/painel/${encodeURIComponent(panelId)}`, '_blank', 'noopener,noreferrer');
   };
 
+  const openLiveTv = () => {
+    window.open('https://globoplay.globo.com/tv-globo/ao-vivo/7832875/', '_blank', 'noopener,noreferrer');
+  };
+
   return <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
     <div className="mb-4 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
       <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-100 p-3 text-teal-700"><Tv2 className="h-6 w-6"/></span><div><h2 className="font-extrabold text-slate-900">ERCMed TV — Painel de Atendimento</h2><p className="text-xs text-slate-500">Emita e chame senhas no segundo monitor conectado por HDMI.</p></div></div>
-      <button onClick={openPanel} disabled={!ownerId} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"><ExternalLink className="h-4 w-4"/>Abrir painel na TV</button>
+      <div className="flex flex-col gap-2 sm:flex-row"><button onClick={openLiveTv} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:border-teal-300 hover:bg-teal-50"><Play className="h-4 w-4 text-teal-700"/>1. Abrir TV Globo</button><button onClick={openPanel} disabled={!ownerId} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"><ExternalLink className="h-4 w-4"/>2. Abrir painel ERCMed</button></div>
     </div>
     <div className="grid gap-3 xl:grid-cols-[110px_1.2fr_1fr_auto]">
       <label className="text-xs font-bold text-slate-500">Prefixo<input value={prefix} onChange={e => setPrefix(e.target.value.toUpperCase().slice(0, 2))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-900 outline-none focus:border-teal-500"/></label>
