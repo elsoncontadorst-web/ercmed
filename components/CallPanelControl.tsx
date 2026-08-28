@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Link, Loader2, Megaphone, MonitorUp, Plus, RotateCcw, Save, Tv2, X } from 'lucide-react';
 import { Appointment } from '../types/health';
 import { CallTicket } from '../types/callPanel';
-import { callTicket, configureCallPanelYoutube, getCallPanelId, issueCallTicket, listenCallTickets, updateCallTicketStatus } from '../services/callPanelService';
+import { callTicket, configureCallPanelSource, getCallPanelId, issueCallTicket, listenCallTickets, listenPublicCallPanel, updateCallTicketStatus } from '../services/callPanelService';
 
 interface Props {
   ownerId: string;
@@ -28,6 +28,13 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
   useEffect(() => {
     if (!ownerId) return;
     return listenCallTickets(ownerId, clinicId, setTickets);
+  }, [clinicId, ownerId]);
+
+  useEffect(() => {
+    if (!ownerId) return;
+    return listenPublicCallPanel(getCallPanelId(ownerId, clinicId), panel => {
+      if (panel?.tvUrl) setYoutubeUrl(panel.tvUrl);
+    });
   }, [clinicId, ownerId]);
 
   useEffect(() => {
@@ -72,8 +79,8 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
     if (!ownerId) return;
     setSaving(true); setMessage('');
     try {
-      await configureCallPanelYoutube({ ownerId, clinicId, clinicName, youtubeUrl });
-      setMessage('Canal do YouTube salvo. O painel da TV foi atualizado.');
+      await configureCallPanelSource({ ownerId, clinicId, clinicName, youtubeUrl });
+      setMessage('Link da TV salvo. O ERCMed TV abrirá esse endereço automaticamente.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível salvar o canal.'); }
     finally { setSaving(false); }
   };
@@ -116,7 +123,7 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
     if (!ownerId) return;
     const panelId = getCallPanelId(ownerId, clinicId);
     const panelUrl = `${window.location.origin}/painel/${encodeURIComponent(panelId)}?overlay=1`;
-    const globoplayUrl = 'https://globoplay.globo.com/tv-globo/ao-vivo/6120663/';
+    const globoplayUrl = youtubeUrl.trim() || 'https://globoplay.globo.com/tv-globo/ao-vivo/6120663/';
     const command = `ercmedtv://start?panelUrl=${encodeURIComponent(panelUrl)}&tvUrl=${encodeURIComponent(globoplayUrl)}`;
     window.location.href = command;
     setMessage('Comando enviado ao ERCMed TV para Windows. O Edge e o painel serão abertos no segundo monitor.');
@@ -132,7 +139,7 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
       </div>
     </div>
     <div className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_auto] lg:items-end">
-      <label className="text-xs font-bold text-slate-500"><span className="flex items-center gap-1"><Link className="h-3.5 w-3.5"/>Link do vídeo ou transmissão ao vivo no YouTube</span><input value={youtubeUrl} onChange={event => setYoutubeUrl(event.target.value)} placeholder="Cole aqui o link exibido ao abrir o vídeo no YouTube" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"/></label>
+      <label className="text-xs font-bold text-slate-500"><span className="flex items-center gap-1"><Link className="h-3.5 w-3.5"/>Link da TV — Globoplay ou YouTube</span><input value={youtubeUrl} onChange={event => setYoutubeUrl(event.target.value)} placeholder="Cole aqui o link do Globoplay ao vivo ou YouTube" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-teal-500"/></label>
       <button onClick={saveYoutube} disabled={saving || !youtubeUrl.trim()} className="flex items-center justify-center gap-2 rounded-xl border border-teal-600 bg-white px-4 py-3 text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4"/>}Salvar canal</button>
     </div>
     <div className="grid gap-3 xl:grid-cols-[110px_1.2fr_1fr_auto]">

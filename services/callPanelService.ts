@@ -1,5 +1,5 @@
 import {
-  collection, doc, onSnapshot, runTransaction, serverTimestamp, setDoc, updateDoc, Unsubscribe,
+  collection, deleteField, doc, onSnapshot, runTransaction, serverTimestamp, setDoc, updateDoc, Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { CallTicket, PublicCall, PublicCallPanel } from '../types/callPanel';
@@ -23,22 +23,28 @@ const youtubeVideoIdFromUrl = (value: string): string => {
   return '';
 };
 
-export const configureCallPanelYoutube = async (input: {
+export const configureCallPanelSource = async (input: {
   ownerId: string;
   clinicId?: string;
   clinicName: string;
   youtubeUrl: string;
 }): Promise<string> => {
   const youtubeVideoId = youtubeVideoIdFromUrl(input.youtubeUrl);
-  if (!youtubeVideoId) throw new Error('Informe um link válido de vídeo ou transmissão do YouTube.');
+  let tvUrl = input.youtubeUrl.trim();
+  try {
+    const parsed = new URL(tvUrl);
+    const isGloboplay = parsed.protocol === 'https:' && parsed.hostname === 'globoplay.globo.com';
+    if (!isGloboplay && !youtubeVideoId) throw new Error();
+  } catch { throw new Error('Informe um link válido do Globoplay ou YouTube.'); }
   await setDoc(doc(db, 'public_call_panels', getCallPanelId(input.ownerId, input.clinicId)), {
     ownerId: input.ownerId,
     clinicName: input.clinicName || 'Clínica',
-    youtubeVideoId,
+    tvUrl,
+    youtubeVideoId: youtubeVideoId || deleteField(),
     recentCalls: [],
     updatedAtMs: Date.now(),
   }, { merge: true });
-  return youtubeVideoId;
+  return tvUrl;
 };
 
 export const listenCallTickets = (

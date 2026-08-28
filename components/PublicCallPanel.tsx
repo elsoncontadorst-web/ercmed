@@ -21,6 +21,14 @@ const PublicCallPanel: React.FC = () => {
   const [now, setNow] = useState(new Date());
   const lastCallId = useRef('');
 
+  useEffect(() => {
+    if (!overlayMode) return;
+    const elements = [document.documentElement, document.body, document.getElementById('root')].filter(Boolean) as HTMLElement[];
+    const previous = elements.map(element => element.style.backgroundColor);
+    elements.forEach(element => { element.style.backgroundColor = 'transparent'; });
+    return () => elements.forEach((element, index) => { element.style.backgroundColor = previous[index]; });
+  }, [overlayMode]);
+
   useEffect(() => listenPublicCallPanel(panelId, setPanel), [panelId]);
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
