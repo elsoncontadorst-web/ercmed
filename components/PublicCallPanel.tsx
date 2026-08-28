@@ -4,13 +4,31 @@ import { useParams } from 'react-router-dom';
 import { listenPublicCallPanel } from '../services/callPanelService';
 import { PublicCallPanel as PanelData } from '../types/callPanel';
 
+declare global {
+  interface Window { ercmedTv?: { setTvMuted: (muted: boolean) => void } }
+}
+
+const setYoutubeMuted = (muted: boolean) => {
+  const player = document.getElementById('ercmed-youtube-player') as HTMLIFrameElement | null;
+  player?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: muted ? 'mute' : 'unMute', args: [] }), '*');
+};
+
+const setTvMuted = (muted: boolean) => {
+  setYoutubeMuted(muted);
+  window.ercmedTv?.setTvMuted(muted);
+};
+
 const speakTicket = (ticket: string, patientName: string | undefined, destination: string) => {
   if (!('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
+  setTvMuted(true);
   const spacedTicket = ticket.split('').join(' ');
   const patient = patientName?.trim() ? `${patientName.trim()}. ` : '';
   const utterance = new SpeechSynthesisUtterance(`Senha ${spacedTicket}. ${patient}Dirija-se a ${destination}.`);
   utterance.lang = 'pt-BR'; utterance.rate = 0.88; utterance.pitch = 1;
+  const restoreTvSound = () => setTvMuted(false);
+  utterance.onend = restoreTvSound;
+  utterance.onerror = restoreTvSound;
   window.speechSynthesis.speak(utterance);
 };
 
@@ -44,19 +62,26 @@ const PublicCallPanel: React.FC = () => {
     const test = new SpeechSynthesisUtterance('Som do painel ativado.'); test.lang = 'pt-BR'; window.speechSynthesis.speak(test);
   };
 
+  const deactivateSound = () => {
+    window.speechSynthesis.cancel();
+    setTvMuted(false);
+    setSoundEnabled(false);
+  };
+
   const callIsFresh = panel?.currentCall && Date.now() - panel.currentCall.calledAtMs < 12000;
 
   return <main className={`min-h-screen overflow-hidden text-white ${overlayMode ? 'bg-transparent' : 'bg-[#071c24]'}`}>
     <header className={`flex min-h-20 items-center justify-between gap-4 border-b border-white/10 px-5 py-3 lg:px-7 ${overlayMode ? 'bg-[#0b2932]' : 'bg-[#0b2932]'}`}>
       <div><p className="text-xs font-bold uppercase tracking-[0.28em] text-teal-300">ERCMed TV</p><h1 className="text-2xl font-black">{panel?.clinicName || 'Painel de Atendimento'}</h1></div>
-      <div className="flex items-center gap-2"><button onClick={soundEnabled ? () => setSoundEnabled(false) : activateSound} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold lg:px-4 lg:text-sm ${soundEnabled ? 'bg-teal-500 text-slate-950' : 'bg-white/10'}`}>{soundEnabled ? <Volume2 className="h-5 w-5"/> : <VolumeX className="h-5 w-5"/>}<span className="hidden sm:inline">{soundEnabled ? 'Som ativado' : 'Ativar som'}</span></button><button onClick={() => document.documentElement.requestFullscreen?.()} title="Tela cheia" className="hidden rounded-xl bg-white/10 p-2.5 hover:bg-white/20 lg:block"><Maximize className="h-5 w-5"/></button><div className="ml-1 text-right"><p className="text-2xl font-black tabular-nums lg:text-3xl">{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p><p className="hidden text-xs capitalize text-slate-300 lg:block">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</p></div></div>
+      <div className="flex items-center gap-2"><button onClick={soundEnabled ? deactivateSound : activateSound} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold lg:px-4 lg:text-sm ${soundEnabled ? 'bg-teal-500 text-slate-950' : 'bg-white/10'}`}>{soundEnabled ? <Volume2 className="h-5 w-5"/> : <VolumeX className="h-5 w-5"/>}<span className="hidden sm:inline">{soundEnabled ? 'Som ativado' : 'Ativar som'}</span></button><button onClick={() => document.documentElement.requestFullscreen?.()} title="Tela cheia" className="hidden rounded-xl bg-white/10 p-2.5 hover:bg-white/20 lg:block"><Maximize className="h-5 w-5"/></button><div className="ml-1 text-right"><p className="text-2xl font-black tabular-nums lg:text-3xl">{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p><p className="hidden text-xs capitalize text-slate-300 lg:block">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</p></div></div>
     </header>
     <div className={`grid h-[calc(100vh-5rem)] grid-cols-1 ${overlayMode ? '' : 'lg:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)]'}`}>
       <section className={`relative items-center justify-center overflow-hidden p-10 ${overlayMode ? 'hidden' : 'hidden bg-gradient-to-br from-[#0a3039] via-[#0b2630] to-[#07181f] lg:flex'}`}>
         {!overlayMode && panel?.youtubeVideoId ? <iframe
+          id="ercmed-youtube-player"
           key={panel.youtubeVideoId}
           className="absolute inset-0 h-full w-full border-0"
-          src={`https://www.youtube-nocookie.com/embed/${panel.youtubeVideoId}?autoplay=1&mute=1&controls=1&rel=0&modestbranding=1`}
+          src={`https://www.youtube-nocookie.com/embed/${panel.youtubeVideoId}?autoplay=1&mute=0&controls=1&rel=0&modestbranding=1&enablejsapi=1`}
           title="Canal ao vivo da clínica"
           allow="autoplay; encrypted-media; picture-in-picture"
           allowFullScreen

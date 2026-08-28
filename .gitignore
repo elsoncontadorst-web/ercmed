@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 public/downloads/*.exe
+ercmed-tv-windows/release-*/
 .tmp/
 *.local
 .env
