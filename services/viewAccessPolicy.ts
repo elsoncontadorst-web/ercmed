@@ -19,16 +19,12 @@ const PROFESSIONAL_VIEWS = new Set<AppView>([
 ]);
 
 const RECEPTION_VIEWS = new Set<AppView>([
-  AppView.DASHBOARD,
-  AppView.HEALTH_DASHBOARD,
+  AppView.RECEPTION_CASHIER,
   AppView.APPOINTMENTS,
   AppView.PATIENTS,
   AppView.CLIENTS,
-  AppView.BILLING_PRIVATE,
-  AppView.BILLING_INSURANCE,
-  AppView.BILLING_GUIDES,
-  AppView.CASH_ACCOUNTS,
-  AppView.COLLECTIONS,
+  AppView.ATTENDANCES,
+  AppView.RECEIPTS,
 ]);
 
 const BILLER_VIEWS = new Set<AppView>([
@@ -74,6 +70,13 @@ export const canAccessView = (
     ].includes(view);
   }
 
+  // Reception uses a deliberately small operational workspace. Keep this
+  // check before the generic financial shortcuts below so the role cannot
+  // open administrative accounts payable/receivable screens by URL.
+  if (role === 'receptionist') {
+    return RECEPTION_VIEWS.has(view);
+  }
+
   // Financial entry screens are available to every authenticated clinic user.
   if ([AppView.ACCOUNTS_RECEIVABLE, AppView.ACCOUNTS_PAYABLE, AppView.CASH_ACCOUNTS].includes(view)) {
     return true;
@@ -81,10 +84,6 @@ export const canAccessView = (
 
   if (role && PROFESSIONAL_ROLES.has(role)) {
     return PROFESSIONAL_VIEWS.has(view);
-  }
-
-  if (role === 'receptionist') {
-    return RECEPTION_VIEWS.has(view);
   }
 
   if (role === UserRole.BILLER || role === 'biller') {
@@ -112,6 +111,7 @@ export const getDefaultViewForRole = (
 ): AppView => {
   if (isAdmin) return AppView.HEALTH_DASHBOARD;
   if (role === 'accountant') return AppView.ACCOUNTANT_MODULE;
+  if (role === 'receptionist') return AppView.RECEPTION_CASHIER;
   if (role === UserRole.BILLER || role === 'biller') return AppView.BILLING_MANAGEMENT;
   return AppView.HEALTH_DASHBOARD;
 };

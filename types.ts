@@ -29,6 +29,7 @@ export enum AppView {
   PATIENTS = 'patients',
   CLIENTS = 'clients',
   APPOINTMENTS = 'appointments',
+  RECEPTION_CASHIER = 'reception_cashier',
   ATTENDANCES = 'attendances',
   PRODUCTION_ENTRY = 'production_entry',
   MEDICATIONS = 'medications',

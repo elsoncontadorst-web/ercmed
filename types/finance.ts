@@ -142,6 +142,7 @@ export interface Contract {
     id: string;
     contractKind?: 'provider' | 'partner';
     equityPercentage?: number;
+    providesCare?: boolean;
     providerName: string;
     personType: 'PF' | 'PJ';
     cpf?: string;

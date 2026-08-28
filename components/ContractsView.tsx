@@ -15,6 +15,7 @@ import { ClinicLinkRequest } from '../types/clinic_link_requests';
 import { useUser } from '../contexts/UserContext';
 import { RefreshCw } from 'lucide-react';
 import { ensureProfessionalRegistryValue, getProfessionalRegistry } from '../services/professionalRegistryService';
+import { removeSchedulingProfessional, saveSchedulingProfessional } from '../services/schedulingProfessionalService';
 
 const ContractsView: React.FC = () => {
     const { user } = useUser();
@@ -42,6 +43,7 @@ const ContractsView: React.FC = () => {
     const [formData, setFormData] = useState({
         contractKind: 'provider' as 'provider' | 'partner',
         equityPercentage: 0,
+        providesCare: false,
         providerName: '',
         personType: 'PJ' as 'PF' | 'PJ',
         cpf: '',
@@ -215,6 +217,7 @@ const ContractsView: React.FC = () => {
         setFormData({
             contractKind: 'provider',
             equityPercentage: 0,
+            providesCare: false,
             providerName: '',
             personType: 'PJ',
             cpf: '',
@@ -391,6 +394,7 @@ const ContractsView: React.FC = () => {
             const contractData: Omit<Contract, 'id' | 'createdAt' | 'updatedAt'> = {
                 contractKind: formData.contractKind,
                 equityPercentage: formData.contractKind === 'partner' ? Number(formData.equityPercentage) : undefined,
+                providesCare: formData.contractKind === 'partner' ? formData.providesCare : true,
                 providerName: formData.providerName,
                 personType: formData.personType,
                 cpf: formData.personType === 'PF' ? formData.cpf : undefined,
@@ -424,10 +428,18 @@ const ContractsView: React.FC = () => {
                 ]);
             }
 
-            if (editingContract) {
-                await updateContract(editingContract.id, contractData);
-            } else {
-                await addContract(contractData);
+            const savedContractId = editingContract?.id || await addContract(contractData);
+            if (editingContract) await updateContract(editingContract.id, contractData);
+            if (!savedContractId) throw new Error('Não foi possível salvar o contrato.');
+
+            if (auth.currentUser?.uid && contractData.status === 'active' && contractData.providesCare) {
+                await saveSchedulingProfessional(auth.currentUser.uid, {
+                    id: `contract_${savedContractId}`, sourceContractId: savedContractId,
+                    name: contractData.providerName, specialty: contractData.serviceType || contractData.professionalType || 'Atendimento',
+                    phone: contractData.phone, active: true
+                });
+            } else if (auth.currentUser?.uid) {
+                await removeSchedulingProfessional(auth.currentUser.uid, `contract_${savedContractId}`);
             }
 
             // If contract is active and has a user, ensure they are linked to the manager
@@ -449,6 +461,7 @@ const ContractsView: React.FC = () => {
     const handleDelete = async (id: string) => {
         if (confirm('Tem certeza que deseja excluir este contrato?')) {
             await deleteContract(id);
+            if (auth.currentUser?.uid) await removeSchedulingProfessional(auth.currentUser.uid, `contract_${id}`);
             loadContracts();
         }
     };
@@ -478,6 +491,7 @@ const ContractsView: React.FC = () => {
         setFormData({
             contractKind: contract.contractKind || 'provider',
             equityPercentage: contract.equityPercentage || 0,
+            providesCare: contract.providesCare === true,
             providerName: contract.providerName,
             personType: contract.personType || 'PJ',
             cpf: contract.cpf || '',
@@ -1100,6 +1114,10 @@ const ContractsView: React.FC = () => {
                                                 <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
                                                     <p className="font-bold text-amber-900">Cadastro societário</p>
                                                     <p className="mt-1 text-sm text-amber-800">O sócio ficará disponível na seleção de responsável pelas notas fiscais e no rateio de impostos.</p>
+                                                    <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-amber-200 bg-white p-3">
+                                                        <input type="checkbox" checked={formData.providesCare} onChange={event => setFormData({ ...formData, providesCare: event.target.checked })} className="mt-1 h-4 w-4 accent-teal-700" />
+                                                        <span><strong className="block text-slate-900">Este sócio também realiza atendimentos</strong><span className="mt-0.5 block text-sm text-slate-600">Ao ativar, ele aparecerá como profissional na Agenda e na Recepção/Caixa.</span></span>
+                                                    </label>
                                                 </div>
                                             )}
                                             <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">

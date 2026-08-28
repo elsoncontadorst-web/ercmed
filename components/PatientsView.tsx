@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Search, Edit2, X, Check, Calendar, Phone, Mail, MapPin, AlertCircle, CheckCircle2, RefreshCw, Trash2, Building2 } from 'lucide-react';
+import { Users, Plus, Search, Edit2, X, Check, Calendar, Phone, Mail, MapPin, AlertCircle, CheckCircle2, RefreshCw, Trash2, Building2, UserPlus } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { addPatient, getAllPatients, updatePatient, searchPatients, deletePatient } from '../services/healthService';
 import { getClinics } from '../services/clinicService';
@@ -11,7 +11,7 @@ import { AccountTier, TIER_CONFIG } from '../types/accountTiers';
 import { Lock } from 'lucide-react';
 import { formatCPF, formatPhone } from '../utils/formatters';
 import { ACTIVE_CLINIC_CHANGED_EVENT, getActiveClinicScopeId } from '../services/activeClinicStorage';
-import { getClients } from '../services/clientService';
+import { getClients, saveClient } from '../services/clientService';
 import { getManagerIdForUser } from '../services/accessControlService';
 import type { Client } from '../types/client';
 
@@ -28,6 +28,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
+    const [managerId, setManagerId] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
     const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -93,6 +96,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                 setPatients(clinicScopedPatients);
                 setFilteredPatients(clinicScopedPatients);
                 const managerId = (await getManagerIdForUser(user.uid)) || user.uid;
+                setManagerId(managerId);
                 setClients(await getClients(managerId, activeClinicId || undefined));
 
                 // Load Clinics
@@ -300,6 +304,68 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
         setShowModal(true);
     };
 
+    const digits = (value?: string) => String(value || '').replace(/\D/g, '');
+    const importableClients = clients.filter(client => {
+        const taxId = digits(client.taxId);
+        if (taxId.length === 14 || client.patientId) return false;
+        return !patients.some(patient => patient.clientId === client.id || (taxId.length === 11 && digits(patient.cpf) === taxId));
+    });
+
+    const openClientImport = () => {
+        setSelectedClientIds(new Set());
+        setShowImportModal(true);
+    };
+
+    const toggleClientSelection = (clientId: string) => {
+        setSelectedClientIds(current => {
+            const next = new Set(current);
+            if (next.has(clientId)) next.delete(clientId); else next.add(clientId);
+            return next;
+        });
+    };
+
+    const importSelectedClients = async () => {
+        const selected = importableClients.filter(client => selectedClientIds.has(client.id));
+        if (!selected.length || !managerId) return;
+        const clinicId = activeClinicId || clinics[0]?.id;
+        if (!clinicId) {
+            setNotification({ type: 'error', message: 'Selecione uma clínica antes de importar pacientes.' });
+            return;
+        }
+        const tier = userProfile?.accountTier as AccountTier;
+        if (tier === AccountTier.TRIAL) {
+            const limit = TIER_CONFIG[AccountTier.TRIAL].maxPatients || 10;
+            if (patients.length + selected.length > limit) {
+                setNotification({ type: 'error', message: `A seleção ultrapassa o limite de ${limit} pacientes do plano de teste.` });
+                return;
+            }
+        }
+        setLoading(true);
+        try {
+            let imported = 0;
+            for (const client of selected) {
+                const taxId = digits(client.taxId);
+                const address = [client.street, client.number, client.complement, client.neighborhood, client.city, client.state].filter(Boolean).join(', ');
+                const patientId = await addPatient({
+                    name: client.name, ...(taxId.length === 11 ? { cpf: taxId } : {}), birthdate: '',
+                    phone: client.phone || '', ...(client.email ? { email: client.email } : {}), ...(address ? { address } : {}),
+                    clinicId, clientId: client.id, isMinor: false, active: true,
+                });
+                if (!patientId) continue;
+                const { id, createdAt, updatedAt, ...clientInput } = client;
+                await saveClient(managerId, { ...clientInput, patientId }, id);
+                imported += 1;
+            }
+            setShowImportModal(false);
+            setSelectedClientIds(new Set());
+            await loadData();
+            setNotification({ type: 'success', message: `${imported} cliente(s) incluído(s) como paciente(s) e vinculados com sucesso.` });
+        } catch (error) {
+            console.error('Erro ao importar clientes como pacientes:', error);
+            setNotification({ type: 'error', message: 'Não foi possível concluir toda a importação.' });
+        } finally { setLoading(false); }
+    };
+
     const age = formData.birthdate ? calculateAge(formData.birthdate) : null;
     const showGuardianFields = age !== null && age < 18;
 
@@ -322,6 +388,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                         Atualizar
+                    </button>
+                    <button onClick={openClientImport} className="px-4 py-2 rounded-lg flex items-center gap-2 border border-teal-200 bg-teal-50 text-teal-700 font-semibold hover:bg-teal-100">
+                        <UserPlus className="w-4 h-4" /> Importar clientes
                     </button>
                     <button
                         onClick={() => {
@@ -382,6 +451,17 @@ const PatientsView: React.FC<PatientsViewProps> = ({ setView }) => {
                     return <article key={patient.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-bold text-slate-900">{patient.name}</h3><p className="text-xs text-slate-500">{patient.cpf ? `CPF: ${patient.cpf}` : 'CPF não informado'}</p></div><div className="flex shrink-0"><button aria-label="Editar paciente" onClick={() => handleEdit(patient)} className="rounded-lg bg-brand-50 p-2 text-brand-600"><Edit2 className="h-4 w-4"/></button>{(userProfile?.isClinicManager === true || userProfile?.accountTier === AccountTier.UNLIMITED) && <button aria-label="Excluir paciente" onClick={() => handleDelete(patient.id)} className="ml-1 rounded-lg bg-red-50 p-2 text-red-500"><Trash2 className="h-4 w-4"/></button>}</div></div><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-slate-400">Idade</p><p>{patientAge === null ? 'Não informada' : `${patientAge} anos`}</p></div><div><p className="text-xs text-slate-400">Telefone</p><p className="truncate">{patient.phone || '—'}</p></div><div className="col-span-2"><p className="text-xs text-slate-400">Clínica</p><p className="truncate text-blue-700">{patientClinic?.name || 'Geral'}</p></div></div></article>;
                 })}
             </div>
+
+            {showImportModal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+                    <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+                        <div className="flex items-start justify-between border-b p-5"><div><h2 className="text-xl font-bold text-slate-900">Incluir clientes como pacientes</h2><p className="mt-1 text-sm text-slate-500">Selecione várias pessoas físicas para criar e vincular os cadastros de uma só vez.</p></div><button onClick={() => setShowImportModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5"/></button></div>
+                        <div className="border-b bg-slate-50 px-5 py-3"><label className="flex cursor-pointer items-center gap-3 text-sm font-bold text-slate-700"><input type="checkbox" checked={importableClients.length > 0 && selectedClientIds.size === importableClients.length} onChange={event => setSelectedClientIds(event.target.checked ? new Set(importableClients.map(client => client.id)) : new Set())} className="h-4 w-4 accent-teal-700"/>Selecionar todos os {importableClients.length} clientes disponíveis</label></div>
+                        <div className="flex-1 space-y-2 overflow-y-auto p-5">{importableClients.length ? importableClients.map(client => <label key={client.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${selectedClientIds.has(client.id) ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:bg-slate-50'}`}><input type="checkbox" checked={selectedClientIds.has(client.id)} onChange={() => toggleClientSelection(client.id)} className="h-4 w-4 accent-teal-700"/><span className="min-w-0 flex-1"><strong className="block truncate text-slate-900">{client.name}</strong><span className="text-xs text-slate-500">{client.taxId || 'CPF não informado'}{client.phone ? ` • ${client.phone}` : ''}</span></span></label>) : <div className="py-12 text-center"><CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-400"/><p className="font-bold text-slate-700">Todos os clientes elegíveis já são pacientes</p><p className="mt-1 text-sm text-slate-500">Cadastros com CNPJ não são exibidos nesta importação.</p></div>}</div>
+                        <div className="flex items-center justify-between border-t bg-white p-5"><p className="text-sm font-semibold text-slate-600">{selectedClientIds.size} selecionado(s)</p><div className="flex gap-2"><button onClick={() => setShowImportModal(false)} className="rounded-xl border px-4 py-2.5 font-bold text-slate-600">Cancelar</button><button disabled={loading || selectedClientIds.size === 0} onClick={() => void importSelectedClients()} className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-5 py-2.5 font-bold text-white disabled:opacity-50">{loading ? <RefreshCw className="h-4 w-4 animate-spin"/> : <UserPlus className="h-4 w-4"/>}Incluir como pacientes</button></div></div>
+                    </div>
+                </div>
+            )}
             <div className="hidden overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm md:block">
                 <table className="w-full min-w-[900px] text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">

@@ -35,6 +35,7 @@ import {
   Percent,
   Pill,
   Receipt,
+  CreditCard,
   RefreshCw,
   Search,
   Settings,
@@ -150,6 +151,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
   const desktopNavRef = useRef<HTMLElement | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
   const itemRefs = useRef<Partial<Record<AppView, HTMLButtonElement | null>>>({});
+  const roleLandingAppliedRef = useRef(false);
 
   const registerItemRef = (view: AppView) => (element: HTMLButtonElement | null) => {
     itemRefs.current[view] = element;
@@ -261,12 +263,26 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         { view: AppView.NFSE, label: 'Notas', icon: Receipt },
         { view: AppView.ACCOUNTS_RECEIVABLE, label: 'Financeiro', icon: DollarSign },
       ]
+    : (userRole as string) === 'receptionist'
+      ? [
+        { view: AppView.RECEPTION_CASHIER, label: 'Recepção', icon: CreditCard },
+        { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
+        { view: AppView.PATIENTS, label: 'Pacientes', icon: Users },
+      ]
     : [
         { view: AppView.HEALTH_DASHBOARD, label: 'Início', icon: LayoutDashboard },
         { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
         { view: AppView.PATIENTS, label: 'Pacientes', icon: Users },
         { view: AppView.ACCOUNTS_RECEIVABLE, label: 'Financeiro', icon: DollarSign },
       ]).filter(item => item.view === AppView.ACCOUNTANT_MODULE || canAccessView(item.view, userRole, permissions, isAdmin));
+
+  useEffect(() => {
+    if (userLoading || roleLandingAppliedRef.current) return;
+    roleLandingAppliedRef.current = true;
+    if ((userRole as string) === 'receptionist' && currentView === AppView.HEALTH_DASHBOARD) {
+      setView(AppView.RECEPTION_CASHIER);
+    }
+  }, [currentView, setView, userLoading, userRole]);
 
   useEffect(() => {
     if (!userLoading && !canAccessCurrentView) {
@@ -280,11 +296,13 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView }) => {
         title: 'Operação',
         icon: ClipboardList,
         items: [
+          { view: AppView.RECEPTION_CASHIER, label: 'Recepção / Caixa', icon: CreditCard },
           { view: AppView.APPOINTMENTS, label: 'Agenda', icon: Calendar },
           { view: AppView.PATIENTS, label: 'Cadastro de Pacientes', icon: Users },
           { view: AppView.CLIENTS, label: 'Clientes', icon: UserRound },
           { view: AppView.NFSE, label: 'Notas Fiscais', icon: Receipt },
           { view: AppView.ATTENDANCES, label: 'Controle de Atendimentos', icon: ClipboardList },
+          { view: AppView.RECEIPTS, label: 'Recibos', icon: Receipt },
           { view: AppView.PRODUCTION_ENTRY, label: 'Portal de Produção Profissional', icon: Briefcase },
         ],
       },

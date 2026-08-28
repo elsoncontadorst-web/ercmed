@@ -22,6 +22,9 @@ export interface Receipt {
     // Optional fields
     notes?: string;
     relatedAppointmentId?: string; // Link to appointment if applicable
+    professionalName?: string;
+    clinicId?: string;
+    paymentDate?: string;
 
     createdAt: any;
     updatedAt: any;

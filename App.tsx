@@ -65,6 +65,7 @@ const PersonalDashboard = safeLazy(() => import('./components/PersonalDashboard'
 const RepasseDashboard = safeLazy(() => import('./components/RepasseDashboard'), 'repasse_dashboard');
 const ContractsView = safeLazy(() => import('./components/ContractsView').then(module => ({ default: module.default })), 'contracts');
 const AppointmentsView = safeLazy(() => import('./components/AppointmentsView'), 'appointments');
+const ReceptionCashierView = safeLazy(() => import('./components/ReceptionCashierView'), 'reception_cashier');
 const ProductionEntryView = safeLazy(() => import('./components/ProductionEntryView'), 'production_entry');
 const EMRView = safeLazy(() => import('./components/EMRView'), 'emr');
 const InventoryView = safeLazy(() => import('./components/InventoryView'), 'inventory');
@@ -275,6 +276,8 @@ function App() {
               return <ClientsView />;
             case AppView.APPOINTMENTS:
               return <AppointmentsView />;
+            case AppView.RECEPTION_CASHIER:
+              return <ReceptionCashierView setView={setView} />;
             case AppView.ATTENDANCES:
               return <AttendancesView setView={setView} />;
             case AppView.PRODUCTION_ENTRY:

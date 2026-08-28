@@ -359,6 +359,13 @@ service cloud.firestore {
         allow read, write: if isAuthenticated() && isClinicMember(userId);
       }
 
+      // Agenda-safe directory. It intentionally contains only public care
+      // fields, keeping contracts, banking and partner percentages private.
+      match /scheduling_professionals/{docId} {
+        allow read: if isAuthenticated() && isClinicMember(userId);
+        allow write: if isOwner(userId);
+      }
+
       match /service_catalog/{docId} {
         allow read, write: if isAuthenticated() && isClinicMember(userId);
       }

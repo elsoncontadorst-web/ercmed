@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Receipt as ReceiptIcon, Plus, Search, Printer, Trash2, FileText, Calendar, DollarSign, User, X } from 'lucide-react';
+import { Receipt as ReceiptIcon, Plus, Search, Printer, Trash2, FileText, Calendar, DollarSign, User, X, MessageCircle, Download } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { Receipt, ReceiptFormData } from '../types/receipts';
 import { getReceipts, addReceipt, deleteReceipt, numberToWords } from '../services/receiptsService';
@@ -10,6 +10,10 @@ import { Professional } from '../types/finance';
 import { useUser } from '../contexts/UserContext';
 import { jsPDF } from 'jspdf';
 import { getManagerIdForUser } from '../services/accessControlService';
+import { getClinics } from '../services/clinicService';
+import { getActiveClinicScopeId } from '../services/activeClinicStorage';
+import { Clinic } from '../types/clinic';
+import QRCode from 'qrcode';
 
 const ReceiptsView: React.FC = () => {
     const { user, userProfile, isAdminMaster, isAdmin } = useUser();
@@ -22,6 +26,8 @@ const ReceiptsView: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [receiptOwnerId, setReceiptOwnerId] = useState('');
+    const [clinics, setClinics] = useState<Clinic[]>([]);
     const [formData, setFormData] = useState<ReceiptFormData>({
         patientName: '',
         patientCpf: '',
@@ -120,14 +126,17 @@ const ReceiptsView: React.FC = () => {
 
         setLoading(true);
         try {
-            const managerId = isAdminMaster ? undefined : await getManagerIdForUser(user.uid);
+            const managerId = isAdminMaster ? user.uid : (await getManagerIdForUser(user.uid)) || user.uid;
+            setReceiptOwnerId(managerId);
 
-            const [receiptsData, patientsData] = await Promise.all([
-                getReceipts(user.uid),
-                getAllPatients(managerId)
+            const [receiptsData, patientsData, clinicItems] = await Promise.all([
+                getReceipts(managerId),
+                getAllPatients(managerId),
+                getClinics(managerId)
             ]);
             setReceipts(receiptsData);
             setPatients(patientsData);
+            setClinics(clinicItems);
         } catch (error) {
             console.error('Error loading data:', error);
             alert('Erro ao carregar dados.');
@@ -210,84 +219,56 @@ const ReceiptsView: React.FC = () => {
         }
     };
 
-    const generatePDF = async (receipt: Receipt) => {
-        const user = auth.currentUser;
-        if (!user) return;
+    const receiptClinic = (receipt: Receipt) => clinics.find(item => item.id === receipt.clinicId) || clinics.find(item => item.id === getActiveClinicScopeId()) || clinics[0];
+    const receiptDate = (value: string) => new Date(`${value.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR');
+    const clinicAddress = (clinic?: Clinic) => clinic ? `${clinic.address.street}, ${clinic.address.number} - ${clinic.address.neighborhood}, ${clinic.address.city}/${clinic.address.state} - CEP ${clinic.address.zipCode}` : '';
+    const codeFor = (receipt: Receipt) => `${receipt.id.slice(0, 4)}-${receipt.receiptNumber.replace('/', '-')}`.toUpperCase();
 
+    const buildVisualReceipt = async (receipt: Receipt) => {
+        const clinic = receiptClinic(receipt);
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        const teal: [number, number, number] = [5, 105, 100];
+        const pale: [number, number, number] = [239, 250, 248];
+        const amountWords = numberToWords(receipt.amount);
+        doc.setTextColor(...teal); doc.setFont('helvetica', 'bold'); doc.setFontSize(19); doc.text(clinic?.name || 'Clínica', 16, 18);
+        doc.setTextColor(30, 41, 59); doc.setFontSize(16); doc.text('RECIBO', 194, 17, { align: 'right' }); doc.setFontSize(10); doc.text(`Nº ${receipt.receiptNumber}`, 194, 24, { align: 'right' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(clinicAddress(clinic), 16, 28, { maxWidth: 120 });
+        if (clinic?.cnpj) doc.text(`CNPJ: ${clinic.cnpj}`, 16, 36); if (clinic?.phone) doc.text(`Telefone: ${clinic.phone}`, 80, 36);
+        doc.setFillColor(...pale); doc.setDrawColor(190, 225, 220); doc.roundedRect(16, 45, 178, 42, 3, 3, 'FD');
+        doc.setTextColor(...teal); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('VALOR RECEBIDO', 105, 56, { align: 'center' });
+        doc.setFontSize(29); doc.text(receipt.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), 105, 72, { align: 'center' });
+        doc.setTextColor(51, 65, 85); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(amountWords.charAt(0).toUpperCase() + amountWords.slice(1), 105, 81, { align: 'center' });
+        const box = (x: number, y: number, w: number, h: number, title: string) => { doc.setDrawColor(210, 225, 225); doc.roundedRect(x, y, w, h, 2, 2); doc.setTextColor(...teal); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(title, x + 7, y + 10); };
+        box(16, 94, 86, 42, 'PAGADOR'); box(108, 94, 86, 42, 'ATENDIMENTO');
+        doc.setTextColor(20, 25, 35); doc.setFontSize(10); doc.text(receipt.patientName, 23, 113, { maxWidth: 72 }); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); if (receipt.patientCpf) doc.text(`CPF: ${receipt.patientCpf}`, 23, 126);
+        doc.text(`Serviço: ${receipt.description}`, 115, 112, { maxWidth: 72 }); doc.text(`Profissional: ${receipt.professionalName || 'Não informado'}`, 115, 121, { maxWidth: 72 }); doc.text(`Atendimento: ${receiptDate(receipt.referenceDate)}`, 115, 131);
+        box(16, 143, 178, 38, 'PAGAMENTO'); doc.setTextColor(20, 25, 35); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(`Forma: ${getPaymentMethodLabel(receipt.paymentMethod)}`, 23, 162); doc.text(`Valor pago: ${receipt.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 74, 162); doc.text(`Data: ${receiptDate(receipt.paymentDate || receipt.issueDate)}`, 128, 162); doc.setTextColor(0, 125, 80); doc.setFont('helvetica', 'bold'); doc.text('PAGO', 177, 162, { align: 'center' });
+        doc.setFillColor(248, 250, 252); doc.setDrawColor(220, 228, 232); doc.roundedRect(16, 188, 178, 28, 2, 2, 'FD'); doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); const declaration = `Declaramos ter recebido de ${receipt.patientName}${receipt.patientCpf ? `, CPF nº ${receipt.patientCpf}` : ''}, a importância de ${receipt.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${amountWords}), referente ao serviço acima descrito.`; doc.text(doc.splitTextToSize(declaration, 160), 25, 198);
+        const validationUrl = `https://ercmed.com.br/#/validar-recibo/${encodeURIComponent(receipt.id)}`; const qr = await QRCode.toDataURL(validationUrl, { margin: 1, width: 220 });
+        doc.setTextColor(...teal); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('RECEBEDOR', 20, 229); doc.setTextColor(20, 25, 35); doc.text(clinic?.name || 'Clínica', 20, 240); doc.setFont('helvetica', 'normal'); if (clinic?.cnpj) doc.text(`CNPJ: ${clinic.cnpj}`, 20, 248); doc.line(20, 263, 95, 263); doc.setFontSize(8); doc.text('Assinatura do responsável', 57, 268, { align: 'center' });
+        doc.setTextColor(...teal); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('VERIFIQUE A AUTENTICIDADE', 119, 229); doc.addImage(qr, 'PNG', 145, 234, 30, 30); doc.setTextColor(60, 70, 80); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(`Código: ${codeFor(receipt)}`, 119, 270);
+        doc.setFillColor(...teal); doc.rect(0, 279, 210, 18, 'F'); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('✚ ERCMed', 16, 290); doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.text(`Documento eletrônico emitido em ${receiptDate(receipt.issueDate)} · ercmed.com.br`, 194, 290, { align: 'right' });
+        return doc;
+    };
+
+    const shareReceipt = async (receipt: Receipt) => {
         try {
-            const doc = new jsPDF();
-            const pageWidth = doc.internal.pageSize.getWidth();
+            const doc = await buildVisualReceipt(receipt); const blob = doc.output('blob'); const filename = `recibo-${receipt.receiptNumber.replace('/', '-')}.pdf`; const file = new File([blob], filename, { type: 'application/pdf' });
+            if (navigator.share && navigator.canShare?.({ files: [file] })) await navigator.share({ title: `Recibo ${receipt.receiptNumber}`, text: `Olá, ${receipt.patientName}. Segue seu recibo de pagamento.`, files: [file] });
+            else { doc.save(filename); window.open(`https://wa.me/?text=${encodeURIComponent(`Olá, ${receipt.patientName}. Seu recibo ${receipt.receiptNumber} foi gerado. Anexe o PDF baixado nesta conversa.`)}`, '_blank', 'noopener,noreferrer'); }
+        } catch (error) { if ((error as Error)?.name !== 'AbortError') alert('Não foi possível compartilhar o recibo.'); }
+    };
 
-            // Header
-            doc.setFontSize(20);
-            doc.setFont('helvetica', 'bold');
-            doc.text('RECIBO DE PAGAMENTO', pageWidth / 2, 20, { align: 'center' });
+    const downloadVisualReceipt = async (receipt: Receipt) => (await buildVisualReceipt(receipt)).save(`recibo-${receipt.receiptNumber.replace('/', '-')}.pdf`);
 
-            // Receipt number
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            doc.text(`Nº ${receipt.receiptNumber}`, pageWidth - 20, 20, { align: 'right' });
-
-            // Amount box
-            doc.setFontSize(16);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`R$ ${receipt.amount.toFixed(2).replace('.', ',')}`, pageWidth / 2, 40, { align: 'center' });
-
-            // Amount in words
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'italic');
-            const amountInWords = numberToWords(receipt.amount);
-            doc.text(`(${amountInWords})`, pageWidth / 2, 50, { align: 'center' });
-
-            // Content
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'normal');
-            let yPos = 70;
-
-            doc.text(`Recebi de: ${receipt.patientName}`, 20, yPos);
-            yPos += 10;
-
-            if (receipt.patientCpf) {
-                doc.text(`CPF: ${receipt.patientCpf}`, 20, yPos);
-                yPos += 10;
-            }
-
-            yPos += 5;
-            doc.text(`Referente a: ${receipt.description}`, 20, yPos);
-            yPos += 10;
-
-            doc.text(`Forma de pagamento: ${getPaymentMethodLabel(receipt.paymentMethod)}`, 20, yPos);
-            yPos += 10;
-
-            doc.text(`Data do serviço: ${new Date(receipt.referenceDate).toLocaleDateString('pt-BR')}`, 20, yPos);
-            yPos += 10;
-
-            if (receipt.notes) {
-                yPos += 5;
-                doc.setFontSize(10);
-                doc.text(`Observações: ${receipt.notes}`, 20, yPos);
-                yPos += 10;
-            }
-
-            // Footer
-            yPos = doc.internal.pageSize.getHeight() - 60;
-            doc.text(`${user.displayName || 'Profissional'}`, pageWidth / 2, yPos, { align: 'center' });
-            yPos += 5;
-            doc.line(pageWidth / 2 - 40, yPos, pageWidth / 2 + 40, yPos);
-            yPos += 5;
-            doc.setFontSize(10);
-            doc.text('Assinatura', pageWidth / 2, yPos, { align: 'center' });
-
-            yPos += 15;
-            doc.setFontSize(9);
-            doc.text(`Emitido em: ${new Date(receipt.issueDate).toLocaleDateString('pt-BR')}`, pageWidth / 2, yPos, { align: 'center' });
-
-            // Save
-            doc.save(`recibo-${receipt.receiptNumber.replace('/', '-')}.pdf`);
-        } catch (error) {
-            console.error('Error generating PDF:', error);
-            alert('Erro ao gerar PDF.');
-        }
+    const printThermalReceipt = (receipt: Receipt) => {
+        const clinic = receiptClinic(receipt); const doc = new jsPDF({ unit: 'mm', format: [80, 220] }); const center = 40; let y = 9; const line = () => { doc.setLineDashPattern([1.5, 1.5], 0); doc.line(5, y, 75, y); y += 7; };
+        doc.setTextColor(0); doc.setFont('courier', 'bold'); doc.setFontSize(13); doc.text((clinic?.name || 'CLÍNICA').toUpperCase(), center, y, { align: 'center', maxWidth: 70 }); y += 8; doc.setFontSize(9); if (clinic?.cnpj) { doc.text(`CNPJ: ${clinic.cnpj}`, center, y, { align: 'center' }); y += 5; } if (clinic?.phone) { doc.text(`TEL: ${clinic.phone}`, center, y, { align: 'center' }); y += 6; } line();
+        doc.setFontSize(15); doc.text('RECIBO DE PAGAMENTO', center, y, { align: 'center' }); y += 7; doc.setFontSize(11); doc.text(`Nº ${receipt.receiptNumber}`, center, y, { align: 'center' }); y += 7; line(); doc.setFontSize(11); doc.text('VALOR RECEBIDO', center, y, { align: 'center' }); y += 9; doc.setFontSize(20); doc.text(receipt.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), center, y, { align: 'center' }); y += 8; doc.setFontSize(9); doc.text(`(${numberToWords(receipt.amount)})`, center, y, { align: 'center', maxWidth: 68 }); y += 8; line();
+        const field = (label: string, value: string) => { doc.setFont('courier', 'bold'); doc.setFontSize(9); doc.text(label, 5, y); y += 5; doc.setFont('courier', 'normal'); doc.text(doc.splitTextToSize(value.toUpperCase(), 70), 5, y); y += Math.max(6, doc.splitTextToSize(value, 70).length * 4.5); line(); };
+        field('RECEBIDO DE:', receipt.patientName + (receipt.patientCpf ? `\nCPF: ${receipt.patientCpf}` : '')); field('REFERENTE A:', receipt.description); field('PROFISSIONAL:', receipt.professionalName || 'Não informado'); field('FORMA DE PAGAMENTO:', getPaymentMethodLabel(receipt.paymentMethod)); field('DATA DO ATENDIMENTO:', receiptDate(receipt.referenceDate)); field('DATA DO PAGAMENTO:', new Date(receipt.paymentDate || `${receipt.issueDate}T12:00:00`).toLocaleString('pt-BR'));
+        doc.setFont('courier', 'bold'); doc.setFontSize(10); doc.text('Obrigado pela confiança!', center, y, { align: 'center' }); y += 5; doc.setFont('courier', 'normal'); doc.text('Volte sempre!', center, y, { align: 'center' }); y += 7; line(); doc.setFontSize(8); doc.text('✚ ERCMed', 5, y); doc.text('RECIBO SEM VALOR FISCAL', 75, y, { align: 'right' }); y += 5; doc.setFontSize(7); doc.text('Documento emitido pelo ERCMed.', center, y, { align: 'center' });
+        doc.autoPrint(); window.open(doc.output('bloburl').toString(), '_blank', 'noopener,noreferrer');
     };
 
     const resetForm = () => {
@@ -406,9 +387,23 @@ const ReceiptsView: React.FC = () => {
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
                                                 <button
-                                                    onClick={() => generatePDF(receipt)}
+                                                    onClick={() => shareReceipt(receipt)}
+                                                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                                    title="Enviar pelo WhatsApp"
+                                                >
+                                                    <MessageCircle className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => downloadVisualReceipt(receipt)}
                                                     className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                                    title="Imprimir PDF"
+                                                    title="Baixar recibo em PDF"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => printThermalReceipt(receipt)}
+                                                    className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                                    title="Imprimir em impressora não fiscal"
                                                 >
                                                     <Printer className="w-4 h-4" />
                                                 </button>
