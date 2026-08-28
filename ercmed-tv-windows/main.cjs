@@ -49,16 +49,23 @@ const showOverlay = async commandValue => {
   const command = parseCommand(commandValue);
   const bounds = getTvDisplay().bounds;
   openEdge(command, bounds);
+  const panelWidth = Math.max(320, Math.round(bounds.width * 0.28));
+  const panelBounds = {
+    x: bounds.x + bounds.width - panelWidth,
+    y: bounds.y,
+    width: panelWidth,
+    height: bounds.height,
+  };
 
   if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
   overlayWindow = new BrowserWindow({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
+    x: panelBounds.x,
+    y: panelBounds.y,
+    width: panelBounds.width,
+    height: panelBounds.height,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: false,
+    backgroundColor: '#0b252e',
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
