@@ -32,12 +32,14 @@ const openEdge = ({ tvUrl }, bounds) => {
     path.join(process.env.ProgramFiles || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
   ];
   const edge = candidates.find(candidate => candidate && fs.existsSync(candidate)) || 'msedge.exe';
+  const edgeProfile = path.join(app.getPath('userData'), 'edge-tv-profile');
   const args = [
-    '--new-window',
+    `--user-data-dir=${edgeProfile}`,
+    '--no-first-run',
+    '--disable-features=msEdgeSidebarV2',
     `--window-position=${bounds.x},${bounds.y}`,
     `--window-size=${bounds.width},${bounds.height}`,
-    '--start-fullscreen',
-    tvUrl,
+    `--app=${tvUrl}`,
   ];
   const child = spawn(edge, args, { detached: true, stdio: 'ignore' });
   child.on('error', error => console.error('Não foi possível abrir o Microsoft Edge:', error));

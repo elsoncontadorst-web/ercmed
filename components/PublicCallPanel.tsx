@@ -4,11 +4,12 @@ import { useParams } from 'react-router-dom';
 import { listenPublicCallPanel } from '../services/callPanelService';
 import { PublicCallPanel as PanelData } from '../types/callPanel';
 
-const speakTicket = (ticket: string, destination: string) => {
+const speakTicket = (ticket: string, patientName: string | undefined, destination: string) => {
   if (!('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
   const spacedTicket = ticket.split('').join(' ');
-  const utterance = new SpeechSynthesisUtterance(`Senha ${spacedTicket}. Dirija-se a ${destination}.`);
+  const patient = patientName?.trim() ? `${patientName.trim()}. ` : '';
+  const utterance = new SpeechSynthesisUtterance(`Senha ${spacedTicket}. ${patient}Dirija-se a ${destination}.`);
   utterance.lang = 'pt-BR'; utterance.rate = 0.88; utterance.pitch = 1;
   window.speechSynthesis.speak(utterance);
 };
@@ -35,7 +36,7 @@ const PublicCallPanel: React.FC = () => {
     const call = panel?.currentCall;
     if (!call || call.callId === lastCallId.current) return;
     lastCallId.current = call.callId;
-    if (soundEnabled) speakTicket(call.ticketNumber, call.destination);
+    if (soundEnabled) speakTicket(call.ticketNumber, call.patientName, call.destination);
   }, [panel?.currentCall?.callId, soundEnabled]);
 
   const activateSound = () => {
@@ -60,10 +61,10 @@ const PublicCallPanel: React.FC = () => {
           allow="autoplay; encrypted-media; picture-in-picture"
           allowFullScreen
         /> : !overlayMode && <><div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_20%_20%,#2dd4bf_0,transparent_28%),radial-gradient(circle_at_80%_75%,#38bdf8_0,transparent_25%)]"/><div className="relative max-w-3xl text-center"><MonitorUp className="mx-auto mb-7 h-24 w-24 text-teal-300/80"/><h2 className="text-5xl font-black">Configure a TV da clínica</h2><p className="mt-5 text-2xl text-slate-300">Cole um link do YouTube na tela Recepção / Caixa.</p></div></>}
-        {callIsFresh && <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/80 p-10 backdrop-blur-sm"><div className="w-full max-w-4xl animate-pulse rounded-[2rem] border border-teal-300/50 bg-[#0b2932] p-12 text-center shadow-2xl"><p className="mb-4 text-2xl font-black uppercase tracking-[0.35em] text-teal-300">Chamando</p><p className="text-[clamp(6rem,16vw,13rem)] font-black leading-none tracking-tight">{panel?.currentCall?.ticketNumber}</p><p className="mt-7 text-[clamp(2rem,5vw,4rem)] font-extrabold text-amber-300">{panel?.currentCall?.destination}</p>{panel?.currentCall?.professionalName && <p className="mt-3 text-2xl text-slate-200">{panel.currentCall.professionalName}</p>}</div></div>}
+        {callIsFresh && <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/80 p-10 backdrop-blur-sm"><div className="w-full max-w-4xl animate-pulse rounded-[2rem] border border-teal-300/50 bg-[#0b2932] p-12 text-center shadow-2xl"><p className="mb-4 text-2xl font-black uppercase tracking-[0.35em] text-teal-300">Chamando</p><p className="text-[clamp(6rem,16vw,13rem)] font-black leading-none tracking-tight">{panel?.currentCall?.ticketNumber}</p>{panel?.currentCall?.patientName && <p className="mt-5 text-[clamp(2rem,5vw,4rem)] font-extrabold text-white">{panel.currentCall.patientName}</p>}<p className="mt-7 text-[clamp(2rem,5vw,4rem)] font-extrabold text-amber-300">{panel?.currentCall?.destination}</p>{panel?.currentCall?.professionalName && <p className="mt-3 text-2xl text-slate-200">{panel.currentCall.professionalName}</p>}</div></div>}
       </section>
       <aside className={`relative overflow-y-auto border-l border-white/10 p-4 lg:p-6 ${overlayMode ? 'bg-[#0b252e]' : 'bg-[#0b252e]'}`}>
-        {callIsFresh && <div className="mb-5 rounded-2xl border border-teal-300 bg-teal-400/10 p-5 text-center lg:hidden"><p className="text-sm font-black uppercase tracking-[0.25em] text-teal-300">Chamando</p><p className="mt-2 text-7xl font-black">{panel?.currentCall?.ticketNumber}</p><p className="mt-3 text-2xl font-black text-amber-300">{panel?.currentCall?.destination}</p></div>}
+        {callIsFresh && <div className="mb-5 rounded-2xl border border-teal-300 bg-teal-400/10 p-5 text-center lg:hidden"><p className="text-sm font-black uppercase tracking-[0.25em] text-teal-300">Chamando</p><p className="mt-2 text-7xl font-black">{panel?.currentCall?.ticketNumber}</p>{panel?.currentCall?.patientName && <p className="mt-3 text-2xl font-black text-white">{panel.currentCall.patientName}</p>}<p className="mt-3 text-2xl font-black text-amber-300">{panel?.currentCall?.destination}</p></div>}
         <h2 className="mb-5 flex items-center gap-2 text-lg font-black uppercase tracking-wider text-slate-200"><Clock3 className="h-5 w-5 text-teal-300"/>Últimas chamadas</h2><div className="space-y-3">{panel?.recentCalls?.length ? panel.recentCalls.map((call, index) => <div key={call.callId} className={`rounded-2xl border p-4 ${index === 0 ? 'border-teal-400 bg-teal-400/10' : 'border-white/10 bg-white/5'}`}><div className="flex items-center justify-between gap-3"><span className="text-4xl font-black">{call.ticketNumber}</span><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-300">{new Date(call.calledAtMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></div><p className="mt-2 text-lg font-bold text-amber-300">{call.destination}</p></div>) : <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-slate-400">As chamadas aparecerão aqui.</p>}</div><footer className="mt-8 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Tecnologia ERCMed</footer></aside>
     </div>
   </main>;

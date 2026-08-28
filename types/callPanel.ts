@@ -22,6 +22,7 @@ export interface CallTicket {
 
 export interface PublicCall {
   ticketNumber: string;
+  patientName?: string;
   destination: string;
   professionalName?: string;
   calledAtMs: number;

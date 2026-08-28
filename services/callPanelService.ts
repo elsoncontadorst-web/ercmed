@@ -113,13 +113,15 @@ export const callTicket = async (
     const panel = panelSnapshot.data() as PublicCallPanel | undefined;
     const call: PublicCall = {
       ticketNumber: ticket.ticketNumber,
+      patientName: ticket.patientName || '',
       destination: ticket.destination,
       professionalName: ticket.professionalName || '',
       calledAtMs: Date.now(),
       callId: `${ticket.id}-${Date.now()}`,
     };
-    const previous = panel?.recentCalls || [];
-    const recentCalls = [call, ...previous.filter(item => item.ticketNumber !== call.ticketNumber)].slice(0, 6);
+    const { patientName: _privateName, ...historicalCall } = call;
+    const previous = (panel?.recentCalls || []).map(({ patientName: _name, ...item }) => item);
+    const recentCalls = [historicalCall, ...previous.filter(item => item.ticketNumber !== call.ticketNumber)].slice(0, 6);
     transaction.update(ticketRef, { status: 'called', calledAt: serverTimestamp(), updatedAt: serverTimestamp() });
     transaction.set(panelRef, { ownerId, clinicName: clinicName || 'Clínica', currentCall: call, recentCalls, updatedAtMs: Date.now() }, { merge: true });
   });
