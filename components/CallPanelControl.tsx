@@ -91,13 +91,23 @@ const CallPanelControl: React.FC<Props> = ({ ownerId, clinicId, clinicName, appo
       const panelUrl = `${window.location.origin}/painel/${encodeURIComponent(panelId)}`;
       const tvFeatures = `popup=yes,left=${target.availLeft},top=${target.availTop},width=${tvWidth},height=${target.availHeight}`;
       const panelFeatures = `popup=yes,left=${target.availLeft + tvWidth},top=${target.availTop},width=${panelWidth},height=${target.availHeight}`;
-      const tvWindow = window.open('https://globoplay.globo.com/tv-globo/ao-vivo/7832875/', 'ercmed-tv-globoplay', tvFeatures);
-      const panelWindow = window.open(panelUrl, 'ercmed-tv-painel', panelFeatures);
+      // A unique name prevents Edge from reusing an older window and ignoring
+      // the requested coordinates. Load content only after both blank popup
+      // windows have been created in their final positions.
+      const launchId = Date.now();
+      const tvWindow = window.open('about:blank', `ercmed-tv-globoplay-${launchId}`, tvFeatures);
+      const panelWindow = window.open('about:blank', `ercmed-tv-painel-${launchId}`, panelFeatures);
       if (!tvWindow || !panelWindow) {
         tvWindow?.close(); panelWindow?.close();
         throw new Error('O Edge bloqueou as janelas. Clique no aviso de pop-up na barra de endereço, escolha “Sempre permitir” e tente novamente.');
       }
+      tvWindow.moveTo(target.availLeft, target.availTop);
+      tvWindow.resizeTo(tvWidth, target.availHeight);
+      panelWindow.moveTo(target.availLeft + tvWidth, target.availTop);
+      panelWindow.resizeTo(panelWidth, target.availHeight);
       tvWindow.opener = null; panelWindow.opener = null;
+      tvWindow.location.replace('https://globoplay.globo.com/tv-globo/ao-vivo/7832875/');
+      panelWindow.location.replace(panelUrl);
       setMessage('ERCMed TV iniciado no segundo monitor. Ative o som no painel uma vez.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Não foi possível organizar o segundo monitor.');
